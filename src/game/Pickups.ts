@@ -1,0 +1,272 @@
+// Item pickup system — ported from p_inter.c P_TouchSpecialThing().
+// Checks player proximity to items each tic and applies pickup effects.
+
+import type { Group, Mesh } from 'three/webgpu';
+import type { World } from 'koota';
+import type { AmmoType, WeaponSlot, CardType, PowerType, PlayerStatusState } from '../ecs/traits';
+import { PlayerStatus, AMMO_TYPES, POWER_DURATIONS } from '../ecs/traits';
+import { playSound } from '../sound';
+import type { Fixed } from '../math/fixed';
+import { FRACBITS, intToFixed } from '../math/fixed';
+
+const BONUSADD = 6; // tics of bonus glow per pickup
+
+// Base units per clip for each ammo type (from p_inter.c clipammo[])
+const CLIP_AMMO: Record<AmmoType, number> = { clip: 10, shell: 4, misl: 1, cell: 20 };
+
+// Pickup radius: player (16) + item (20) = 36 Doom units (fixed-point)
+const PICKUP_DIST = 36 << FRACBITS;
+
+interface PickupDef {
+  type: 'health' | 'armor' | 'ammo' | 'weapon' | 'key' | 'powerup';
+  healthAmount?: number;
+  healthMax?: number;
+  armorAmount?: number;
+  armorType?: number;
+  ammo?: AmmoType;
+  ammoClips?: number;
+  backpack?: boolean;
+  weapon?: WeaponSlot;
+  weaponAmmo?: AmmoType;
+  weaponAmmoClips?: number;
+  card?: CardType;
+  power?: PowerType;
+  sound?: string;
+}
+
+// Map DoomEd thing type → pickup definition
+const PICKUP_DEFS: Record<number, PickupDef> = {
+
+  // --- Health ---
+  2014: { type: 'health', healthAmount: 1, healthMax: 200, sound: 'itemup' },
+  2011: { type: 'health', healthAmount: 10, healthMax: 100, sound: 'itemup' },
+  2012: { type: 'health', healthAmount: 25, healthMax: 100, sound: 'itemup' },
+  2013: { type: 'health', healthAmount: 100, healthMax: 200, sound: 'getpow' },
+
+  // --- Armor ---
+  2015: { type: 'armor', armorAmount: 1, armorType: 0, sound: 'itemup' },
+  2018: { type: 'armor', armorAmount: 100, armorType: 1, sound: 'itemup' },
+  2019: { type: 'armor', armorAmount: 200, armorType: 2, sound: 'itemup' },
+
+  // --- Megasphere ---
+  83: { type: 'powerup', healthAmount: 200, healthMax: 200, armorAmount: 200, armorType: 2, sound: 'getpow' },
+
+  // --- Ammo ---
+  2007: { type: 'ammo', ammo: 'clip', ammoClips: 1, sound: 'itemup' },
+  2048: { type: 'ammo', ammo: 'clip', ammoClips: 5, sound: 'itemup' },
+  2008: { type: 'ammo', ammo: 'shell', ammoClips: 1, sound: 'itemup' },
+  2049: { type: 'ammo', ammo: 'shell', ammoClips: 5, sound: 'itemup' },
+  2010: { type: 'ammo', ammo: 'misl', ammoClips: 1, sound: 'itemup' },
+  2046: { type: 'ammo', ammo: 'misl', ammoClips: 5, sound: 'itemup' },
+  2047: { type: 'ammo', ammo: 'cell', ammoClips: 1, sound: 'itemup' },
+  17:   { type: 'ammo', ammo: 'cell', ammoClips: 5, sound: 'itemup' },
+  8:    { type: 'ammo', backpack: true, sound: 'itemup' },
+
+  // --- Weapons ---
+  2001: { type: 'weapon', weapon: 'shotgun', weaponAmmo: 'shell', weaponAmmoClips: 2, sound: 'wpnup' },
+  82:   { type: 'weapon', weapon: 'supershotgun', weaponAmmo: 'shell', weaponAmmoClips: 2, sound: 'wpnup' },
+  2002: { type: 'weapon', weapon: 'chaingun', weaponAmmo: 'clip', weaponAmmoClips: 2, sound: 'wpnup' },
+  2003: { type: 'weapon', weapon: 'missile', weaponAmmo: 'misl', weaponAmmoClips: 2, sound: 'wpnup' },
+  2004: { type: 'weapon', weapon: 'plasma', weaponAmmo: 'cell', weaponAmmoClips: 2, sound: 'wpnup' },
+  2005: { type: 'weapon', weapon: 'chainsaw', sound: 'wpnup' },
+  2006: { type: 'weapon', weapon: 'bfg', weaponAmmo: 'cell', weaponAmmoClips: 2, sound: 'wpnup' },
+
+  // --- Keys ---
+  5:  { type: 'key', card: 'bluecard', sound: 'itemup' },
+  6:  { type: 'key', card: 'yellowcard', sound: 'itemup' },
+  13: { type: 'key', card: 'redcard', sound: 'itemup' },
+  40: { type: 'key', card: 'blueskull', sound: 'itemup' },
+  39: { type: 'key', card: 'yellowskull', sound: 'itemup' },
+  38: { type: 'key', card: 'redskull', sound: 'itemup' },
+
+  // --- Powerups ---
+  2022: { type: 'powerup', power: 'invulnerability', sound: 'getpow' },
+  2023: { type: 'powerup', power: 'strength', healthAmount: 100, healthMax: 100, sound: 'getpow' },
+  2024: { type: 'powerup', power: 'invisibility', sound: 'getpow' },
+  2025: { type: 'powerup', power: 'ironfeet', sound: 'getpow' },
+  2026: { type: 'powerup', power: 'allmap', sound: 'getpow' },
+  2045: { type: 'powerup', power: 'infrared', sound: 'getpow' },
+};
+
+function giveAmmo( state: PlayerStatusState, ammo: AmmoType, clips: number ): boolean {
+
+  if ( state.ammo[ ammo ] >= state.maxAmmo[ ammo ] ) return false;
+
+  state.ammo[ ammo ] = Math.min(
+    state.maxAmmo[ ammo ],
+    state.ammo[ ammo ] + CLIP_AMMO[ ammo ] * clips
+  );
+
+  return true;
+
+}
+
+function tryPickup( def: PickupDef, state: PlayerStatusState ): boolean {
+
+  switch ( def.type ) {
+
+    case 'health': {
+
+      if ( state.health >= ( def.healthMax ?? 100 ) ) return false;
+      state.health = Math.min( def.healthMax ?? 100, state.health + ( def.healthAmount ?? 0 ) );
+      return true;
+
+    }
+
+    case 'armor': {
+
+      if ( def.armorType === 0 ) {
+
+        if ( state.armor >= 200 ) return false;
+        state.armor = Math.min( 200, state.armor + ( def.armorAmount ?? 1 ) );
+        if ( state.armorType === 0 ) state.armorType = 1;
+        return true;
+
+      }
+
+      const newArmor = def.armorAmount ?? 100;
+      if ( state.armor >= newArmor ) return false;
+      state.armor = newArmor;
+      state.armorType = def.armorType ?? 1;
+      return true;
+
+    }
+
+    case 'ammo': {
+
+      if ( def.backpack ) {
+
+        let gave = false;
+        state.maxAmmo = { clip: 400, shell: 100, misl: 100, cell: 600 };
+
+        for ( const at of AMMO_TYPES ) {
+
+          if ( giveAmmo( state, at, 1 ) ) gave = true;
+
+        }
+
+        return gave || true;
+
+      }
+
+      return giveAmmo( state, def.ammo!, def.ammoClips ?? 1 );
+
+    }
+
+    case 'weapon': {
+
+      let gave = false;
+
+      if ( def.weaponAmmo ) {
+
+        gave = giveAmmo( state, def.weaponAmmo, def.weaponAmmoClips ?? 2 );
+
+      }
+
+      if ( ! state.weapons[ def.weapon! ] ) {
+
+        state.weapons[ def.weapon! ] = true;
+        gave = true;
+
+      }
+
+      return gave;
+
+    }
+
+    case 'key': {
+
+      if ( state.cards[ def.card! ] ) return false;
+      state.cards[ def.card! ] = true;
+      return true;
+
+    }
+
+    case 'powerup': {
+
+      if ( def.power ) {
+
+        const pw = def.power;
+        if ( pw !== 'strength' && pw !== 'ironfeet'
+          && pw !== 'invulnerability' && pw !== 'invisibility'
+          && pw !== 'infrared' && state.powers[ pw ] ) return false;
+
+        state.powers[ pw ] = POWER_DURATIONS[ pw ];
+
+      }
+
+      if ( def.healthAmount ) {
+
+        state.health = Math.min( def.healthMax ?? 200, Math.max( state.health, def.healthAmount ) );
+
+      }
+
+      if ( def.armorAmount ) {
+
+        state.armor = def.armorAmount;
+        state.armorType = def.armorType ?? 2;
+
+      }
+
+      return true;
+
+    }
+
+    default:
+      return false;
+
+  }
+
+}
+
+/**
+ * Check for item pickups each frame.
+ * playerX/playerY are fixed-point Doom coordinates.
+ */
+export function checkPickups(
+  world: World,
+  spriteGroup: Group,
+  playerX: Fixed,
+  playerY: Fixed,
+  playerZ: Fixed
+): void {
+
+  const state = world.get( PlayerStatus );
+  if ( ! state ) return;
+
+  const toRemove: Mesh[] = [];
+
+  for ( const child of spriteGroup.children ) {
+
+    const mesh = child as Mesh;
+    const thingType = mesh.userData.thingType as number | undefined;
+    if ( thingType === undefined ) continue;
+
+    const def = PICKUP_DEFS[ thingType ];
+    if ( ! def ) continue;
+
+    // Thing positions are integers from WAD — convert to fixed-point for comparison
+    const tx = intToFixed( mesh.userData.thingX as number );
+    const ty = intToFixed( mesh.userData.thingY as number );
+
+    if ( Math.abs( playerX - tx ) >= PICKUP_DIST ) continue;
+    if ( Math.abs( playerY - ty ) >= PICKUP_DIST ) continue;
+
+    if ( tryPickup( def, state ) ) {
+
+      state.bonusCount += BONUSADD;
+      playSound( def.sound ?? 'itemup' );
+      toRemove.push( mesh );
+
+    }
+
+  }
+
+  for ( const mesh of toRemove ) {
+
+    spriteGroup.remove( mesh );
+    mesh.geometry.dispose();
+
+  }
+
+}

@@ -1,0 +1,913 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>Doom E1M1 - Three.js Viewer</title>
+<style>
+body { margin: 0; background: #000; overflow: hidden; }
+canvas { display: block; }
+#info { position: absolute; top: 10px; left: 10px; color: #fff; font: 14px monospace; background: rgba(0,0,0,0.7); padding: 8px; z-index: 1; }
+#loading { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; color: #fff; font: 24px monospace; background: #000; z-index: 2; }
+</style>
+</head>
+<body>
+<div id="loading">Loading WAD...</div>
+<div id="info">DOOM E1M1 - Three.js<br>Click to capture mouse | WASD: move | Mouse: look | Q/E: up/down</div>
+
+<script type="importmap">
+{
+  "imports": {
+    "three": "/three/build/three.webgpu.js",
+    "three/webgpu": "/three/build/three.webgpu.js",
+    "three/tsl": "/three/build/three.tsl.js",
+    "three/addons/": "/three/examples/jsm/",
+    "earcut": "https://esm.sh/earcut@3.0.2"
+  }
+}
+</script>
+
+<script type="module">
+import * as THREE from 'three/webgpu';
+import earcut from 'earcut';
+
+const SCALE = 1.0 / 32.0;
+
+// ============================================================
+// WAD PARSER
+// ============================================================
+
+function parseWAD(buffer) {
+  const buf = new Uint8Array(buffer);
+  const view = new DataView(buffer);
+  const magic = String.fromCharCode(buf[0], buf[1], buf[2], buf[3]);
+  if (magic !== 'IWAD' && magic !== 'PWAD') throw new Error('Not a WAD file');
+
+  const numLumps = view.getInt32(4, true);
+  const dirOffset = view.getInt32(8, true);
+  const lumps = [];
+  const lumpMap = {};
+
+  for (let i = 0; i < numLumps; i++) {
+    const off = dirOffset + i * 16;
+    const filepos = view.getInt32(off, true);
+    const size = view.getInt32(off + 4, true);
+    let name = '';
+    for (let j = 0; j < 8; j++) {
+      const c = buf[off + 8 + j];
+      if (c === 0) break;
+      name += String.fromCharCode(c);
+    }
+    const lump = { name, filepos, size, index: i };
+    lumps.push(lump);
+    if (!lumpMap[name]) lumpMap[name] = lump;
+  }
+
+  return { magic, lumps, lumpMap, buffer, view, buf };
+}
+
+function getLump(wad, name) {
+  const l = wad.lumpMap[name];
+  if (!l) return null;
+  return { offset: l.filepos, size: l.size };
+}
+
+function getMapLumps(wad, mapName) {
+  const mapSubs = ['THINGS','LINEDEFS','SIDEDEFS','VERTEXES','SEGS','SSECTORS','NODES','SECTORS','REJECT','BLOCKMAP'];
+  const result = {};
+  let found = false;
+  for (const lump of wad.lumps) {
+    if (lump.name === mapName) { found = true; continue; }
+    if (found) {
+      if (!mapSubs.includes(lump.name)) break;
+      result[lump.name] = { offset: lump.filepos, size: lump.size };
+    }
+  }
+  return result;
+}
+
+function readStr(buf, off, len) {
+  let s = '';
+  for (let j = 0; j < len; j++) {
+    const c = buf[off + j];
+    if (c === 0) break;
+    s += String.fromCharCode(c);
+  }
+  return s.toUpperCase();
+}
+
+// ============================================================
+// PALETTE
+// ============================================================
+
+function parsePalette(wad) {
+  const lump = getLump(wad, 'PLAYPAL');
+  const palette = new Uint8Array(256 * 3);
+  for (let i = 0; i < 256 * 3; i++) {
+    palette[i] = wad.buf[lump.offset + i];
+  }
+  return palette;
+}
+
+// ============================================================
+// FLATS (floor/ceiling textures) - raw 64x64 indexed pixels
+// ============================================================
+
+function parseFlats(wad, palette) {
+  const flats = {};
+  let inFlats = false;
+
+  for (const lump of wad.lumps) {
+    if (lump.name === 'F_START' || lump.name === 'F1_START' || lump.name === 'F2_START') {
+      inFlats = true; continue;
+    }
+    if (lump.name === 'F_END' || lump.name === 'F1_END' || lump.name === 'F2_END') {
+      inFlats = false; continue;
+    }
+    if (inFlats && lump.size === 4096) {
+      const rgba = new Uint8Array(64 * 64 * 4);
+      for (let i = 0; i < 4096; i++) {
+        const idx = wad.buf[lump.filepos + i];
+        rgba[i * 4]     = palette[idx * 3];
+        rgba[i * 4 + 1] = palette[idx * 3 + 1];
+        rgba[i * 4 + 2] = palette[idx * 3 + 2];
+        rgba[i * 4 + 3] = 255;
+      }
+      flats[lump.name] = { width: 64, height: 64, rgba };
+    }
+  }
+  return flats;
+}
+
+// ============================================================
+// PATCHES (column-based image format)
+// ============================================================
+
+function parsePatch(wad, lumpOffset, lumpSize) {
+  const view = wad.view;
+  const buf = wad.buf;
+
+  const width = view.getInt16(lumpOffset, true);
+  const height = view.getInt16(lumpOffset + 2, true);
+  const leftOffset = view.getInt16(lumpOffset + 4, true);
+  const topOffset = view.getInt16(lumpOffset + 6, true);
+
+  // Column offsets
+  const columnOfs = [];
+  for (let x = 0; x < width; x++) {
+    columnOfs.push(view.getUint32(lumpOffset + 8 + x * 4, true));
+  }
+
+  // Pixel data (indexed)
+  const pixels = new Int16Array(width * height).fill(-1); // -1 = transparent
+
+  for (let x = 0; x < width; x++) {
+    let ofs = lumpOffset + columnOfs[x];
+    let safety = 0;
+
+    while (safety++ < 256) {
+      const topdelta = buf[ofs];
+      if (topdelta === 0xFF) break;
+      const length = buf[ofs + 1];
+      // skip unused padding byte
+      ofs += 3;
+
+      for (let j = 0; j < length; j++) {
+        const y = topdelta + j;
+        if (y < height) {
+          pixels[y * width + x] = buf[ofs + j];
+        }
+      }
+      ofs += length + 1; // skip trailing padding
+    }
+  }
+
+  return { width, height, leftOffset, topOffset, pixels };
+}
+
+// ============================================================
+// WALL TEXTURES (composited from patches)
+// ============================================================
+
+function parseTextures(wad, palette) {
+  const buf = wad.buf;
+  const view = wad.view;
+
+  // Parse PNAMES
+  const pnamesLump = getLump(wad, 'PNAMES');
+  const numPnames = view.getInt32(pnamesLump.offset, true);
+  const pnames = [];
+  for (let i = 0; i < numPnames; i++) {
+    pnames.push(readStr(buf, pnamesLump.offset + 4 + i * 8, 8));
+  }
+
+  // Build patch lump lookup (patches live between P_START/P_END or as named lumps)
+  const patchLumps = {};
+  let inPatches = false;
+  for (const lump of wad.lumps) {
+    if (lump.name === 'P_START' || lump.name === 'P1_START' || lump.name === 'P2_START' || lump.name === 'PP_START') {
+      inPatches = true; continue;
+    }
+    if (lump.name === 'P_END' || lump.name === 'P1_END' || lump.name === 'P2_END' || lump.name === 'PP_END') {
+      inPatches = false; continue;
+    }
+    if (inPatches && lump.size > 0) {
+      patchLumps[lump.name] = lump;
+    }
+  }
+
+  // Also check all lumps by name for patches not between markers
+  for (const pname of pnames) {
+    if (!patchLumps[pname] && wad.lumpMap[pname]) {
+      patchLumps[pname] = wad.lumpMap[pname];
+    }
+  }
+
+  const textures = {};
+
+  function parseTextureLump(lumpName) {
+    const lump = getLump(wad, lumpName);
+    if (!lump) return;
+
+    const base = lump.offset;
+    const numTex = view.getInt32(base, true);
+
+    for (let i = 0; i < numTex; i++) {
+      const texOff = base + view.getInt32(base + 4 + i * 4, true);
+      const name = readStr(buf, texOff, 8);
+      const width = view.getInt16(texOff + 12, true);
+      const height = view.getInt16(texOff + 14, true);
+      const patchCount = view.getInt16(texOff + 20, true);
+
+      // Composite the texture from patches
+      const pixels = new Int16Array(width * height).fill(-1);
+
+      for (let p = 0; p < patchCount; p++) {
+        const patchOff = texOff + 22 + p * 10;
+        const originX = view.getInt16(patchOff, true);
+        const originY = view.getInt16(patchOff + 2, true);
+        const patchIdx = view.getInt16(patchOff + 4, true);
+
+        const patchName = pnames[patchIdx];
+        const patchLump = patchLumps[patchName];
+        if (!patchLump) continue;
+
+        const patch = parsePatch(wad, patchLump.filepos, patchLump.size);
+
+        // Blit patch onto texture
+        for (let py = 0; py < patch.height; py++) {
+          for (let px = 0; px < patch.width; px++) {
+            const srcIdx = py * patch.width + px;
+            if (patch.pixels[srcIdx] < 0) continue;
+
+            const dx = originX + px;
+            const dy = originY + py;
+            if (dx >= 0 && dx < width && dy >= 0 && dy < height) {
+              pixels[dy * width + dx] = patch.pixels[srcIdx];
+            }
+          }
+        }
+      }
+
+      // Convert to RGBA
+      const rgba = new Uint8Array(width * height * 4);
+      for (let j = 0; j < width * height; j++) {
+        const idx = pixels[j];
+        if (idx >= 0) {
+          rgba[j * 4]     = palette[idx * 3];
+          rgba[j * 4 + 1] = palette[idx * 3 + 1];
+          rgba[j * 4 + 2] = palette[idx * 3 + 2];
+          rgba[j * 4 + 3] = 255;
+        }
+      }
+
+      textures[name] = { width, height, rgba };
+    }
+  }
+
+  parseTextureLump('TEXTURE1');
+  parseTextureLump('TEXTURE2');
+
+  return textures;
+}
+
+// ============================================================
+// THREE.JS TEXTURE CREATION
+// ============================================================
+
+function makeTexture(texData, repeatX, repeatY) {
+  const tex = new THREE.DataTexture(texData.rgba, texData.width, texData.height, THREE.RGBAFormat);
+  tex.magFilter = THREE.NearestFilter;
+  tex.minFilter = THREE.NearestFilter;
+  tex.wrapS = THREE.RepeatWrapping;
+  tex.wrapT = THREE.RepeatWrapping;
+  if (repeatX !== undefined) tex.repeat.set(repeatX, repeatY);
+  tex.needsUpdate = true;
+  return tex;
+}
+
+// ============================================================
+// MAP DATA PARSERS
+// ============================================================
+
+function parseVertexes(wad, lump) {
+  const verts = [];
+  const view = wad.view;
+  const count = lump.size / 4;
+  for (let i = 0; i < count; i++) {
+    const off = lump.offset + i * 4;
+    verts.push({ x: view.getInt16(off, true), y: view.getInt16(off + 2, true) });
+  }
+  return verts;
+}
+
+function parseLinedefs(wad, lump) {
+  const lines = [];
+  const view = wad.view;
+  const count = lump.size / 14;
+  for (let i = 0; i < count; i++) {
+    const off = lump.offset + i * 14;
+    lines.push({
+      v1: view.getUint16(off, true),
+      v2: view.getUint16(off + 2, true),
+      flags: view.getUint16(off + 4, true),
+      special: view.getUint16(off + 6, true),
+      tag: view.getUint16(off + 8, true),
+      right: view.getInt16(off + 10, true),
+      left: view.getInt16(off + 12, true)
+    });
+  }
+  return lines;
+}
+
+function parseSidedefs(wad, lump) {
+  const sides = [];
+  const view = wad.view;
+  const buf = wad.buf;
+  const count = lump.size / 30;
+  for (let i = 0; i < count; i++) {
+    const off = lump.offset + i * 30;
+    sides.push({
+      xoff: view.getInt16(off, true),
+      yoff: view.getInt16(off + 2, true),
+      upper: readStr(buf, off + 4, 8),
+      lower: readStr(buf, off + 12, 8),
+      middle: readStr(buf, off + 20, 8),
+      sector: view.getUint16(off + 28, true)
+    });
+  }
+  return sides;
+}
+
+function parseSectors(wad, lump) {
+  const sectors = [];
+  const view = wad.view;
+  const buf = wad.buf;
+  const count = lump.size / 26;
+  for (let i = 0; i < count; i++) {
+    const off = lump.offset + i * 26;
+    sectors.push({
+      floorHeight: view.getInt16(off, true),
+      ceilingHeight: view.getInt16(off + 2, true),
+      floorTex: readStr(buf, off + 4, 8),
+      ceilingTex: readStr(buf, off + 12, 8),
+      lightLevel: view.getInt16(off + 20, true),
+      special: view.getUint16(off + 22, true),
+      tag: view.getUint16(off + 24, true)
+    });
+  }
+  return sectors;
+}
+
+function parseThings(wad, lump) {
+  const things = [];
+  const view = wad.view;
+  const count = lump.size / 10;
+  for (let i = 0; i < count; i++) {
+    const off = lump.offset + i * 10;
+    things.push({
+      x: view.getInt16(off, true),
+      y: view.getInt16(off + 2, true),
+      angle: view.getInt16(off + 4, true),
+      type: view.getUint16(off + 6, true),
+      flags: view.getUint16(off + 8, true)
+    });
+  }
+  return things;
+}
+
+// ============================================================
+// SECTOR POLYGON BUILDER
+// ============================================================
+
+function buildSectorPolygons(sectorIndex, linedefs, sidedefs, vertexes) {
+  const sectorLines = [];
+  for (let i = 0; i < linedefs.length; i++) {
+    const ld = linedefs[i];
+    if (ld.right >= 0 && sidedefs[ld.right].sector === sectorIndex) {
+      sectorLines.push({ v1: ld.v1, v2: ld.v2 });
+    }
+    if (ld.left >= 0 && sidedefs[ld.left].sector === sectorIndex) {
+      sectorLines.push({ v1: ld.v2, v2: ld.v1 });
+    }
+  }
+  if (sectorLines.length === 0) return [];
+
+  const used = new Set();
+  const loops = [];
+
+  for (let startIdx = 0; startIdx < sectorLines.length; startIdx++) {
+    if (used.has(startIdx)) continue;
+    const loop = [];
+    let current = startIdx;
+    let safety = 0;
+
+    while (!used.has(current) && safety < 10000) {
+      used.add(current);
+      const edge = sectorLines[current];
+      loop.push(edge.v1);
+      safety++;
+
+      let found = -1;
+      for (let j = 0; j < sectorLines.length; j++) {
+        if (!used.has(j) && sectorLines[j].v1 === edge.v2) {
+          found = j;
+          break;
+        }
+      }
+      if (found === -1) break;
+      current = found;
+    }
+
+    if (loop.length >= 3) loops.push(loop);
+  }
+  return loops;
+}
+
+// ============================================================
+// TRIANGULATION (using earcut library)
+// ============================================================
+
+function triangulate(vertices2D) {
+  // vertices2D: flat array [x0, y0, x1, y1, ...]
+  if (vertices2D.length < 6) return [];
+  return earcut(vertices2D);
+}
+
+// ============================================================
+// THREE.JS SCENE BUILDER
+// ============================================================
+
+function buildScene(vertexes, linedefs, sidedefs, sectors, things, wallTextures, flats) {
+  const group = new THREE.Group();
+
+  // Cache Three.js textures and materials
+  const wallTexCache = {};
+  const flatTexCache = {};
+
+  function getWallMaterial(texName, lightLevel) {
+    if (!texName || texName === '-') return null;
+    const key = texName + '_' + lightLevel;
+    if (wallTexCache[key]) return wallTexCache[key];
+
+    const texData = wallTextures[texName];
+    if (!texData) {
+      // Fallback solid color
+      const brightness = lightLevel / 255;
+      const mat = new THREE.MeshBasicMaterial({
+        color: new THREE.Color(brightness * 0.5, brightness * 0.4, brightness * 0.3),
+        side: THREE.DoubleSide
+      });
+      wallTexCache[key] = mat;
+      return mat;
+    }
+
+    const tex = makeTexture(texData);
+    const brightness = lightLevel / 255;
+    const mat = new THREE.MeshBasicMaterial({
+      map: tex,
+      color: new THREE.Color(brightness, brightness, brightness),
+      side: THREE.DoubleSide,
+      transparent: false
+    });
+    wallTexCache[key] = mat;
+    return mat;
+  }
+
+  function getFlatMaterial(texName, lightLevel) {
+    if (!texName || texName === '-') return null;
+    const key = texName + '_' + lightLevel;
+    if (flatTexCache[key]) return flatTexCache[key];
+
+    const texData = flats[texName];
+    if (!texData) {
+      const brightness = lightLevel / 255;
+      const mat = new THREE.MeshBasicMaterial({
+        color: new THREE.Color(brightness * 0.4, brightness * 0.5, brightness * 0.4),
+        side: THREE.DoubleSide
+      });
+      flatTexCache[key] = mat;
+      return mat;
+    }
+
+    const tex = makeTexture(texData);
+    const brightness = lightLevel / 255;
+    const mat = new THREE.MeshBasicMaterial({
+      map: tex,
+      color: new THREE.Color(brightness, brightness, brightness),
+      side: THREE.DoubleSide
+    });
+    flatTexCache[key] = mat;
+    return mat;
+  }
+
+  // ---- WALLS ----
+  // Group wall quads by texture+light for batching
+  const wallBatches = {};
+
+  function addWallQuad(texName, lightLevel, x1, z1, x2, z2, bottom, top, sidedef, texData, pegged, lineLength, frontCeil, frontFloor) {
+    if (top <= bottom) return;
+
+    const key = texName + '_' + lightLevel;
+    if (!wallBatches[key]) {
+      wallBatches[key] = { texName, lightLevel, positions: [], uvs: [] };
+    }
+    const batch = wallBatches[key];
+
+    // UV mapping
+    const wallWidth = Math.sqrt((x2 - x1) ** 2 + (z2 - z1) ** 2);
+    const wallHeight = top - bottom;
+
+    let tw = 64, th = 64;
+    if (texData) { tw = texData.width; th = texData.height; }
+
+    // Texture offsets from sidedef (in Doom units, scaled)
+    const uOff = (sidedef.xoff * SCALE) / (tw * SCALE);
+    const vOff = (sidedef.yoff * SCALE) / (th * SCALE);
+
+    const u0 = uOff;
+    const u1 = uOff + wallWidth / (tw * SCALE);
+
+    // V mapping depends on pegging
+    let v0, v1;
+    if (pegged === 'lower') {
+      // Lower unpegged: texture anchored to bottom
+      v1 = vOff + 0;
+      v0 = vOff - wallHeight / (th * SCALE);
+    } else {
+      // Upper pegged (default): texture anchored to top
+      v0 = vOff;
+      v1 = vOff + wallHeight / (th * SCALE);
+    }
+
+    // Two triangles (note: v is flipped because Doom textures go top-down)
+    batch.positions.push(
+      x1, top, z1,     x2, top, z2,     x2, bottom, z2,
+      x1, top, z1,     x2, bottom, z2,  x1, bottom, z1
+    );
+    batch.uvs.push(
+      u0, 1 - v0,  u1, 1 - v0,  u1, 1 - v1,
+      u0, 1 - v0,  u1, 1 - v1,  u0, 1 - v1
+    );
+  }
+
+  for (const ld of linedefs) {
+    const v1 = vertexes[ld.v1];
+    const v2 = vertexes[ld.v2];
+    const x1 = v1.x * SCALE, z1 = -v1.y * SCALE;
+    const x2 = v2.x * SCALE, z2 = -v2.y * SCALE;
+
+    const lowerUnpegged = (ld.flags & 0x10) !== 0;
+    const upperUnpegged = (ld.flags & 0x08) !== 0;
+
+    if (ld.right >= 0) {
+      const side = sidedefs[ld.right];
+      const sector = sectors[side.sector];
+
+      if (ld.left < 0) {
+        // One-sided wall
+        const floor = sector.floorHeight * SCALE;
+        const ceil = sector.ceilingHeight * SCALE;
+        const texData = wallTextures[side.middle];
+        const pegged = lowerUnpegged ? 'lower' : 'upper';
+        addWallQuad(side.middle, sector.lightLevel, x1, z1, x2, z2, floor, ceil, side, texData, pegged);
+      } else {
+        // Two-sided
+        const leftSide = sidedefs[ld.left];
+        const backSector = sectors[leftSide.sector];
+
+        // Upper wall
+        if (sector.ceilingHeight > backSector.ceilingHeight && side.upper !== '-') {
+          const top = sector.ceilingHeight * SCALE;
+          const bot = backSector.ceilingHeight * SCALE;
+          const texData = wallTextures[side.upper];
+          const pegged = upperUnpegged ? 'lower' : 'upper';
+          addWallQuad(side.upper, sector.lightLevel, x1, z1, x2, z2, bot, top, side, texData, pegged);
+        }
+
+        // Lower wall
+        if (backSector.floorHeight > sector.floorHeight && side.lower !== '-') {
+          const top = backSector.floorHeight * SCALE;
+          const bot = sector.floorHeight * SCALE;
+          const texData = wallTextures[side.lower];
+          const pegged = lowerUnpegged ? 'lower' : 'upper';
+          addWallQuad(side.lower, sector.lightLevel, x1, z1, x2, z2, bot, top, side, texData, pegged);
+        }
+
+        // Middle (transparent midtexture, e.g. grates, fences)
+        if (side.middle && side.middle !== '-') {
+          const top = Math.min(sector.ceilingHeight, backSector.ceilingHeight) * SCALE;
+          const bot = Math.max(sector.floorHeight, backSector.floorHeight) * SCALE;
+          const texData = wallTextures[side.middle];
+          addWallQuad(side.middle, sector.lightLevel, x1, z1, x2, z2, bot, top, side, texData, 'lower');
+        }
+      }
+    }
+
+    // Left sidedef walls (back side)
+    if (ld.left >= 0) {
+      const side = sidedefs[ld.left];
+      const sector = sectors[side.sector];
+      // Flip vertices for back side
+      const bx1 = x2, bz1 = z2, bx2 = x1, bz2 = z1;
+
+      if (ld.right >= 0) {
+        const rightSide = sidedefs[ld.right];
+        const frontSector = sectors[rightSide.sector];
+
+        if (sector.ceilingHeight > frontSector.ceilingHeight && side.upper !== '-') {
+          const top = sector.ceilingHeight * SCALE;
+          const bot = frontSector.ceilingHeight * SCALE;
+          const texData = wallTextures[side.upper];
+          const pegged = upperUnpegged ? 'lower' : 'upper';
+          addWallQuad(side.upper, sector.lightLevel, bx1, bz1, bx2, bz2, bot, top, side, texData, pegged);
+        }
+
+        if (frontSector.floorHeight > sector.floorHeight && side.lower !== '-') {
+          const top = frontSector.floorHeight * SCALE;
+          const bot = sector.floorHeight * SCALE;
+          const texData = wallTextures[side.lower];
+          const pegged = lowerUnpegged ? 'lower' : 'upper';
+          addWallQuad(side.lower, sector.lightLevel, bx1, bz1, bx2, bz2, bot, top, side, texData, pegged);
+        }
+
+        if (side.middle && side.middle !== '-') {
+          const top = Math.min(sector.ceilingHeight, frontSector.ceilingHeight) * SCALE;
+          const bot = Math.max(sector.floorHeight, frontSector.floorHeight) * SCALE;
+          const texData = wallTextures[side.middle];
+          addWallQuad(side.middle, sector.lightLevel, bx1, bz1, bx2, bz2, bot, top, side, texData, 'lower');
+        }
+      }
+    }
+  }
+
+  // Build wall meshes from batches
+  for (const key in wallBatches) {
+    const batch = wallBatches[key];
+    if (batch.positions.length === 0) continue;
+
+    const geom = new THREE.BufferGeometry();
+    geom.setAttribute('position', new THREE.Float32BufferAttribute(batch.positions, 3));
+    geom.setAttribute('uv', new THREE.Float32BufferAttribute(batch.uvs, 2));
+    geom.computeVertexNormals();
+
+    const mat = getWallMaterial(batch.texName, batch.lightLevel);
+    if (mat) group.add(new THREE.Mesh(geom, mat));
+  }
+
+  // ---- FLOORS & CEILINGS ----
+  // Group by flat texture + light level
+  const floorBatches = {};
+  const ceilBatches = {};
+
+  for (let si = 0; si < sectors.length; si++) {
+    const sector = sectors[si];
+    const loops = buildSectorPolygons(si, linedefs, sidedefs, vertexes);
+
+    for (const loop of loops) {
+      const flat2D = [];
+      for (const vi of loop) {
+        flat2D.push(vertexes[vi].x, vertexes[vi].y);
+      }
+
+      const tris = triangulate(flat2D);
+      if (tris.length === 0) continue;
+
+      const floorY = sector.floorHeight * SCALE;
+      const ceilY = sector.ceilingHeight * SCALE;
+
+      // Floor
+      const fKey = sector.floorTex + '_' + sector.lightLevel;
+      if (!floorBatches[fKey]) floorBatches[fKey] = { texName: sector.floorTex, lightLevel: sector.lightLevel, positions: [], uvs: [] };
+      const fb = floorBatches[fKey];
+
+      for (let t = 0; t < tris.length; t += 3) {
+        const i0 = loop[tris[t]], i1 = loop[tris[t + 1]], i2 = loop[tris[t + 2]];
+        const va = vertexes[i0], vb = vertexes[i1], vc = vertexes[i2];
+
+        // Floor faces up
+        fb.positions.push(
+          va.x * SCALE, floorY, -va.y * SCALE,
+          vb.x * SCALE, floorY, -vb.y * SCALE,
+          vc.x * SCALE, floorY, -vc.y * SCALE
+        );
+        // Doom flats use world-space UV (64-unit tile)
+        fb.uvs.push(
+          va.x / 64, va.y / 64,
+          vb.x / 64, vb.y / 64,
+          vc.x / 64, vc.y / 64
+        );
+      }
+
+      // Ceiling (skip sky)
+      if (sector.ceilingTex !== 'F_SKY1') {
+        const cKey = sector.ceilingTex + '_' + sector.lightLevel;
+        if (!ceilBatches[cKey]) ceilBatches[cKey] = { texName: sector.ceilingTex, lightLevel: sector.lightLevel, positions: [], uvs: [] };
+        const cb = ceilBatches[cKey];
+
+        for (let t = 0; t < tris.length; t += 3) {
+          const i0 = loop[tris[t]], i1 = loop[tris[t + 1]], i2 = loop[tris[t + 2]];
+          const va = vertexes[i0], vb = vertexes[i1], vc = vertexes[i2];
+
+          // Ceiling faces down (reversed winding)
+          cb.positions.push(
+            va.x * SCALE, ceilY, -va.y * SCALE,
+            vc.x * SCALE, ceilY, -vc.y * SCALE,
+            vb.x * SCALE, ceilY, -vb.y * SCALE
+          );
+          cb.uvs.push(
+            va.x / 64, va.y / 64,
+            vc.x / 64, vc.y / 64,
+            vb.x / 64, vb.y / 64
+          );
+        }
+      }
+    }
+  }
+
+  // Build floor meshes
+  for (const key in floorBatches) {
+    const batch = floorBatches[key];
+    if (batch.positions.length === 0) continue;
+    const geom = new THREE.BufferGeometry();
+    geom.setAttribute('position', new THREE.Float32BufferAttribute(batch.positions, 3));
+    geom.setAttribute('uv', new THREE.Float32BufferAttribute(batch.uvs, 2));
+    geom.computeVertexNormals();
+    const mat = getFlatMaterial(batch.texName, batch.lightLevel);
+    if (mat) group.add(new THREE.Mesh(geom, mat));
+  }
+
+  // Build ceiling meshes
+  for (const key in ceilBatches) {
+    const batch = ceilBatches[key];
+    if (batch.positions.length === 0) continue;
+    const geom = new THREE.BufferGeometry();
+    geom.setAttribute('position', new THREE.Float32BufferAttribute(batch.positions, 3));
+    geom.setAttribute('uv', new THREE.Float32BufferAttribute(batch.uvs, 2));
+    geom.computeVertexNormals();
+    const mat = getFlatMaterial(batch.texName, batch.lightLevel);
+    if (mat) group.add(new THREE.Mesh(geom, mat));
+  }
+
+  return { group, things };
+}
+
+// ============================================================
+// FIRST-PERSON CONTROLS
+// ============================================================
+
+class FPSControls {
+  constructor(camera, domElement) {
+    this.camera = camera;
+    this.domElement = domElement;
+    this.moveSpeed = 5;
+    this.lookSpeed = 0.002;
+    this.keys = {};
+    this.euler = new THREE.Euler(0, 0, 0, 'YXZ');
+    this.locked = false;
+
+    domElement.addEventListener('click', () => domElement.requestPointerLock());
+    document.addEventListener('pointerlockchange', () => {
+      this.locked = document.pointerLockElement === domElement;
+    });
+    document.addEventListener('mousemove', (e) => {
+      if (!this.locked) return;
+      this.euler.setFromQuaternion(this.camera.quaternion);
+      this.euler.y -= e.movementX * this.lookSpeed;
+      this.euler.x -= e.movementY * this.lookSpeed;
+      this.euler.x = Math.max(-Math.PI / 2, Math.min(Math.PI / 2, this.euler.x));
+      this.camera.quaternion.setFromEuler(this.euler);
+    });
+
+    document.addEventListener('keydown', (e) => this.keys[e.code] = true);
+    document.addEventListener('keyup', (e) => this.keys[e.code] = false);
+  }
+
+  update(dt) {
+    const dir = new THREE.Vector3();
+    const right = new THREE.Vector3();
+    this.camera.getWorldDirection(dir);
+    right.crossVectors(dir, this.camera.up).normalize();
+    dir.y = 0; dir.normalize();
+
+    const speed = this.moveSpeed * dt;
+    if (this.keys['KeyW'] || this.keys['ArrowUp']) this.camera.position.addScaledVector(dir, speed);
+    if (this.keys['KeyS'] || this.keys['ArrowDown']) this.camera.position.addScaledVector(dir, -speed);
+    if (this.keys['KeyA'] || this.keys['ArrowLeft']) this.camera.position.addScaledVector(right, -speed);
+    if (this.keys['KeyD'] || this.keys['ArrowRight']) this.camera.position.addScaledVector(right, speed);
+    if (this.keys['KeyQ']) this.camera.position.y -= speed;
+    if (this.keys['KeyE']) this.camera.position.y += speed;
+  }
+}
+
+// ============================================================
+// MAIN
+// ============================================================
+
+async function main() {
+  const loadingEl = document.getElementById('loading');
+
+  loadingEl.textContent = 'Fetching WAD...';
+  const response = await fetch('doomu.wad');
+  const buffer = await response.arrayBuffer();
+
+  loadingEl.textContent = 'Parsing WAD...';
+  await new Promise(r => setTimeout(r, 0)); // let UI update
+  const wad = parseWAD(buffer);
+
+  loadingEl.textContent = 'Parsing palette...';
+  await new Promise(r => setTimeout(r, 0));
+  const palette = parsePalette(wad);
+
+  loadingEl.textContent = 'Parsing flats (floor/ceiling textures)...';
+  await new Promise(r => setTimeout(r, 0));
+  const flats = parseFlats(wad, palette);
+  console.log(`Parsed ${Object.keys(flats).length} flats`);
+
+  loadingEl.textContent = 'Parsing wall textures...';
+  await new Promise(r => setTimeout(r, 0));
+  const wallTextures = parseTextures(wad, palette);
+  console.log(`Parsed ${Object.keys(wallTextures).length} wall textures`);
+
+  loadingEl.textContent = 'Parsing E1M1 map data...';
+  await new Promise(r => setTimeout(r, 0));
+  const mapLumps = getMapLumps(wad, 'E1M1');
+  const vertexes = parseVertexes(wad, mapLumps.VERTEXES);
+  const linedefs = parseLinedefs(wad, mapLumps.LINEDEFS);
+  const sidedefs = parseSidedefs(wad, mapLumps.SIDEDEFS);
+  const sectors = parseSectors(wad, mapLumps.SECTORS);
+  const things = parseThings(wad, mapLumps.THINGS);
+
+  console.log(`E1M1: ${vertexes.length} verts, ${linedefs.length} linedefs, ${sectors.length} sectors`);
+
+  loadingEl.textContent = 'Building 3D geometry...';
+  await new Promise(r => setTimeout(r, 0));
+
+  // Setup Three.js (WebGPU)
+  const renderer = new THREE.WebGPURenderer({ antialias: true });
+  renderer.setSize(window.innerWidth, window.innerHeight);
+  renderer.setPixelRatio(window.devicePixelRatio);
+  renderer.setClearColor(0x000000);
+  document.body.appendChild(renderer.domElement);
+
+  loadingEl.textContent = 'Initializing WebGPU renderer...';
+  await renderer.init();
+
+  const scene = new THREE.Scene();
+
+  const camera = new THREE.PerspectiveCamera(90, window.innerWidth / window.innerHeight, 0.1, 500);
+
+  // Build map
+  const { group } = buildScene(vertexes, linedefs, sidedefs, sectors, things, wallTextures, flats);
+  scene.add(group);
+
+  // Player 1 start
+  const p1 = things.find(t => t.type === 1);
+  if (p1) {
+    camera.position.set(p1.x * SCALE, 1.5, -p1.y * SCALE);
+    camera.rotation.order = 'YXZ';
+    camera.rotation.y = (p1.angle * Math.PI) / 180 - Math.PI / 2;
+  }
+
+  const controls = new FPSControls(camera, renderer.domElement);
+
+  window.addEventListener('resize', () => {
+    camera.aspect = window.innerWidth / window.innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(window.innerWidth, window.innerHeight);
+  });
+
+  loadingEl.style.display = 'none';
+
+  const clock = new THREE.Clock();
+  renderer.setAnimationLoop(() => {
+    controls.update(clock.getDelta());
+    renderer.render(scene, camera);
+  });
+}
+
+main().catch(err => {
+  console.error(err);
+  document.getElementById('loading').innerHTML = '<span style="color:red">' + err.message + '</span>';
+});
+</script>
+</body>
+</html>
