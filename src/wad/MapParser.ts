@@ -88,7 +88,9 @@ export function parseSectors( wad: WAD, lump: LumpRef ): Sector[] {
       ceilingTex: readStr( buf, off + 12, 8 ),
       lightLevel: view.getInt16( off + 20, true ),
       special: view.getUint16( off + 22, true ),
-      tag: view.getUint16( off + 24, true )
+      tag: view.getUint16( off + 24, true ),
+      soundX: 0,
+      soundY: 0
     } );
 
   }

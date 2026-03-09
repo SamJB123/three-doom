@@ -98,6 +98,11 @@ const SFX_LUMP_MAP: Record<string, string> = {
   vilatk: 'DSVILATK',
   firxpl: 'DSFIRXPL',
   firsht: 'DSFIRSHT',
+  // Archvile fire sounds
+  flamst: 'DSFLAMST',
+  flame: 'DSFLAME',
+  // Mancubus attack
+  manatk: 'DSMANATK',
   // Footstep / movement sounds
   hoof: 'DSHOOF',
   metal: 'DSMETAL',

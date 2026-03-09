@@ -4,7 +4,8 @@
 import type { Sector, Linedef, Sidedef } from '../wad';
 import { movePlane, getHighestCeilingHeight } from './SectorHelpers';
 import { addThinker, markSectorDirty } from './Thinkers';
-import { playSound } from '../sound';
+import { playSoundAt } from '../sound';
+import { intToFixed } from '../math/fixed';
 
 export type CeilingType =
   | 'lowerToFloor'
@@ -64,6 +65,10 @@ function removeActiveCeiling( ceiling: CeilingMove ): void {
 
 function makeCeilingThinker( cm: CeilingMove, sectors: Sector[] ): () => boolean {
 
+  const sx = intToFixed( sectors[ cm.sectorIdx ].soundX );
+  const sy = intToFixed( sectors[ cm.sectorIdx ].soundY );
+  const sz = intToFixed( sectors[ cm.sectorIdx ].ceilingHeight );
+
   return () => {
 
     const sector = sectors[ cm.sectorIdx ];
@@ -83,7 +88,7 @@ function makeCeilingThinker( cm: CeilingMove, sectors: Sector[] ): () => boolean
         if ( Math.floor( sector.ceilingHeight ) % 8 === 0 &&
              cm.type !== 'silentCrushAndRaise' ) {
 
-          playSound( 'stnmov' );
+          playSoundAt( 'stnmov', sx, sy, sz );
 
         }
 
@@ -96,7 +101,7 @@ function makeCeilingThinker( cm: CeilingMove, sectors: Sector[] ): () => boolean
               return false;
 
             case 'silentCrushAndRaise':
-              playSound( 'pstop' );
+              playSoundAt( 'pstop', sx, sy, sz );
               // fall through
             case 'fastCrushAndRaise':
             case 'crushAndRaise':
@@ -122,7 +127,7 @@ function makeCeilingThinker( cm: CeilingMove, sectors: Sector[] ): () => boolean
         if ( Math.floor( sector.ceilingHeight ) % 8 === 0 &&
              cm.type !== 'silentCrushAndRaise' ) {
 
-          playSound( 'stnmov' );
+          playSoundAt( 'stnmov', sx, sy, sz );
 
         }
 
@@ -131,7 +136,7 @@ function makeCeilingThinker( cm: CeilingMove, sectors: Sector[] ): () => boolean
           switch ( cm.type ) {
 
             case 'silentCrushAndRaise':
-              playSound( 'pstop' );
+              playSoundAt( 'pstop', sx, sy, sz );
               // fall through
             case 'crushAndRaise':
               cm.speed = CEILSPEED;

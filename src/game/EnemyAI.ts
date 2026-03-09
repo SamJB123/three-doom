@@ -13,7 +13,7 @@ import { MF_SHOOTABLE, MF_SOLID, MF_AMBUSH, MF_JUSTHIT, MF_JUSTATTACKED, MF_SKUL
 import { P_CheckSight } from './Sight';
 import { lineAttack, damageMobj, radiusAttack } from './Attack';
 import { P_Random } from './DoomRandom';
-import { playSound } from '../sound';
+import { playSound, playSoundAt } from '../sound';
 
 // ============================================================
 // Constants
@@ -399,7 +399,7 @@ export function A_Look( mo: Mobj, map: DoomMapData ): void {
 
   if ( mo.info.seeSound ) {
 
-    playSound( mo.info.seeSound );
+    playSoundAt( mo.info.seeSound, mo.x, mo.y, mo.z );
 
   }
 
@@ -473,7 +473,7 @@ export function A_Chase( mo: Mobj, map: DoomMapData ): void {
   // Melee attack check
   if ( mo.info.meleeState && P_CheckMeleeRange( mo ) ) {
 
-    if ( mo.info.attackSound ) playSound( mo.info.attackSound );
+    if ( mo.info.attackSound ) playSoundAt( mo.info.attackSound, mo.x, mo.y, mo.z );
     setMobjState( mo, mo.info.meleeState );
     return;
 
@@ -504,7 +504,7 @@ export function A_Chase( mo: Mobj, map: DoomMapData ): void {
   // Play active sound randomly
   if ( mo.info.activeSound && P_Random() < 3 ) {
 
-    playSound( mo.info.activeSound );
+    playSoundAt( mo.info.activeSound, mo.x, mo.y, mo.z );
 
   }
 
@@ -529,7 +529,7 @@ export function A_PosAttack( mo: Mobj ): void {
   if ( ! mo.target ) return;
   A_FaceTarget( mo );
 
-  playSound( 'DSPISTOL' );
+  playSoundAt( 'pistol', mo.x, mo.y, mo.z );
 
   const angle = mo.angle + ( P_Random() - P_Random() ) * ( Math.PI / 2048 );
   const damage = ( ( P_Random() % 5 ) + 1 ) * 3;
@@ -545,7 +545,7 @@ export function A_SPosAttack( mo: Mobj ): void {
 
   if ( ! mo.target ) return;
 
-  playSound( 'DSSHOTGN' );
+  playSoundAt( 'shotgn', mo.x, mo.y, mo.z );
   A_FaceTarget( mo );
 
   for ( let i = 0; i < 3; i ++ ) {
@@ -566,7 +566,7 @@ export function A_CPosAttack( mo: Mobj ): void {
 
   if ( ! mo.target ) return;
 
-  playSound( 'DSSHOTGN' );
+  playSoundAt( 'shotgn', mo.x, mo.y, mo.z );
   A_FaceTarget( mo );
 
   const angle = mo.angle + ( P_Random() - P_Random() ) * ( Math.PI / 2048 );
@@ -620,7 +620,7 @@ export function A_TroopAttack( mo: Mobj ): void {
 
   if ( P_CheckMeleeRange( mo ) ) {
 
-    playSound( 'DSCLAW' );
+    playSoundAt( 'claw', mo.x, mo.y, mo.z );
     const damage = ( P_Random() % 8 + 1 ) * 3;
     damageMobj( mo.target, mo, mo, damage );
     return;
@@ -669,7 +669,7 @@ export function A_BruisAttack( mo: Mobj ): void {
 
   if ( P_CheckMeleeRange( mo ) ) {
 
-    playSound( 'DSCLAW' );
+    playSoundAt( 'claw', mo.x, mo.y, mo.z );
     const damage = ( P_Random() % 8 + 1 ) * 10;
     damageMobj( mo.target, mo, mo, damage );
     return;
@@ -686,7 +686,7 @@ export function A_SkullAttack( mo: Mobj ): void {
 
   mo.flags |= MF_SKULLFLY;
 
-  if ( mo.info.attackSound ) playSound( mo.info.attackSound );
+  if ( mo.info.attackSound ) playSoundAt( mo.info.attackSound, mo.x, mo.y, mo.z );
 
   A_FaceTarget( mo );
 
@@ -738,7 +738,7 @@ export function A_SkelWhoosh( mo: Mobj ): void {
 
   if ( ! mo.target ) return;
   A_FaceTarget( mo );
-  playSound( 'DSSKESWG' );
+  playSoundAt( 'skeswg', mo.x, mo.y, mo.z );
 
 }
 
@@ -749,7 +749,7 @@ export function A_SkelFist( mo: Mobj ): void {
 
   if ( P_CheckMeleeRange( mo ) ) {
 
-    playSound( 'DSSKEPCH' );
+    playSoundAt( 'skepch', mo.x, mo.y, mo.z );
     const damage = ( P_Random() % 10 + 1 ) * 6;
     damageMobj( mo.target, mo, mo, damage );
 
@@ -820,7 +820,7 @@ export function A_Tracer( mo: Mobj ): void {
 export function A_FatRaise( mo: Mobj ): void {
 
   A_FaceTarget( mo );
-  playSound( 'DSMANATK' );
+  playSoundAt( 'manatk', mo.x, mo.y, mo.z );
 
 }
 
@@ -920,7 +920,7 @@ export function A_VileChase( mo: Mobj ): void {
       mo.target = oldTarget;
 
       setMobjState( mo, 'S_VILE_HEAL1' );
-      playSound( 'DSSLOP' );
+      playSoundAt( 'slop', mo.x, mo.y, mo.z );
 
       setMobjState( thing, thing.info.raiseState );
       thing.height = thing.info.height;
@@ -940,8 +940,7 @@ export function A_VileChase( mo: Mobj ): void {
 
 export function A_VileStart( mo: Mobj ): void {
 
-  playSound( 'DSVILATK' );
-  void mo;
+  playSoundAt( 'vilatk', mo.x, mo.y, mo.z );
 
 }
 
@@ -970,7 +969,7 @@ export function A_VileAttack( mo: Mobj ): void {
   const map = getMobjMapData();
   if ( map && ! P_CheckSight( mo, mo.target, map ) ) return;
 
-  playSound( 'DSBAREXP' );
+  playSoundAt( 'barexp', mo.x, mo.y, mo.z );
   damageMobj( mo.target, mo, mo, 20 );
 
   // Blast target upward
@@ -1006,14 +1005,14 @@ export function A_Fire( mo: Mobj ): void {
 
 export function A_StartFire( mo: Mobj ): void {
 
-  playSound( 'DSFLAMST' );
+  playSoundAt( 'flamst', mo.x, mo.y, mo.z );
   A_Fire( mo );
 
 }
 
 export function A_FireCrackle( mo: Mobj ): void {
 
-  playSound( 'DSFLAME' );
+  playSoundAt( 'flame', mo.x, mo.y, mo.z );
   A_Fire( mo );
 
 }
@@ -1077,19 +1076,19 @@ export function A_PainDie( mo: Mobj ): void {
 
 export function A_Scream( mo: Mobj ): void {
 
-  if ( mo.info.deathSound ) playSound( mo.info.deathSound );
+  if ( mo.info.deathSound ) playSoundAt( mo.info.deathSound, mo.x, mo.y, mo.z );
 
 }
 
-export function A_XScream( _mo: Mobj ): void {
+export function A_XScream( mo: Mobj ): void {
 
-  playSound( 'DSSLOP' );
+  playSoundAt( 'slop', mo.x, mo.y, mo.z );
 
 }
 
 export function A_Pain( mo: Mobj ): void {
 
-  if ( mo.info.painSound ) playSound( mo.info.painSound );
+  if ( mo.info.painSound ) playSoundAt( mo.info.painSound, mo.x, mo.y, mo.z );
 
 }
 
@@ -1108,7 +1107,7 @@ export function A_BossDeath( _mo: Mobj ): void {
 
 export function A_Hoof( mo: Mobj ): void {
 
-  playSound( 'DSHOOF' );
+  playSoundAt( 'hoof', mo.x, mo.y, mo.z );
   const map = getMobjMapData();
   if ( map ) A_Chase( mo, map );
 
@@ -1116,7 +1115,7 @@ export function A_Hoof( mo: Mobj ): void {
 
 export function A_Metal( mo: Mobj ): void {
 
-  playSound( 'DSMETAL' );
+  playSoundAt( 'metal', mo.x, mo.y, mo.z );
   const map = getMobjMapData();
   if ( map ) A_Chase( mo, map );
 
@@ -1124,7 +1123,7 @@ export function A_Metal( mo: Mobj ): void {
 
 export function A_BabyMetal( mo: Mobj ): void {
 
-  playSound( 'DSBSPWLK' );
+  playSoundAt( 'bspwlk', mo.x, mo.y, mo.z );
   const map = getMobjMapData();
   if ( map ) A_Chase( mo, map );
 

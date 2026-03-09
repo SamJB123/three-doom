@@ -1,7 +1,7 @@
 // Sector neighbor queries and T_MovePlane
 // Ported from p_floor.c (T_MovePlane) and p_spec.c (sector height lookups)
 
-import type { Sector, Linedef, Sidedef } from '../wad';
+import type { Sector, Linedef, Sidedef, Vertex } from '../wad';
 
 export type MovePlaneResult = 'ok' | 'crushed' | 'pastdest';
 
@@ -267,5 +267,54 @@ export function getSectorsWithTag( tag: number, sectors: Sector[] ): number[] {
   }
 
   return result;
+
+}
+
+// Precompute sector sound origins (center of bounding box) — matches
+// original Doom's S_StartSound sector origin from s_sound.c.
+export function computeSectorSoundOrigins(
+  sectors: Sector[],
+  linedefs: Linedef[],
+  sidedefs: Sidedef[],
+  vertexes: Vertex[]
+): void {
+
+  // Track bounding box per sector
+  const minX = new Int32Array( sectors.length ).fill( 0x7FFFFFFF );
+  const maxX = new Int32Array( sectors.length ).fill( - 0x7FFFFFFF );
+  const minY = new Int32Array( sectors.length ).fill( 0x7FFFFFFF );
+  const maxY = new Int32Array( sectors.length ).fill( - 0x7FFFFFFF );
+
+  for ( const ld of linedefs ) {
+
+    const v1 = vertexes[ ld.v1 ];
+    const v2 = vertexes[ ld.v2 ];
+
+    // Right side (always present)
+    const frontSec = sidedefs[ ld.right ].sector;
+    minX[ frontSec ] = Math.min( minX[ frontSec ], v1.x, v2.x );
+    maxX[ frontSec ] = Math.max( maxX[ frontSec ], v1.x, v2.x );
+    minY[ frontSec ] = Math.min( minY[ frontSec ], v1.y, v2.y );
+    maxY[ frontSec ] = Math.max( maxY[ frontSec ], v1.y, v2.y );
+
+    // Left side (if two-sided)
+    if ( ld.left >= 0 ) {
+
+      const backSec = sidedefs[ ld.left ].sector;
+      minX[ backSec ] = Math.min( minX[ backSec ], v1.x, v2.x );
+      maxX[ backSec ] = Math.max( maxX[ backSec ], v1.x, v2.x );
+      minY[ backSec ] = Math.min( minY[ backSec ], v1.y, v2.y );
+      maxY[ backSec ] = Math.max( maxY[ backSec ], v1.y, v2.y );
+
+    }
+
+  }
+
+  for ( let i = 0; i < sectors.length; i ++ ) {
+
+    sectors[ i ].soundX = ( ( minX[ i ] + maxX[ i ] ) / 2 ) | 0;
+    sectors[ i ].soundY = ( ( minY[ i ] + maxY[ i ] ) / 2 ) | 0;
+
+  }
 
 }

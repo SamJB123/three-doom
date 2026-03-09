@@ -166,6 +166,7 @@ function tryPickup( def: PickupDef, state: PlayerStatusState ): boolean {
       if ( ! state.weapons[ def.weapon! ] ) {
 
         state.weapons[ def.weapon! ] = true;
+        state.pendingWeapon = def.weapon!;
         gave = true;
 
       }

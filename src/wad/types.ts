@@ -68,6 +68,9 @@ export interface Sector {
   lightLevel: number;
   special: number;
   tag: number;
+  // Precomputed sound origin (center of bounding box, map units)
+  soundX: number;
+  soundY: number;
 }
 
 export interface Thing {

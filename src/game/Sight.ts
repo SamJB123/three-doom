@@ -1,9 +1,17 @@
 // P_CheckSight — line-of-sight checking via BSP traversal.
 // Ported from p_sight.c. Used by enemy AI to detect the player.
+//
+// Algorithm:
+// 1. Quick-reject via REJECT lump (sector pair bitmap)
+// 2. Trace a ray from source eye height to target body via BSP tree
+// 3. At each two-sided linedef crossing, narrow a vertical "corridor"
+//    (topSlope / bottomSlope). If the corridor closes, LOS is blocked.
+//
+// ALL coordinates are in Doom fixed-point (16.16) to match mobj positions.
 
 import type { Mobj } from './Mobj';
 import type { DoomMapData } from '../physics/DoomMovement';
-import { fixedDiv } from '../math/fixed';
+import { fixedDiv, intToFixed, FRACUNIT, FRACBITS } from '../math/fixed';
 
 // ============================================================
 // DivLine — a line defined by origin + delta (fixed-point)
@@ -21,12 +29,12 @@ interface DivLine {
 // ============================================================
 
 interface SightTraceState {
-  sightZStart: number;
-  topSlope: number;
-  bottomSlope: number;
-  trace: DivLine;
-  t2x: number;
-  t2y: number;
+  sightZStart: number;   // fixed-point: source eye height
+  topSlope: number;      // fixed-point: current upper slope bound
+  bottomSlope: number;   // fixed-point: current lower slope bound
+  trace: DivLine;        // fixed-point: ray origin + delta
+  t2x: number;           // fixed-point: target x
+  t2y: number;           // fixed-point: target y
 }
 
 // Per-linedef stamp to avoid re-checking the same linedef twice in one trace
@@ -45,6 +53,8 @@ function ensureValidArray( numLinedefs: number ): void {
 
 // ============================================================
 // Determine which side of a divline a point is on
+// All args in fixed-point.
+// Returns: 0 = front/left, 1 = back/right, 2 = on line
 // ============================================================
 
 function divlineSide( x: number, y: number, node: DivLine ): 0 | 1 | 2 {
@@ -65,8 +75,11 @@ function divlineSide( x: number, y: number, node: DivLine ): 0 | 1 | 2 {
 
   const dx = x - node.x;
   const dy = y - node.y;
-  const left = ( node.dy >> 16 ) * ( dx >> 16 );
-  const right = ( dy >> 16 ) * ( node.dx >> 16 );
+
+  // Cross product: (node.dy * dx) vs (dy * node.dx)
+  // Scale down to avoid overflow
+  const left = ( node.dy >> FRACBITS ) * ( dx >> FRACBITS );
+  const right = ( dy >> FRACBITS ) * ( node.dx >> FRACBITS );
 
   if ( right < left ) return 0;
   if ( left === right ) return 2;
@@ -76,6 +89,7 @@ function divlineSide( x: number, y: number, node: DivLine ): 0 | 1 | 2 {
 
 // ============================================================
 // Intercept vector — fraction along v2 where v1 crosses it
+// Both args in fixed-point. Returns fixed-point fraction.
 // ============================================================
 
 function interceptVector( v2: DivLine, v1: DivLine ): number {
@@ -117,17 +131,22 @@ function crossSubsector(
     if ( lineValidCount![ lineIdx ] === vc ) continue;
     lineValidCount![ lineIdx ] = vc;
 
+    // Convert vertex coords to fixed-point
     const v1 = map.vertexes[ line.v1 ];
     const v2 = map.vertexes[ line.v2 ];
+    const v1x = intToFixed( v1.x );
+    const v1y = intToFixed( v1.y );
+    const v2x = intToFixed( v2.x );
+    const v2y = intToFixed( v2.y );
 
     // Check if trace crosses this linedef
-    const s1 = divlineSide( v1.x, v1.y, sight.trace );
-    const s2 = divlineSide( v2.x, v2.y, sight.trace );
+    const s1 = divlineSide( v1x, v1y, sight.trace );
+    const s2 = divlineSide( v2x, v2y, sight.trace );
     if ( s1 === s2 ) continue;
 
     const div: DivLine = {
-      x: v1.x, y: v1.y,
-      dx: v2.x - v1.x, dy: v2.y - v1.y
+      x: v1x, y: v1y,
+      dx: v2x - v1x, dy: v2y - v1y
     };
 
     const p1 = divlineSide( sight.trace.x, sight.trace.y, div );
@@ -146,8 +165,9 @@ function crossSubsector(
     if ( front.floorHeight === back.floorHeight &&
          front.ceilingHeight === back.ceilingHeight ) continue;
 
-    const openTop = Math.min( front.ceilingHeight, back.ceilingHeight );
-    const openBottom = Math.max( front.floorHeight, back.floorHeight );
+    // Convert sector heights to fixed-point
+    const openTop = intToFixed( Math.min( front.ceilingHeight, back.ceilingHeight ) );
+    const openBottom = intToFixed( Math.max( front.floorHeight, back.floorHeight ) );
 
     // Closed gap
     if ( openBottom >= openTop ) return false;
@@ -201,9 +221,10 @@ function crossBspNode(
   const node = map.nodes[ nodeIndex ];
   if ( ! node ) return true;
 
+  // BSP node partition line — convert to fixed-point
   const nodeDiv: DivLine = {
-    x: node.x, y: node.y,
-    dx: node.dx, dy: node.dy
+    x: intToFixed( node.x ), y: intToFixed( node.y ),
+    dx: intToFixed( node.dx ), dy: intToFixed( node.dy )
   };
 
   let side = divlineSide( sight.trace.x, sight.trace.y, nodeDiv );
@@ -250,6 +271,7 @@ export function P_CheckSight(
   ensureValidArray( map.linedefs.length );
   validCount ++;
 
+  // Eye height at 3/4 up the source mobj (fixed-point)
   const sightZStart = t1.z + t1.height - ( t1.height >> 2 );
 
   const sight: SightTraceState = {

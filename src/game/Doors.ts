@@ -4,7 +4,8 @@
 import type { Linedef, Sidedef, Sector } from '../wad';
 import { movePlane, getLowestCeilingHeight } from './SectorHelpers';
 import { addThinker, markSectorDirty } from './Thinkers';
-import { playSound } from '../sound';
+import { playSoundAt } from '../sound';
+import { intToFixed } from '../math/fixed';
 
 // p_spec.h constants (converted from fixed-point)
 const VDOORSPEED = 2; // FRACUNIT * 2 → 2 units/tic
@@ -39,6 +40,10 @@ function makeVerticalDoorThinker(
   sectors: Sector[]
 ): () => boolean {
 
+  const sx = intToFixed( sectors[ door.sectorIdx ].soundX );
+  const sy = intToFixed( sectors[ door.sectorIdx ].soundY );
+  const sz = intToFixed( sectors[ door.sectorIdx ].floorHeight );
+
   return () => {
 
     const sector = sectors[ door.sectorIdx ];
@@ -54,17 +59,17 @@ function makeVerticalDoorThinker(
 
             case 'blazeRaise':
               door.direction = - 1; // start closing
-              playSound( 'bdcls' );
+              playSoundAt( 'bdcls', sx, sy, sz );
               break;
 
             case 'normal':
               door.direction = - 1; // start closing
-              playSound( 'dorcls' );
+              playSoundAt( 'dorcls', sx, sy, sz );
               break;
 
             case 'close30ThenOpen':
               door.direction = 1; // reopen
-              playSound( 'doropn' );
+              playSoundAt( 'doropn', sx, sy, sz );
               break;
 
             default:
@@ -118,7 +123,7 @@ function makeVerticalDoorThinker(
 
             case 'blazeRaise':
             case 'blazeClose':
-              playSound( 'bdcls' );
+              playSoundAt( 'bdcls', sx, sy, sz );
               activeDoorSectors.delete( door.sectorIdx );
               return false; // done
 
@@ -143,7 +148,7 @@ function makeVerticalDoorThinker(
           if ( door.type !== 'close' && door.type !== 'blazeClose' ) {
 
             door.direction = 1;
-            playSound( 'doropn' );
+            playSoundAt( 'doropn', sx, sy, sz );
 
           }
 
@@ -234,13 +239,17 @@ export function evVerticalDoor(
   };
 
   // Play door open sound (p_doors.c lines 440-455)
+  const dsx = intToFixed( sector.soundX );
+  const dsy = intToFixed( sector.soundY );
+  const dsz = intToFixed( sector.floorHeight );
+
   if ( line.special === 117 || line.special === 118 ) {
 
-    playSound( 'bdopn' );
+    playSoundAt( 'bdopn', dsx, dsy, dsz );
 
   } else {
 
-    playSound( 'doropn' );
+    playSoundAt( 'doropn', dsx, dsy, dsz );
 
   }
 
@@ -298,27 +307,31 @@ export function evDoDoor(
     };
 
     // EV_DoDoor sounds (p_doors.c lines 296-343)
+    const esx = intToFixed( sectors[ i ].soundX );
+    const esy = intToFixed( sectors[ i ].soundY );
+    const esz = intToFixed( sectors[ i ].floorHeight );
+
     switch ( type ) {
 
       case 'blazeClose':
-        playSound( 'bdcls' );
+        playSoundAt( 'bdcls', esx, esy, esz );
         break;
 
       case 'close':
       case 'close30ThenOpen':
-        playSound( 'dorcls' );
+        playSoundAt( 'dorcls', esx, esy, esz );
         break;
 
       case 'blazeRaise':
       case 'blazeOpen':
         if ( topHeight !== sectors[ i ].ceilingHeight )
-          playSound( 'bdopn' );
+          playSoundAt( 'bdopn', esx, esy, esz );
         break;
 
       case 'normal':
       case 'open':
         if ( topHeight !== sectors[ i ].ceilingHeight )
-          playSound( 'doropn' );
+          playSoundAt( 'doropn', esx, esy, esz );
         break;
 
     }

@@ -1,6 +1,9 @@
-// Simple Web Audio sound manager for Doom sound effects.
-// Handles playback with automatic AudioContext resume (browsers require
-// user gesture before audio can play).
+// Sound manager with spatial audio support.
+// Uses Web Audio API PannerNodes for positional sounds (monsters, doors, etc.)
+// and direct connections for non-positional sounds (player weapons, pickups).
+// The native Web Audio listener position is updated each frame from the camera.
+
+const SCALE = 1.0 / 32.0;
 
 let audioCtx: AudioContext | null = null;
 let sfxBuffers: Record<string, AudioBuffer> = {};
@@ -16,8 +19,35 @@ export function initSoundManager(
 }
 
 /**
- * Play a sound effect by name (e.g. 'doropn', 'dorcls', 'pstart').
- * Matches original Doom S_StartSound — fire-and-forget, overlapping allowed.
+ * Update the Web Audio listener position and orientation from the camera.
+ * Call once per frame so positional sounds attenuate correctly.
+ */
+export function updateListener( x: number, y: number, z: number, forwardX: number, forwardZ: number ): void {
+
+  if ( ! audioCtx ) return;
+
+  const listener = audioCtx.listener;
+
+  // Use setPosition/setOrientation (widely supported) or the newer properties
+  if ( listener.positionX ) {
+
+    listener.positionX.value = x;
+    listener.positionY.value = y;
+    listener.positionZ.value = z;
+    listener.forwardX.value = forwardX;
+    listener.forwardY.value = 0;
+    listener.forwardZ.value = forwardZ;
+    listener.upX.value = 0;
+    listener.upY.value = 1;
+    listener.upZ.value = 0;
+
+  }
+
+}
+
+/**
+ * Play a non-positional sound effect (player weapons, pickups, UI).
+ * Matches original Doom S_StartSound with null origin.
  */
 export function playSound( name: string ): void {
 
@@ -26,16 +56,62 @@ export function playSound( name: string ): void {
   const buffer = sfxBuffers[ name ];
   if ( ! buffer ) return;
 
-  // Resume context if suspended (browser autoplay policy)
-  if ( audioCtx.state === 'suspended' ) {
-
-    audioCtx.resume();
-
-  }
+  if ( audioCtx.state === 'suspended' ) audioCtx.resume();
 
   const source = audioCtx.createBufferSource();
   source.buffer = buffer;
   source.connect( audioCtx.destination );
   source.start();
+
+}
+
+/**
+ * Play a positional sound effect at a Doom-space position.
+ * The sound is attenuated by distance from the listener (camera).
+ *
+ * @param name  Sound effect name (e.g. 'doropn', 'posit1')
+ * @param x     Doom fixed-point X position
+ * @param y     Doom fixed-point Y position
+ * @param z     Doom fixed-point Z position (optional, defaults to 0)
+ */
+export function playSoundAt( name: string, x: number, y: number, z: number = 0 ): void {
+
+  if ( ! audioCtx ) return;
+
+  const buffer = sfxBuffers[ name ];
+  if ( ! buffer ) return;
+
+  if ( audioCtx.state === 'suspended' ) audioCtx.resume();
+
+  // Convert Doom fixed-point coords to Three.js world coords
+  // Doom: x = east, y = north. Three.js: x = right, y = up, z = -forward
+  const FRACBITS = 16;
+  const wx = ( x >> FRACBITS ) * SCALE;
+  const wy = ( z >> FRACBITS ) * SCALE;
+  const wz = - ( y >> FRACBITS ) * SCALE;
+
+  const panner = audioCtx.createPanner();
+  panner.panningModel = 'HRTF';
+  panner.distanceModel = 'linear';
+  panner.refDistance = 3;      // full volume within ~3 world units (~96 Doom units)
+  panner.maxDistance = 40;     // silence beyond ~40 world units (~1280 Doom units)
+  panner.rolloffFactor = 1;
+  panner.positionX.value = wx;
+  panner.positionY.value = wy;
+  panner.positionZ.value = wz;
+
+  const source = audioCtx.createBufferSource();
+  source.buffer = buffer;
+  source.connect( panner );
+  panner.connect( audioCtx.destination );
+  source.start();
+
+  // Clean up nodes after playback finishes
+  source.onended = () => {
+
+    source.disconnect();
+    panner.disconnect();
+
+  };
 
 }

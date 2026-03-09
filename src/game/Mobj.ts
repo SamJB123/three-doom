@@ -14,7 +14,7 @@ import { findSectorAt } from '../physics/DoomMovement';
 import { addThinker } from './Thinkers';
 import type { MobjInfo, MobjState } from './MobjData';
 import { MOBJ_STATES, MOBJ_TYPES, DOOMEDNUM_TO_TYPE, MF_SHOOTABLE, MF_SOLID, MF_NOBLOOD, MF_CORPSE, MF_NOGRAVITY, MF_NOBLOCKMAP, MF_MISSILE, MF_NOCLIP, MF_SKULLFLY } from './MobjData';
-import { playSound } from '../sound';
+import { playSound, playSoundAt } from '../sound';
 import { P_Random } from './DoomRandom';
 
 const SCALE = 1.0 / 32.0;
@@ -250,7 +250,7 @@ function execMobjAction( mo: Mobj, action: string ): void {
   switch ( action ) {
 
     case 'A_Scream':
-      if ( mo.info.deathSound ) playSound( mo.info.deathSound );
+      if ( mo.info.deathSound ) playSoundAt( mo.info.deathSound, mo.x, mo.y, mo.z );
       break;
 
     case 'A_Explode':
@@ -536,7 +536,7 @@ export function explodeMissile( mo: Mobj ): void {
   // Play death sound
   if ( mo.info.deathSound ) {
 
-    playSound( mo.info.deathSound );
+    playSoundAt( mo.info.deathSound, mo.x, mo.y, mo.z );
 
   }
 
@@ -588,7 +588,7 @@ export function spawnMissile( source: Mobj, dest: Mobj, typeName: string ): Mobj
   // Play see sound
   if ( missile.info.seeSound ) {
 
-    playSound( missile.info.seeSound );
+    playSoundAt( missile.info.seeSound, missile.x, missile.y, missile.z );
 
   }
 

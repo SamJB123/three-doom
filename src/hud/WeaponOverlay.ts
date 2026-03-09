@@ -19,18 +19,21 @@ export class WeaponOverlay {
 
   constructor() {
 
+    const gameContainer = document.getElementById( 'game' )!;
+
     this.canvas = document.createElement( 'canvas' );
     this.canvas.width = DOOM_W;
     this.canvas.height = DOOM_H;
-    this.canvas.style.position = 'fixed';
+    this.canvas.style.position = 'absolute';
     this.canvas.style.top = '0';
-    this.canvas.style.left = '0';
-    this.canvas.style.width = '100%';
+    this.canvas.style.left = '50%';
+    this.canvas.style.transform = 'translateX(-50%)';
     this.canvas.style.height = '100%';
+    this.canvas.style.aspectRatio = `${DOOM_W} / ${DOOM_H}`;
     this.canvas.style.imageRendering = 'pixelated';
     this.canvas.style.zIndex = '8'; // above 3D, below HUD (10)
     this.canvas.style.pointerEvents = 'none';
-    document.body.appendChild( this.canvas );
+    gameContainer.appendChild( this.canvas );
 
     this.ctx = this.canvas.getContext( '2d' )!;
 

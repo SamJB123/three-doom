@@ -1,3 +1,3 @@
 export { parseSounds } from './SoundParser';
-export { initSoundManager, playSound } from './SoundManager';
+export { initSoundManager, playSound, playSoundAt, updateListener } from './SoundManager';
 export { MusicPlayer } from './MusicPlayer';

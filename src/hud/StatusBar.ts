@@ -121,9 +121,7 @@ export class StatusBar {
     this.canvas = document.createElement( 'canvas' );
     this.canvas.width = DOOM_W;
     this.canvas.height = ST_HEIGHT;
-    this.canvas.style.position = 'fixed';
-    this.canvas.style.bottom = '0';
-    this.canvas.style.left = '0';
+    this.canvas.style.display = 'block';
     this.canvas.style.width = '100%';
     this.canvas.style.height = 'auto';
     this.canvas.style.aspectRatio = `${ DOOM_W } / ${ ST_HEIGHT }`;
@@ -135,12 +133,13 @@ export class StatusBar {
     this.ctx = this.canvas.getContext( '2d' )!;
 
     // Fullscreen tint overlay for palette effects (berserk red, pickup gold, ironfeet green)
+    const gameContainer = document.getElementById( 'game' )!;
     this.tintOverlay = document.createElement( 'div' );
-    this.tintOverlay.style.position = 'fixed';
+    this.tintOverlay.style.position = 'absolute';
     this.tintOverlay.style.inset = '0';
     this.tintOverlay.style.pointerEvents = 'none';
     this.tintOverlay.style.zIndex = '5';
-    document.body.appendChild( this.tintOverlay );
+    gameContainer.appendChild( this.tintOverlay );
 
   }
 

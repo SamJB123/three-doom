@@ -22,11 +22,12 @@ import { playerMovementSystem, cameraSystem } from './ecs/systems';
 import { crossSpecialLine, hasDirtySectors, dirtySectors, clearDirtySectors, spawnLightSpecials, consumeTeleport } from './game';
 import { checkPickups } from './game/Pickups';
 import { WeaponSystem } from './game/Weapons';
-import { parseSounds, initSoundManager, MusicPlayer } from './sound';
+import { parseSounds, initSoundManager, MusicPlayer, updateListener } from './sound';
 import { getLump } from './wad';
 import { StatusBar } from './hud/StatusBar';
 import { WeaponOverlay } from './hud/WeaponOverlay';
 import { initMobjSystem, spawnMapThing, spawnPlayerMissile, setCameraPosition } from './game/Mobj';
+import { computeSectorSoundOrigins } from './game/SectorHelpers';
 import { DOOMEDNUM_TO_TYPE } from './game/MobjData';
 import { initAttackSystem, setAttackMap, lineAttack, setPlayerDamageCallback, setPlayerDamageMobjCallback } from './game/Attack';
 import { radiusAttackPlayer, damagePlayer } from './game/PlayerDamage';
@@ -121,6 +122,9 @@ async function main(): Promise<void> {
   console.log( `BSP: ${ nodes.length } nodes, ${ subsectors.length } subsectors, ${ segs.length } segs` );
   console.log( `Blockmap: ${ blockmap.columns }x${ blockmap.rows } grid` );
 
+  // Precompute sector sound origins for spatial audio
+  computeSectorSoundOrigins( sectors, linedefs, sidedefs, vertexes );
+
   // Assemble map data for Doom movement
   const map: DoomMapData = {
     vertexes, linedefs, sidedefs, sectors,
@@ -134,11 +138,13 @@ async function main(): Promise<void> {
   loadingEl.textContent = 'Initializing renderer...';
   await new Promise( r => setTimeout( r, 0 ) );
 
-  // Use document.documentElement for size — it respects 100svh set in CSS,
-  // avoiding mobile browser chrome jank from window.innerHeight changes.
+  // The #game container fills the space above the status bar via flexbox.
+  // Size the renderer to match it so the 3D scene isn't obscured by the HUD.
+  const gameContainer = document.getElementById( 'game' )!;
+
   const getViewport = () => ( {
-    w: document.documentElement.clientWidth,
-    h: document.documentElement.clientHeight
+    w: gameContainer.clientWidth,
+    h: gameContainer.clientHeight
   } );
 
   const renderer = new WebGPURenderer( { antialias: true } );
@@ -146,7 +152,7 @@ async function main(): Promise<void> {
   renderer.setSize( vp.w, vp.h );
   renderer.setPixelRatio( window.devicePixelRatio );
   renderer.setClearColor( 0x000000 );
-  document.body.appendChild( renderer.domElement );
+  gameContainer.appendChild( renderer.domElement );
 
   await renderer.init();
 
@@ -385,6 +391,12 @@ async function main(): Promise<void> {
     // Run systems
     playerMovementSystem( world );
     cameraSystem( world );
+
+    // Sync audio listener to camera position and facing
+    updateListener(
+      camera.position.x, camera.position.y, camera.position.z,
+      - Math.sin( camera.rotation.y ), - Math.cos( camera.rotation.y )
+    );
 
     // Check for pending teleport and sync camera yaw
     const tp = consumeTeleport();

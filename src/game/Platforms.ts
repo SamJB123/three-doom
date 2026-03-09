@@ -4,7 +4,8 @@
 import type { Linedef, Sidedef, Sector } from '../wad';
 import { movePlane, getLowestFloorHeight, getHighestFloorHeight } from './SectorHelpers';
 import { addThinker, markSectorDirty } from './Thinkers';
-import { playSound } from '../sound';
+import { playSoundAt } from '../sound';
+import { intToFixed } from '../math/fixed';
 
 // p_spec.h constants
 const PLATSPEED = 1;  // FRACUNIT → 1 unit/tic
@@ -38,6 +39,9 @@ const activePlatSectors = new Set<number>();
 function makePlatThinker( plat: Plat, sectors: Sector[] ): () => boolean {
 
   let ticCount = 0;
+  const sx = intToFixed( sectors[ plat.sectorIdx ].soundX );
+  const sy = intToFixed( sectors[ plat.sectorIdx ].soundY );
+  const sz = intToFixed( sectors[ plat.sectorIdx ].floorHeight );
 
   return () => {
 
@@ -54,7 +58,7 @@ function makePlatThinker( plat: Plat, sectors: Sector[] ): () => boolean {
         // raiseAndChange / raiseToNearestAndChange play sfx_stnmov every 8 tics
         if ( plat.type === 'raiseAndChange' || plat.type === 'raiseToNearestAndChange' ) {
 
-          if ( ! ( ticCount & 7 ) ) playSound( 'stnmov' );
+          if ( ! ( ticCount & 7 ) ) playSoundAt( 'stnmov', sx, sy, sz );
 
         }
 
@@ -66,13 +70,13 @@ function makePlatThinker( plat: Plat, sectors: Sector[] ): () => boolean {
 
           plat.count = plat.wait;
           plat.status = 'down';
-          playSound( 'pstart' );
+          playSoundAt( 'pstart', sx, sy, sz );
 
         } else if ( res === 'pastdest' ) {
 
           plat.count = plat.wait;
           plat.status = 'waiting';
-          playSound( 'pstop' );
+          playSoundAt( 'pstop', sx, sy, sz );
 
           switch ( plat.type ) {
 
@@ -101,7 +105,7 @@ function makePlatThinker( plat: Plat, sectors: Sector[] ): () => boolean {
 
           plat.count = plat.wait;
           plat.status = 'waiting';
-          playSound( 'pstop' );
+          playSoundAt( 'pstop', sx, sy, sz );
 
         }
         break;
@@ -121,7 +125,7 @@ function makePlatThinker( plat: Plat, sectors: Sector[] ): () => boolean {
 
           }
 
-          playSound( 'pstart' );
+          playSoundAt( 'pstart', sx, sy, sz );
 
         }
         break;
@@ -205,17 +209,21 @@ export function evDoPlat(
     }
 
     // EV_DoPlat sounds (p_plats.c lines 194-249)
+    const psx = intToFixed( sector.soundX );
+    const psy = intToFixed( sector.soundY );
+    const psz = intToFixed( sector.floorHeight );
+
     switch ( type ) {
 
       case 'raiseAndChange':
       case 'raiseToNearestAndChange':
-        playSound( 'stnmov' );
+        playSoundAt( 'stnmov', psx, psy, psz );
         break;
 
       case 'downWaitUpStay':
       case 'blazeDWUS':
       case 'perpetualRaise':
-        playSound( 'pstart' );
+        playSoundAt( 'pstart', psx, psy, psz );
         break;
 
     }
