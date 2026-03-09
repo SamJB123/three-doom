@@ -41,13 +41,6 @@ export function playerMovementSystem( world: World ): void {
 
     if ( isDead ) {
 
-      // Dead: no movement, just sink view and wait for USE to restart
-      if ( pState.playerState === 'PST_DEAD' && input.use ) {
-
-        pState.playerState = 'PST_REBORN';
-
-      }
-
       // Still run thinkers so doors/crushers keep moving
       runThinkers();
       updateButtons( map.sidedefs );
@@ -113,6 +106,7 @@ export function playerMovementSystem( world: World ): void {
     if ( pState ) {
 
       playerInSpecialSector( player, pState, map, time.levelTime );
+      player.mo.health = pState.health;
 
     }
 

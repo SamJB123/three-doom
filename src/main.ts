@@ -26,7 +26,7 @@ import { parseSounds, initSoundManager, MusicPlayer, updateListener } from './so
 import { getLump } from './wad';
 import { StatusBar } from './hud/StatusBar';
 import { WeaponOverlay } from './hud/WeaponOverlay';
-import { initMobjSystem, spawnMapThing, spawnPlayerMissile, setCameraPosition } from './game/Mobj';
+import { initMobjSystem, spawnMapThing, spawnPlayerMissile, setCameraPosition, allMobjs } from './game/Mobj';
 import { computeSectorSoundOrigins } from './game/SectorHelpers';
 import { DOOMEDNUM_TO_TYPE } from './game/MobjData';
 import { initAttackSystem, setAttackMap, lineAttack, setPlayerDamageCallback, setPlayerDamageMobjCallback } from './game/Attack';
@@ -234,6 +234,9 @@ async function main(): Promise<void> {
   initEnemyAI();
   setPlayerMobj( doomPlayer.mo );
 
+  // Add player mobj to the global mobj list so hitscans and missiles can find it
+  allMobjs.push( doomPlayer.mo );
+
   // ---- Setup exit callback ----
   setExitCallback( ( secret ) => {
 
@@ -260,7 +263,7 @@ async function main(): Promise<void> {
 
     // Shoot from player eye height
     const shootZ = doomPlayer.viewz;
-    lineAttack( doomPlayer.mo.x, doomPlayer.mo.y, shootZ, angle, slope, ( 32 * 64 ) * FRACUNIT, damage, null );
+    lineAttack( doomPlayer.mo.x, doomPlayer.mo.y, shootZ, angle, slope, ( 32 * 64 ) * FRACUNIT, damage, doomPlayer.mo );
 
   } );
 
@@ -275,7 +278,12 @@ async function main(): Promise<void> {
   setPlayerDamageCallback( ( spot, source, damage ) => {
 
     const pState = world.get( PlayerStatus );
-    if ( pState ) radiusAttackPlayer( doomPlayer, pState, spot, source, damage );
+    if ( pState ) {
+
+      radiusAttackPlayer( doomPlayer, pState, spot, source, damage );
+      doomPlayer.mo.health = pState.health;
+
+    }
 
   } );
 
@@ -283,7 +291,13 @@ async function main(): Promise<void> {
   setPlayerDamageMobjCallback( ( damage, _inflictor, _source ) => {
 
     const pState = world.get( PlayerStatus );
-    if ( pState ) damagePlayer( pState, damage );
+    if ( pState ) {
+
+      damagePlayer( pState, damage );
+      // Sync mobj health so enemies see the player as dead
+      doomPlayer.mo.health = pState.health;
+
+    }
 
   } );
 
@@ -366,6 +380,7 @@ async function main(): Promise<void> {
   const clock = new Clock();
   let weaponTicAccum = 0;
   const TIC_SEC = 1 / 35;
+  let deathTimer = 0;
 
   renderer.setAnimationLoop( () => {
 
@@ -376,12 +391,17 @@ async function main(): Promise<void> {
     time.delta = dt;
     time.elapsed = clock.elapsedTime;
 
-    // Check for reborn — reload level
+    // Auto-reload after death (3 second delay)
     const pStateLoop = world.get( PlayerStatus );
-    if ( pStateLoop && pStateLoop.playerState === 'PST_REBORN' ) {
+    if ( pStateLoop && pStateLoop.playerState === 'PST_DEAD' ) {
 
-      window.location.reload();
-      return;
+      deathTimer += dt;
+      if ( deathTimer >= 3 ) {
+
+        window.location.reload();
+        return;
+
+      }
 
     }
 

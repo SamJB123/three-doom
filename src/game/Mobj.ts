@@ -13,7 +13,7 @@ import type { DoomMapData, DoomPlayer } from '../physics/DoomMovement';
 import { findSectorAt } from '../physics/DoomMovement';
 import { addThinker } from './Thinkers';
 import type { MobjInfo, MobjState } from './MobjData';
-import { MOBJ_STATES, MOBJ_TYPES, DOOMEDNUM_TO_TYPE, MF_SHOOTABLE, MF_SOLID, MF_NOBLOOD, MF_CORPSE, MF_NOGRAVITY, MF_NOBLOCKMAP, MF_MISSILE, MF_NOCLIP, MF_SKULLFLY } from './MobjData';
+import { MOBJ_STATES, MOBJ_TYPES, DOOMEDNUM_TO_TYPE, MF_SHOOTABLE, MF_SOLID, MF_NOBLOOD, MF_CORPSE, MF_NOGRAVITY, MF_NOBLOCKMAP, MF_MISSILE, MF_NOCLIP, MF_SKULLFLY, MF_COUNTKILL } from './MobjData';
 import { playSound, playSoundAt } from '../sound';
 import { P_Random } from './DoomRandom';
 
@@ -286,6 +286,15 @@ export function setExplodeCallback( cb: ( mo: Mobj ) => void ): void {
 
 }
 
+// Callback for damageMobj — set by Attack.ts to avoid circular import
+let damageMobjCallback: ( ( target: Mobj, inflictor: Mobj | null, source: Mobj | null, damage: number ) => void ) | null = null;
+
+export function setDamageMobjCallback( cb: ( target: Mobj, inflictor: Mobj | null, source: Mobj | null, damage: number ) => void ): void {
+
+  damageMobjCallback = cb;
+
+}
+
 // ============================================================
 // P_XYMovement — ported from p_mobj.c
 // ============================================================
@@ -339,8 +348,66 @@ function xyMovement( mo: Mobj ): void {
   // Update floor/ceiling from new sector
   updateFloorCeiling( mo );
 
-  // Missiles and skull-fly mobjs skip friction
-  if ( ( mo.flags & ( MF_MISSILE | MF_SKULLFLY ) ) !== 0 ) return;
+  // Missile / skull-fly vs thing collision (PIT_CheckThing from p_map.c)
+  if ( ( mo.flags & ( MF_MISSILE | MF_SKULLFLY ) ) !== 0 ) {
+
+    for ( const thing of allMobjs ) {
+
+      if ( thing === mo ) continue;
+      if ( thing.removed ) continue;
+      if ( ! ( thing.flags & MF_SHOOTABLE ) ) continue;
+      if ( thing.health <= 0 ) continue;
+
+      // Don't hit the shooter (missile's target is who fired it)
+      if ( thing === mo.target ) continue;
+
+      const blockDist = thing.radius + mo.radius;
+      if ( Math.abs( thing.x - mo.x ) >= blockDist ) continue;
+      if ( Math.abs( thing.y - mo.y ) >= blockDist ) continue;
+
+      // Vertical check: missile must overlap thing's height range
+      if ( mo.z > thing.z + thing.height ) continue;
+      if ( mo.z + mo.height < thing.z ) continue;
+
+      // Hit! Apply damage
+      let damage = 0;
+      if ( mo.info.damage > 0 ) {
+
+        damage = ( ( P_Random() % 8 ) + 1 ) * mo.info.damage;
+
+      }
+
+      if ( damageMobjCallback && damage > 0 ) {
+
+        damageMobjCallback( thing, mo, mo.target, damage );
+
+      }
+
+      // Skull fly: take damage back and stop
+      if ( ( mo.flags & MF_SKULLFLY ) !== 0 ) {
+
+        mo.momx = 0;
+        mo.momy = 0;
+        mo.momz = 0;
+        mo.flags &= ~MF_SKULLFLY;
+        setMobjState( mo, mo.info.spawnState );
+        return;
+
+      }
+
+      // Missile: explode
+      if ( ( mo.flags & MF_MISSILE ) !== 0 ) {
+
+        explodeMissile( mo );
+        return;
+
+      }
+
+    }
+
+    return; // skip friction for missiles/skulls
+
+  }
 
   // Don't apply friction if airborne
   if ( mo.z > mo.floorz ) return;
