@@ -197,6 +197,9 @@ interface PSpriteDef {
 /** Callback for weapon fire — receives angle (radians), slope (fixed), damage */
 export type FireCallback = ( angle: number, slope: Fixed, damage: number ) => void;
 
+/** Callback for projectile weapon fire — receives angle (radians) and mobj type name */
+export type MissileCallback = ( angle: number, typeName: string ) => void;
+
 export class WeaponSystem {
 
   psprites: [ PSpriteDef, PSpriteDef ] = [
@@ -207,7 +210,15 @@ export class WeaponSystem {
   private attackDown = false;
   private refire = false;
   private fireCallback: FireCallback | null = null;
+  private missileCallback: MissileCallback | null = null;
   private lastAngle = 0; // player aim angle in radians (Doom-space)
+
+  /** Register callback for projectile weapon fire */
+  setMissileCallback( cb: MissileCallback ): void {
+
+    this.missileCallback = cb;
+
+  }
 
   /** Register callback for hitscan weapon fire */
   setFireCallback( cb: FireCallback ): void {
@@ -614,8 +625,8 @@ export class WeaponSystem {
   private A_FireMissile( state: PlayerStatusState ): void {
 
     state.ammo.misl --;
-    playSound( 'rlaunc' );
-    // TODO: spawn missile projectile
+    this.A_GunFlash( state );
+    if ( this.missileCallback ) this.missileCallback( this.lastAngle, 'MT_ROCKET' );
 
   }
 
@@ -625,16 +636,14 @@ export class WeaponSystem {
     // Randomize flash between the two plasma flash states
     const flashState = P_Random() < 128 ? 'PLASMAFLASH1' : 'PLASMAFLASH2';
     this.setPsprite( state, 1, flashState );
-    playSound( 'plasma' );
-    // TODO: spawn plasma projectile
+    if ( this.missileCallback ) this.missileCallback( this.lastAngle, 'MT_PLASMA' );
 
   }
 
   private A_FireBFG( state: PlayerStatusState ): void {
 
     state.ammo.cell -= BFGCELLS;
-    playSound( 'bfg' );
-    // TODO: spawn BFG projectile
+    if ( this.missileCallback ) this.missileCallback( this.lastAngle, 'MT_BFG' );
 
   }
 

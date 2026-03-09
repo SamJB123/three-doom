@@ -67,6 +67,9 @@ export function buildThingSprites(
     mesh.userData.thingType = thing.type;
     mesh.userData.thingX = thing.x;
     mesh.userData.thingY = thing.y;
+    mesh.userData.sector = sector;
+    mesh.userData.spriteTopOffset = frame.topOffset;
+    mesh.userData.spriteHeight = frame.height;
     group.add( mesh );
 
     // Set up animation if this sprite has one
@@ -228,6 +231,31 @@ export function updateSpriteAnimations( dt: number ): void {
       mat.needsUpdate = true;
 
     }
+
+  }
+
+}
+
+/**
+ * Update Y positions of static sprites whose sector floor height may have changed.
+ * Called after dirty sectors are rebuilt (platforms, elevators, etc.).
+ */
+export function updateSpriteFloorHeights( spriteGroup: Group ): void {
+
+  for ( const child of spriteGroup.children ) {
+
+    const sector = child.userData.sector as Sector | undefined;
+    if ( ! sector ) continue;
+
+    const topOffset = child.userData.spriteTopOffset as number;
+    const spriteH = child.userData.spriteHeight as number;
+
+    const h = spriteH * SCALE;
+    const floorY = sector.floorHeight * SCALE;
+    const spriteBottom = topOffset * SCALE - h;
+    const lift = Math.max( 0, - spriteBottom );
+
+    child.position.y = floorY + topOffset * SCALE - h / 2 + lift;
 
   }
 

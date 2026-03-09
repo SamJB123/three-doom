@@ -1,7 +1,7 @@
 import type { World } from 'koota';
 import { Time, Input, DoomWorld, Camera, IsPlayer, Position, PlayerStatus } from './traits';
 import { movePlayer, xyMovement, zMovement, calcHeight } from '../physics/DoomMovement';
-import { fixedToFloat } from '../math/fixed';
+import { fixedToFloat, FRACUNIT } from '../math/fixed';
 import { runThinkers } from '../game/Thinkers';
 import { handleUseInput, updateButtons } from '../game/UseAction';
 import { playerInSpecialSector } from '../game/PlayerDamage';
@@ -33,7 +33,41 @@ export function playerMovementSystem( world: World ): void {
   const ticsToRun = Math.min( Math.floor( ticAccumulator / TIC_DURATION ), 4 );
   ticAccumulator -= ticsToRun * TIC_DURATION;
 
+  const pState = world.get( PlayerStatus );
+
   for ( let i = 0; i < ticsToRun; i ++ ) {
+
+    const isDead = pState && pState.playerState === 'PST_DEAD';
+
+    if ( isDead ) {
+
+      // Dead: no movement, just sink view and wait for USE to restart
+      if ( pState.playerState === 'PST_DEAD' && input.use ) {
+
+        pState.playerState = 'PST_REBORN';
+
+      }
+
+      // Still run thinkers so doors/crushers keep moving
+      runThinkers();
+      updateButtons( map.sidedefs );
+
+      // Tick player mobj state (death animation)
+      tickPlayerMobjState( pState! );
+
+      // Sink view toward floor (P_DeathThink)
+      if ( player.viewheight > 6 * FRACUNIT ) {
+
+        player.viewheight -= FRACUNIT;
+
+      }
+
+      if ( pState!.damageCount > 0 ) pState!.damageCount --;
+
+      time.levelTime += 1;
+      continue;
+
+    }
 
     // Convert Three.js yaw → Doom angle
     const doomAngle = input.yaw + Math.PI / 2;
@@ -55,8 +89,6 @@ export function playerMovementSystem( world: World ): void {
     updateButtons( map.sidedefs );
 
     // Tick down powers and bonusCount
-    const pState = world.get( PlayerStatus );
-
     if ( pState ) {
 
       // Strength counts UP to diminish fade (p_user.c)
@@ -78,10 +110,9 @@ export function playerMovementSystem( world: World ): void {
     }
 
     // Check for damaging floors
-    const pStateForSector = world.get( PlayerStatus );
-    if ( pStateForSector ) {
+    if ( pState ) {
 
-      playerInSpecialSector( player, pStateForSector, map, time.levelTime );
+      playerInSpecialSector( player, pState, map, time.levelTime );
 
     }
 

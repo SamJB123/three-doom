@@ -36,22 +36,14 @@ const NF_SUBSECTOR = 0x8000;
 // Interfaces — all position/velocity fields are 16.16 fixed-point
 // ============================================================
 
-export interface DoomMobj {
-  x: Fixed;
-  y: Fixed;
-  z: Fixed;
-  momx: Fixed;
-  momy: Fixed;
-  momz: Fixed;
-  radius: Fixed;
-  height: Fixed;
-  floorz: Fixed;
-  ceilingz: Fixed;
-  onground: boolean;
-}
+// DoomMobj is now an alias for the full Mobj interface from game/Mobj.ts.
+// The player's mo is a real Mobj so enemies can target it directly.
+export type { Mobj as DoomMobj } from '../game/Mobj';
+import type { Mobj } from '../game/Mobj';
+import { MOBJ_TYPES } from '../game/MobjData';
 
 export interface DoomPlayer {
-  mo: DoomMobj;
+  mo: Mobj;
   viewheight: Fixed;
   deltaviewheight: Fixed;
   viewz: Fixed;
@@ -312,7 +304,7 @@ function pitCheckLine(
 // ============================================================
 
 export function checkPosition(
-  mo: DoomMobj,
+  mo: Mobj,
   x: Fixed, y: Fixed,
   map: DoomMapData
 ): boolean {
@@ -370,7 +362,7 @@ export function checkPosition(
 // ============================================================
 
 export function tryMove(
-  mo: DoomMobj,
+  mo: Mobj,
   x: Fixed, y: Fixed,
   map: DoomMapData
 ): boolean {
@@ -406,7 +398,7 @@ export function tryMove(
 // ============================================================
 
 export function slideMove(
-  mo: DoomMobj,
+  mo: Mobj,
   map: DoomMapData
 ): void {
 
@@ -436,7 +428,7 @@ export function slideMove(
 // ============================================================
 
 export function xyMovement(
-  mo: DoomMobj,
+  mo: Mobj,
   map: DoomMapData
 ): void {
 
@@ -503,7 +495,7 @@ export function xyMovement(
 // P_ZMovement
 // ============================================================
 
-export function zMovement( mo: DoomMobj, player: DoomPlayer ): void {
+export function zMovement( mo: Mobj, player: DoomPlayer ): void {
 
   // Smooth step-up
   if ( mo.z < mo.floorz ) {
@@ -675,20 +667,41 @@ export function createPlayer( x: number, y: number, floorZ: number ): DoomPlayer
   const fy = intToFixed( y );
   const fz = intToFixed( floorZ );
 
+  const info = MOBJ_TYPES[ 'MT_PLAYER' ];
+
+  const mo: Mobj = {
+    x: fx,
+    y: fy,
+    z: fz,
+    momx: 0,
+    momy: 0,
+    momz: 0,
+    radius: PLAYER_RADIUS,
+    height: PLAYER_HEIGHT,
+    floorz: fz,
+    ceilingz: fz + intToFixed( 128 ),
+    onground: true,
+    angle: 0,
+    type: 'MT_PLAYER',
+    info,
+    flags: info.flags,
+    health: info.spawnHealth,
+    state: info.spawnState,
+    tics: - 1,
+    sectorIndex: - 1,
+    target: null,
+    tracer: null,
+    threshold: 0,
+    reactionTime: 0,
+    moveDir: 8,
+    movecount: 0,
+    lastLook: 0,
+    mesh: null,
+    removed: false,
+  };
+
   return {
-    mo: {
-      x: fx,
-      y: fy,
-      z: fz,
-      momx: 0,
-      momy: 0,
-      momz: 0,
-      radius: PLAYER_RADIUS,
-      height: PLAYER_HEIGHT,
-      floorz: fz,
-      ceilingz: fz + intToFixed( 128 ),
-      onground: true
-    },
+    mo,
     viewheight: VIEWHEIGHT,
     deltaviewheight: 0,
     viewz: fz + VIEWHEIGHT,

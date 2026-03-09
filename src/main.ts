@@ -9,7 +9,7 @@ import {
 } from './wad';
 import { buildScene } from './renderer/SceneBuilder';
 import { createSky } from './renderer/SkyRenderer';
-import { buildThingSprites, updateSpriteBillboards, updateSpriteAnimations } from './renderer/SpriteRenderer';
+import { buildThingSprites, updateSpriteBillboards, updateSpriteAnimations, updateSpriteFloorHeights } from './renderer/SpriteRenderer';
 import { FPSControls } from './renderer/FPSControls';
 import { TouchControls } from './renderer/TouchControls';
 import { createPlayer, findSectorAt, setCrossSpecialCallback } from './physics/DoomMovement';
@@ -19,18 +19,22 @@ import {
   Time, Input, DoomWorld, Camera, IsPlayer, Position, Rotation, PlayerStatus
 } from './ecs/traits';
 import { playerMovementSystem, cameraSystem } from './ecs/systems';
-import { crossSpecialLine, hasDirtySectors, dirtySectors, clearDirtySectors, spawnLightSpecials } from './game';
+import { crossSpecialLine, hasDirtySectors, dirtySectors, clearDirtySectors, spawnLightSpecials, consumeTeleport } from './game';
 import { checkPickups } from './game/Pickups';
 import { WeaponSystem } from './game/Weapons';
 import { parseSounds, initSoundManager, MusicPlayer } from './sound';
 import { getLump } from './wad';
 import { StatusBar } from './hud/StatusBar';
 import { WeaponOverlay } from './hud/WeaponOverlay';
-import { initMobjSystem, spawnMapThing } from './game/Mobj';
+import { initMobjSystem, spawnMapThing, spawnPlayerMissile, setCameraPosition } from './game/Mobj';
 import { DOOMEDNUM_TO_TYPE } from './game/MobjData';
-import { initAttackSystem, setAttackMap, lineAttack, setPlayerDamageCallback } from './game/Attack';
-import { radiusAttackPlayer } from './game/PlayerDamage';
+import { initAttackSystem, setAttackMap, lineAttack, setPlayerDamageCallback, setPlayerDamageMobjCallback } from './game/Attack';
+import { radiusAttackPlayer, damagePlayer } from './game/PlayerDamage';
 import { feedCheatChar } from './game/Cheats';
+import { initEnemyAI, setPlayerMobj, advanceEnemyTic } from './game/EnemyAI';
+import { setExitCallback } from './game/UseAction';
+import type { Mobj } from './game/Mobj';
+import { MF_SOLID, MF_SHOOTABLE } from './game/MobjData';
 
 const SCALE = 1.0 / 32.0;
 
@@ -188,10 +192,11 @@ async function main(): Promise<void> {
 
   }
 
-  // Setup walk-over trigger callback
+  // Setup walk-over trigger callback (player ref set after player creation below)
+  let crossPlayer: ReturnType<typeof createPlayer> | null = null;
   setCrossSpecialCallback( ( lineIdx: number ) => {
 
-    crossSpecialLine( map.linedefs[ lineIdx ], map );
+    crossSpecialLine( map.linedefs[ lineIdx ], map, crossPlayer ?? undefined, things );
 
   } );
 
@@ -206,6 +211,7 @@ async function main(): Promise<void> {
   const spawnFloor = spawnSector ? spawnSector.floorHeight : 0;
 
   const doomPlayer = createPlayer( spawnX, spawnY, spawnFloor );
+  crossPlayer = doomPlayer;
 
   if ( spawnSector ) {
 
@@ -213,7 +219,23 @@ async function main(): Promise<void> {
 
   }
 
+  // Set player facing angle (Doom angle: 0=east, stored as radians)
+  doomPlayer.mo.angle = p1 ? ( p1.angle * Math.PI ) / 180 : 0;
+
   console.log( `Player spawned at Doom (${ spawnX }, ${ spawnY }) floor=${ spawnFloor }` );
+
+  // ---- Setup enemy AI ----
+  initEnemyAI();
+  setPlayerMobj( doomPlayer.mo );
+
+  // ---- Setup exit callback ----
+  setExitCallback( ( secret ) => {
+
+    console.log( secret ? 'SECRET EXIT!' : 'EXIT!' );
+    // For now, reload the level — future: load next map
+    setTimeout( () => window.location.reload(), 1500 );
+
+  } );
 
   // ---- Setup ECS ----
   const world = createECSWorld( Time, Input );
@@ -236,11 +258,26 @@ async function main(): Promise<void> {
 
   } );
 
+  // Wire projectile weapon fire (rocket, plasma, BFG)
+  weaponSystem.setMissileCallback( ( angle, typeName ) => {
+
+    spawnPlayerMissile( doomPlayer, angle, typeName );
+
+  } );
+
   // Wire explosion damage to player
   setPlayerDamageCallback( ( spot, source, damage ) => {
 
     const pState = world.get( PlayerStatus );
     if ( pState ) radiusAttackPlayer( doomPlayer, pState, spot, source, damage );
+
+  } );
+
+  // Wire enemy melee/hitscan damage → player (when damageMobj target is player)
+  setPlayerDamageMobjCallback( ( damage, _inflictor, _source ) => {
+
+    const pState = world.get( PlayerStatus );
+    if ( pState ) damagePlayer( pState, damage );
 
   } );
 
@@ -333,12 +370,30 @@ async function main(): Promise<void> {
     time.delta = dt;
     time.elapsed = clock.elapsedTime;
 
+    // Check for reborn — reload level
+    const pStateLoop = world.get( PlayerStatus );
+    if ( pStateLoop && pStateLoop.playerState === 'PST_REBORN' ) {
+
+      window.location.reload();
+      return;
+
+    }
+
     // Gather input
     controls.update();
 
     // Run systems
     playerMovementSystem( world );
     cameraSystem( world );
+
+    // Check for pending teleport and sync camera yaw
+    const tp = consumeTeleport();
+    if ( tp ) {
+
+      const newYaw = ( tp.angle * Math.PI ) / 180 - Math.PI / 2;
+      controls.setInitialYaw( newYaw );
+
+    }
 
     // Run weapon system at 35Hz
     weaponTicAccum += dt;
@@ -348,11 +403,20 @@ async function main(): Promise<void> {
     for ( let i = 0; i < weaponTics; i ++ ) {
 
       weaponSystem.tick( world );
+      advanceEnemyTic();
 
     }
 
     // Apply weapon bob from player movement
     weaponSystem.applyBob( doomPlayer.bob, world.get( Time )!.levelTime );
+
+    // Sync health: player Mobj ↔ PlayerStatus (ECS)
+    const pState = world.get( PlayerStatus );
+    if ( pState ) {
+
+      doomPlayer.mo.health = pState.health;
+
+    }
 
     // Check for item pickups
     checkPickups( world, spriteGroup, doomPlayer.mo.x, doomPlayer.mo.y, doomPlayer.mo.z );
@@ -361,9 +425,13 @@ async function main(): Promise<void> {
     if ( hasDirtySectors() ) {
 
       manager.rebuildDirtySectors( dirtySectors );
+      updateSpriteFloorHeights( spriteGroup );
       clearDirtySectors();
 
     }
+
+    // Update camera position for mobj sprite rotation selection
+    setCameraPosition( doomPlayer.mo.x, doomPlayer.mo.y );
 
     // Animate textures and sprites
     manager.updateAnimatedTextures( Math.floor( clock.elapsedTime * 35 ) );

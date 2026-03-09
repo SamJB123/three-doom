@@ -7,9 +7,10 @@ import type { DoomMapData, DoomPlayer } from '../physics/DoomMovement';
 import { findSectorAtFixed } from '../physics/DoomMovement';
 import type { Mobj } from './Mobj';
 import { allMobjs, setMobjState, spawnMobj, setExplodeCallback } from './Mobj';
-import { MF_SHOOTABLE, MF_NOBLOOD, MF_SOLID, MF_CORPSE } from './MobjData';
+import { MF_SHOOTABLE, MF_NOBLOOD, MF_SOLID, MF_CORPSE, MF_SKULLFLY, MF_JUSTHIT } from './MobjData';
 import { P_Random } from './DoomRandom';
 import { playSound } from '../sound';
+import type { PlayerStatusState } from '../ecs/traits';
 
 // ============================================================
 // Constants
@@ -207,7 +208,22 @@ function crossProduct( ax: Fixed, ay: Fixed, bx: Fixed, by: Fixed ): number {
 
 // ============================================================
 // P_DamageMobj — ported from p_inter.c
+// Handles damage for both monsters and the player.
 // ============================================================
+
+const BASETHRESHOLD = 100;
+
+// Player damage callback — set from main.ts
+// Called when the target mobj IS the player, so we can apply armor/HUD/death.
+let playerDamageMobjCallback: ( ( damage: number, inflictor: Mobj | null, source: Mobj | null ) => void ) | null = null;
+
+export function setPlayerDamageMobjCallback(
+  cb: ( damage: number, inflictor: Mobj | null, source: Mobj | null ) => void
+): void {
+
+  playerDamageMobjCallback = cb;
+
+}
 
 export function damageMobj(
   target: Mobj,
@@ -219,8 +235,35 @@ export function damageMobj(
   if ( ! ( target.flags & MF_SHOOTABLE ) ) return;
   if ( target.health <= 0 ) return;
 
-  // TODO: armor reduction for player targets
+  // Stop skull-fly momentum on any hit
+  if ( ( target.flags & MF_SKULLFLY ) !== 0 ) {
 
+    target.momx = 0;
+    target.momy = 0;
+    target.momz = 0;
+
+  }
+
+  // Thrust / knockback from damage
+  if ( inflictor && damage > 0 ) {
+
+    const angle = Math.atan2( target.y - inflictor.y, target.x - inflictor.x );
+    let thrust = Math.trunc( ( damage * ( FRACUNIT >> 3 ) * 100 ) / Math.max( 1, target.info.mass ) );
+
+    target.momx += Math.round( thrust * Math.cos( angle ) );
+    target.momy += Math.round( thrust * Math.sin( angle ) );
+
+  }
+
+  // If the target is the player mobj, delegate to player damage system
+  if ( target.type === 'MT_PLAYER' && playerDamageMobjCallback ) {
+
+    playerDamageMobjCallback( damage, inflictor, source );
+    return;
+
+  }
+
+  // --- Monster damage path ---
   target.health -= damage;
 
   if ( target.health <= 0 ) {
@@ -233,18 +276,30 @@ export function damageMobj(
   // Pain state
   if ( target.info.painState && target.info.painChance > 0 ) {
 
-    if ( P_Random() < target.info.painChance ) {
+    if ( ( target.flags & MF_SKULLFLY ) === 0 && P_Random() < target.info.painChance ) {
 
+      target.flags |= MF_JUSTHIT; // fight back immediately
       setMobjState( target, target.info.painState );
 
     }
 
   }
 
-  // Set target's target to the source (for retaliation)
-  if ( source && source !== target ) {
+  target.reactionTime = 0; // wake up immediately
+
+  // Infighting: switch target to attacker (with threshold check)
+  if ( ( ! target.threshold || target.type === 'MT_VILE' ) &&
+       source && source !== target && source.type !== 'MT_VILE' ) {
 
     target.target = source;
+    target.threshold = BASETHRESHOLD;
+
+    // If in spawn (idle) state, switch to see state
+    if ( target.state === target.info.spawnState && target.info.seeState ) {
+
+      setMobjState( target, target.info.seeState );
+
+    }
 
   }
 
@@ -256,12 +311,18 @@ export function damageMobj(
 
 function killMobj( source: Mobj | null, target: Mobj ): void {
 
-  target.flags &= ~( MF_SHOOTABLE | MF_SOLID );
+  target.flags &= ~( MF_SHOOTABLE | MF_SOLID | MF_SKULLFLY );
   target.flags |= MF_CORPSE;
-  target.height = 0; // corpses have zero height
+  target.height = target.height >> 2; // reduce height to 25%
 
-  // Set death state
-  setMobjState( target, target.info.deathState );
+  // Overkill: health < -spawnHealth AND has xDeathState
+  const overkill = target.health < - target.info.spawnHealth && target.info.xDeathState;
+
+  setMobjState( target, overkill ? target.info.xDeathState! : target.info.deathState );
+
+  // Randomize tics slightly
+  target.tics -= P_Random() & 3;
+  if ( target.tics < 1 ) target.tics = 1;
 
   // Play death sound
   if ( target.info.deathSound ) {

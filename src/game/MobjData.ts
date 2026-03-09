@@ -82,6 +82,12 @@ export interface MobjInfo {
 
 export const MOBJ_STATES: Record<string, MobjState> = {
 
+  // --- Player (not rendered — first-person, but needed for state machine) ---
+  S_PLAY:     { sprite: 'PLAY', frame: 0, bright: false, tics: -1, action: null, next: 'S_NULL' },
+  S_PLAY_DIE1: { sprite: 'PLAY', frame: 7, bright: false, tics: 10, action: null, next: 'S_PLAY_DIE2' },
+  S_PLAY_DIE2: { sprite: 'PLAY', frame: 8, bright: false, tics: 10, action: 'A_Fall', next: 'S_PLAY_DIE3' },
+  S_PLAY_DIE3: { sprite: 'PLAY', frame: 9, bright: false, tics: 10, action: null, next: 'S_NULL' },
+
   // --- Barrel idle ---
   S_BAR1:  { sprite: 'BAR1', frame: 0, bright: false, tics: 6,  action: null,        next: 'S_BAR2' },
   S_BAR2:  { sprite: 'BAR1', frame: 1, bright: false, tics: 6,  action: null,        next: 'S_BAR1' },
@@ -1663,6 +1669,31 @@ export const MOBJ_TYPES: Record<string, MobjInfo> = {
     mass: 100,
     damage: 0,
     flags: MF_NOBLOCKMAP | MF_NOGRAVITY,
+  },
+
+  MT_PLAYER: {
+    doomedNum: -1,      // not spawned via doomednum — created by createPlayer()
+    spawnState: 'S_PLAY',
+    spawnHealth: 100,
+    seeState: null,
+    painState: null,
+    painChance: 255,
+    meleeState: null,
+    missileState: null,
+    deathState: 'S_PLAY_DIE1',
+    xDeathState: null,
+    raiseState: null,
+    seeSound: null,
+    attackSound: null,
+    painSound: 'plpain',
+    deathSound: 'pldeth',
+    activeSound: null,
+    speed: 0,
+    radius: 16 * FRACUNIT,
+    height: 56 * FRACUNIT,
+    mass: 100,
+    damage: 0,
+    flags: MF_SOLID | MF_SHOOTABLE,
   },
 
 };

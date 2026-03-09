@@ -2,16 +2,28 @@
 // Also handles walk-over (cross) triggers.
 // Ported from p_map.c (P_UseLines, PTR_UseTraverse) and p_spec.c / p_switch.c
 
-import type { Linedef, Sidedef } from '../wad';
+import type { Linedef, Sidedef, Thing } from '../wad';
 import { getLinedefsInBounds } from '../wad/BlockmapParser';
 import type { DoomPlayer, DoomMapData } from '../physics/DoomMovement';
 import { evVerticalDoor, evDoDoor } from './Doors';
 import { evDoPlat } from './Platforms';
 import { evDoFloor } from './Floors';
+import { evDoCeiling, evCeilingCrushStop } from './Ceilings';
+import { evBuildStairs } from './Stairs';
+import { evTeleport } from './Teleport';
 import { getSwitchPartner } from './Switches';
 import { markSectorDirty } from './Thinkers';
 import { playSound } from '../sound';
 import { FRACBITS, fixedToFloat } from '../math/fixed';
+
+// Exit callback — set from main.ts to trigger level end
+let exitCallback: ( ( secret: boolean ) => void ) | null = null;
+
+export function setExitCallback( cb: ( secret: boolean ) => void ): void {
+
+  exitCallback = cb;
+
+}
 
 const USERANGE = 64; // 64 Doom units (integer, used in float-space trace)
 
@@ -134,12 +146,34 @@ function useSpecialLine( line: Linedef, map: DoomMapData ): void {
       break;
 
     // === SWITCHES (one-time use: special cleared) ===
-    case 11: // Exit level (just toggle switch for now)
+    case 11: // Exit level (switch)
       changeSwitchTexture( line, sidedefs, false );
+      if ( exitCallback ) exitCallback( false );
       break;
 
-    case 7: // Build stairs (not yet implemented)
+    case 51: // Secret exit (switch)
       changeSwitchTexture( line, sidedefs, false );
+      if ( exitCallback ) exitCallback( true );
+      break;
+
+    case 7: // Build stairs (build8)
+      if ( evBuildStairs( 'build8', line.tag, linedefs, sidedefs, sectors ) )
+        changeSwitchTexture( line, sidedefs, false );
+      break;
+
+    case 127: // Build stairs turbo16
+      if ( evBuildStairs( 'turbo16', line.tag, linedefs, sidedefs, sectors ) )
+        changeSwitchTexture( line, sidedefs, false );
+      break;
+
+    case 41: // Lower ceiling to floor
+      if ( evDoCeiling( 'lowerToFloor', line.tag, linedefs, sidedefs, sectors ) )
+        changeSwitchTexture( line, sidedefs, false );
+      break;
+
+    case 49: // Ceiling crush and raise
+      if ( evDoCeiling( 'crushAndRaise', line.tag, linedefs, sidedefs, sectors ) )
+        changeSwitchTexture( line, sidedefs, false );
       break;
 
     case 29: // Raise door
@@ -295,6 +329,11 @@ function useSpecialLine( line: Linedef, map: DoomMapData ): void {
         changeSwitchTexture( line, sidedefs, true );
       break;
 
+    case 43: // Lower ceiling to floor (button)
+      if ( evDoCeiling( 'lowerToFloor', line.tag, linedefs, sidedefs, sectors ) )
+        changeSwitchTexture( line, sidedefs, true );
+      break;
+
   }
 
 }
@@ -303,7 +342,9 @@ function useSpecialLine( line: Linedef, map: DoomMapData ): void {
 // Ported from p_spec.c
 export function crossSpecialLine(
   line: Linedef,
-  map: DoomMapData
+  map: DoomMapData,
+  player?: DoomPlayer,
+  things?: Thing[]
 ): void {
 
   if ( line.special === 0 ) return;
@@ -321,8 +362,13 @@ export function crossSpecialLine(
     case 16: evDoDoor( 'close30ThenOpen', line.tag, linedefs, sidedefs, sectors ); break;
     case 19: evDoFloor( 'lowerFloor', line.tag, linedefs, sidedefs, sectors ); break;
     case 22: evDoPlat( 'raiseToNearestAndChange', line.tag, 0, linedefs, sidedefs, sectors ); break;
-    case 25: // Ceiling crush — not yet implemented
-      break;
+    case 6: evDoCeiling( 'fastCrushAndRaise', line.tag, linedefs, sidedefs, sectors ); break;
+    case 8: evBuildStairs( 'build8', line.tag, linedefs, sidedefs, sectors ); break;
+    case 25: evDoCeiling( 'crushAndRaise', line.tag, linedefs, sidedefs, sectors ); break;
+    case 39: if ( player && things ) evTeleport( line, 0, player, map, things ); break;
+    case 44: evDoCeiling( 'lowerAndCrush', line.tag, linedefs, sidedefs, sectors ); break;
+    case 57: evCeilingCrushStop( line.tag ); break;
+    case 100: evBuildStairs( 'turbo16', line.tag, linedefs, sidedefs, sectors ); break;
     case 30: evDoFloor( 'raiseFloor', line.tag, linedefs, sidedefs, sectors ); break;
     case 36: evDoFloor( 'turboLower', line.tag, linedefs, sidedefs, sectors ); break;
     case 37: evDoFloor( 'lowerAndChange', line.tag, linedefs, sidedefs, sectors ); break;
@@ -339,9 +385,17 @@ export function crossSpecialLine(
     case 121: evDoPlat( 'blazeDWUS', line.tag, 0, linedefs, sidedefs, sectors ); break;
     case 130: evDoFloor( 'raiseFloorTurbo', line.tag, linedefs, sidedefs, sectors ); break;
 
+    // Exit (walk-over)
+    case 52: if ( exitCallback ) exitCallback( false ); break;
+    case 124: if ( exitCallback ) exitCallback( true ); break;
+
     // Retriggers (keep special)
-    case 72: case 73: case 74: // Ceiling crush stuff — not yet implemented
-      clearSpecial = false; break;
+    case 72: evDoCeiling( 'lowerAndCrush', line.tag, linedefs, sidedefs, sectors ); clearSpecial = false; break;
+    case 73: evDoCeiling( 'crushAndRaise', line.tag, linedefs, sidedefs, sectors ); clearSpecial = false; break;
+    case 74: evCeilingCrushStop( line.tag ); clearSpecial = false; break;
+    case 77: evDoCeiling( 'fastCrushAndRaise', line.tag, linedefs, sidedefs, sectors ); clearSpecial = false; break;
+    case 97: if ( player && things ) evTeleport( line, 0, player, map, things ); clearSpecial = false; break;
+    case 141: evDoCeiling( 'silentCrushAndRaise', line.tag, linedefs, sidedefs, sectors ); clearSpecial = false; break;
     case 75: evDoDoor( 'close', line.tag, linedefs, sidedefs, sectors ); clearSpecial = false; break;
     case 76: evDoDoor( 'close30ThenOpen', line.tag, linedefs, sidedefs, sectors ); clearSpecial = false; break;
     case 86: evDoDoor( 'open', line.tag, linedefs, sidedefs, sectors ); clearSpecial = false; break;
@@ -373,7 +427,7 @@ export function crossSpecialLine(
 const BUTTONTIME = 35; // 1 second in tics
 
 interface ActiveButton {
-  lineIdx: number;
+  side: Sidedef;
   position: 'upper' | 'middle' | 'lower';
   originalTex: string;
   timer: number;
@@ -392,25 +446,32 @@ function changeSwitchTexture(
   const side = sidedefs[ line.right ];
 
   // Check upper, middle, lower textures for switch matches
-  const positions: ( 'upper' | 'middle' | 'lower' )[] = [ 'upper', 'middle', 'lower' ];
   const texKeys: ( 'upper' | 'middle' | 'lower' )[] = [ 'upper', 'middle', 'lower' ];
 
   for ( let i = 0; i < 3; i ++ ) {
 
-    const tex = side[ texKeys[ i ] ];
+    const key = texKeys[ i ];
+    const tex = side[ key ];
     const partner = getSwitchPartner( tex );
 
     if ( partner ) {
 
-      const original = tex;
-      side[ texKeys[ i ] ] = partner;
+      // Check if button already active for this side+position (don't double-activate)
+      if ( useAgain ) {
+
+        const alreadyActive = activeButtons.some( b => b.side === side && b.position === key );
+        if ( alreadyActive ) return;
+
+      }
+
+      side[ key ] = partner;
 
       if ( useAgain ) {
 
         activeButtons.push( {
-          lineIdx: 0, // not tracked precisely
-          position: positions[ i ],
-          originalTex: original,
+          side,
+          position: key,
+          originalTex: tex,
           timer: BUTTONTIME
         } );
 
@@ -433,15 +494,24 @@ function changeSwitchTexture(
 
 }
 
-// Run button timers (call every tic)
-export function updateButtons( sidedefs: Sidedef[] ): void {
+// Run button timers (call every tic) — revert texture when timer expires
+export function updateButtons( _sidedefs: Sidedef[] ): void {
 
   for ( let i = activeButtons.length - 1; i >= 0; i -- ) {
 
     if ( -- activeButtons[ i ].timer <= 0 ) {
 
-      // Revert texture — for simplicity we just remove the button
-      // (full implementation would restore the original texture)
+      const btn = activeButtons[ i ];
+
+      // Restore original texture
+      btn.side[ btn.position ] = btn.originalTex;
+
+      // Mark dirty for visual update
+      markSectorDirty( btn.side.sector );
+
+      // Play revert sound
+      playSound( 'swtchn' );
+
       activeButtons.splice( i, 1 );
 
     }
