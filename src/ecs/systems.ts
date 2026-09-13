@@ -1,3 +1,4 @@
+import {pointToAngle,radiansToAngle,angleToRadians} from '../math/angles';
 import type { World } from 'koota';
 import { Time, Input, DoomWorld, Camera, IsPlayer, Position, PlayerStatus } from './traits';
 import { movePlayer, xyMovement, zMovement, calcHeight } from '../physics/DoomMovement';
@@ -45,20 +46,25 @@ export function playerTickSystem( world: World, tickWeapons:()=>void=()=>{} ): v
     tickWeapons();
     if(input.use)pState.playerState='PST_REBORN';
 
-    // Sink view toward floor (P_DeathThink)
-    if ( player.viewheight > 6 * FRACUNIT ) {
-
-      player.viewheight -= FRACUNIT;
-
+    // P_DeathThink: sink the view and face the actual killer. Damage red
+    // persists during the turn and fades only once the view reaches them.
+    player.viewheight=Math.max(6*FRACUNIT,player.viewheight-FRACUNIT);
+    player.deltaviewheight=0;
+    const attacker=player.mo.lastAttacker;
+    let facingKiller=true;
+    if(attacker&&attacker!==player.mo){
+      const target=pointToAngle(attacker.x-player.mo.x,attacker.y-player.mo.y),current=radiansToAngle(player.mo.angle);
+      const delta=(target-current)>>>0,step=Math.trunc(0x40000000/18);
+      facingKiller=delta<step||delta>(-step>>>0);
+      player.mo.angle=angleToRadians((facingKiller?target:delta<0x80000000?current+step:current-step)>>>0);
     }
-
-    if ( pState!.damageCount > 0 ) pState!.damageCount --;
+    if(facingKiller&&pState!.damageCount>0)pState!.damageCount--;
 
     runThinkers();
     updateButtons(map.sidedefs);
     for(const line of map.linedefs)if(line.special===48)map.sidedefs[line.right].xoff++;
     time.levelTime += 1;
-    player.viewz = player.mo.z + player.viewheight;
+    player.viewz = Math.min(player.mo.z + player.viewheight,player.mo.ceilingz-4*FRACUNIT);
     syncPlayerPositionSystem( world );
     return;
 

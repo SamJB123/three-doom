@@ -84,3 +84,21 @@ test('use trace stops at nearer wall even when its endpoint is further away', ()
   let exits=0; setExitCallback(()=>exits++);
   useLines(createPlayer(0,0,0),0,map); assert.equal(exits,0);
 });
+
+test('PIT_ChangeSector sprays blood only on crushing tics, gibs corpses and removes dropped items',async()=>{
+  const {Group}=await import('three/webgpu');const {initMobjSystem,spawnMobj,allMobjs,resetMobjs}=await import('../src/game/Mobj');
+  const {MF_DROPPED}=await import('../src/game/MobjData');
+  resetThinkers();resetMobjs();const map=dividedMap();initMobjSystem({},new Group(),map);
+  const monster=spawnMobj(60*F,0,0,'MT_TROOP');map.sectors[0].ceilingHeight=32;
+  let tic=1;const change=sectorChangeHandler(map,()=>tic);
+  assert.equal(change(map.sectors[0],true),true);assert.equal(monster.health,60);
+  assert.equal(allMobjs.filter(m=>m.type==='MT_BLOOD').length,0);
+  tic=4;change(map.sectors[0],false);assert.equal(monster.health,60);
+  change(map.sectors[0],true);assert.equal(monster.health,50);
+  const blood=allMobjs.find(m=>m.type==='MT_BLOOD')!;assert.ok(blood);assert.equal(blood.z,monster.z+(monster.height>>1));
+  assert.ok(blood.momx||blood.momy);
+  monster.health=0;change(map.sectors[0],true);
+  assert.equal(monster.state,'S_GIBS');assert.equal(monster.height,0);assert.equal(monster.radius,0);assert.equal(monster.flags&MF_SOLID,0);
+  const dropped=spawnMobj(80*F,0,0,'MT_CLIP');dropped.flags|=MF_DROPPED;map.sectors[0].ceilingHeight=0;
+  change(map.sectors[0],true);assert.equal(dropped.removed,true);resetThinkers();resetMobjs();
+});

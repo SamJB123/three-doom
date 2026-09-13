@@ -769,3 +769,19 @@ test('indexed shaders render original power colormaps and muzzle lighting on bot
   });
   expect(results).toHaveLength(14);for(const error of results)expect(error.maxError,JSON.stringify(results)).toBeLessThanOrEqual(1);
 });
+
+test('death view turns toward the killer and pauses with the menu',async({page})=>{
+  await ready(page);await startGame(page);
+  const target=await page.evaluate(async()=>{
+    const {allMobjs,spawnMobj}=await import('/src/game/Mobj.ts');const {damageMobj}=await import('/src/game/Attack.ts');
+    const {pointToRadians}=await import('/src/math/angles.ts');
+    const player=allMobjs.find(m=>m.type==='MT_PLAYER')!,angle=player.angle+Math.PI/2;
+    const killer=spawnMobj(player.x+Math.round(Math.cos(angle)*100*65536),player.y+Math.round(Math.sin(angle)*100*65536),player.z,'MT_POSSESSED');
+    killer.tics=-1;killer.flags=0;
+    const target=pointToRadians(killer.x-player.x,killer.y-player.y)-Math.PI/2;
+    damageMobj(player,null,killer,1000);return target;
+  });
+  await expect.poll(async()=>Math.abs((await snapshot(page)).input.yaw-target)).toBeLessThan(0.001);
+  expect((await snapshot(page)).player.health).toBe(0);
+  await page.keyboard.press('Escape');const paused=await snapshot(page);await page.waitForTimeout(100);expect(await snapshot(page)).toEqual(paused);
+});

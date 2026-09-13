@@ -82,3 +82,18 @@ test('P_PlayerThink consumes chainsaw pull once and preserves attack/use buttons
   world.set(Input,{forward:0,strafe:0,run:false,yaw:0});playerTickSystem(world);
   assert.equal(player.mo.angle,Math.PI/2);world.destroy();resetThinkers();allMobjs.length=0;
 });
+
+test('P_DeathThink turns toward killer before fading damage and clamps corpse view height',async()=>{
+  const {pointToAngle,radiansToAngle}=await import('../src/math/angles');
+  resetThinkers();allMobjs.length=0;
+  const map=dividedMap(),player=createPlayer(50,0,0);initMobjSystem({},new Group(),map);
+  const attacker=createPlayer(50,100,0).mo;player.mo.lastAttacker=attacker;player.mo.angle=0;
+  const world=createWorld(Time,Input,DoomWorld,PlayerStatus);world.set(DoomWorld,{map,player});
+  const state=world.get(PlayerStatus)!;state.health=0;state.playerState='PST_DEAD';state.damageCount=40;
+  playerTickSystem(world);assert.equal(radiansToAngle(player.mo.angle),Math.trunc(0x40000000/18));assert.equal(state.damageCount,40);
+  for(let i=0;i<20;i++)playerTickSystem(world);
+  assert.equal(radiansToAngle(player.mo.angle),pointToAngle(0,100*F));assert.ok(state.damageCount<40);
+  player.viewheight=6*F+F/2;playerTickSystem(world);assert.equal(player.viewheight,6*F);assert.equal(player.deltaviewheight,0);
+  player.mo.lastAttacker=null;const before=state.damageCount;playerTickSystem(world);assert.equal(state.damageCount,before-1);
+  world.destroy();resetThinkers();allMobjs.length=0;
+});

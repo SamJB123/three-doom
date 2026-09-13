@@ -1,10 +1,11 @@
+import {P_Random} from './DoomRandom';
 import type { DoomMapData } from '../physics/DoomMovement';
 import { clipThingHeight, findSectorAtFixed } from '../physics/DoomMovement';
 import { getLinedefsInBounds } from '../wad/BlockmapParser';
 import type { Sector } from '../wad';
 import { FRACUNIT } from '../math/fixed';
 import { MF_CORPSE, MF_DROPPED, MF_SHOOTABLE, MF_SOLID } from './MobjData';
-import { removeMobj } from './Mobj';
+import { removeMobj,spawnMobj,setMobjState } from './Mobj';
 import { damageMobj } from './Attack';
 
 // p_map.c P_ChangeSector / PIT_ChangeSector. Spatial candidates include actors
@@ -31,11 +32,16 @@ export function sectorChangeHandler(map: DoomMapData, getTic: () => number) {
       }
       if (!touches || clipThingHeight(mo, map)) continue;
       if (mo.health <= 0 || (mo.flags & MF_CORPSE)) {
+        setMobjState(mo,'S_GIBS');
         mo.flags &= ~MF_SOLID; mo.height = mo.radius = 0;
       } else if (mo.flags & MF_DROPPED) removeMobj(mo);
       else if (mo.flags & MF_SHOOTABLE) {
         blocked = true;
-        if (crush && !(getTic() & 3)) damageMobj(mo, null, null, 10);
+        if (crush && !(getTic() & 3)) {
+          damageMobj(mo, null, null, 10);
+          const blood=spawnMobj(mo.x,mo.y,mo.z+(mo.height>>1),'MT_BLOOD');
+          blood.momx=(P_Random()-P_Random())<<12;blood.momy=(P_Random()-P_Random())<<12;
+        }
       }
     }
     return blocked;

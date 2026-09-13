@@ -65,6 +65,7 @@ export function setPlayerMobjState( state: PlayerStatusState, stateName: string,
 
 export function tickPlayerMobjState( state: PlayerStatusState, actor?:Mobj ): void {
 
+  if(actor?.state==='S_GIBS')state.mobjState={name:'S_GIBS',tics:actor.tics};
   const ms = state.mobjState;
   if ( ms.tics === - 1 ) return; // infinite — no countdown
 
