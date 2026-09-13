@@ -1,3 +1,4 @@
+import {spawnHitEffect} from './HitEffects';
 import {fineSin,fineCos,pointToRadians} from '../math/angles';
 // Hitscan attack, damage, and radius attack — ported from p_map.c / p_inter.c.
 // Implements P_LineAttack (bullet tracing via P_PathTraverse-style blockmap DDA),
@@ -473,6 +474,20 @@ export function lineAttack(
 
   // Shoot from source eye height (center + 8 units for player-like height)
   const shootZ = sourceZ;
+  const impact=(frac:number,offset:number,blood:boolean)=>{
+    const closer=frac-fixedDiv(offset*FRACUNIT,range);
+    const x=sourceX+fixedMul(x2-sourceX,closer),y=sourceY+fixedMul(y2-sourceY,closer);
+    const z=shootZ+fixedMul(slope,fixedMul(closer,range));
+    return {x,y,z,blood};
+  };
+  const wallImpact=(frac:number,lineIdx:number)=>{
+    const line=attackMap!.linedefs[lineIdx],hit=impact(frac,4,false);
+    const front=attackMap!.sectors[attackMap!.sidedefs[line.right].sector];
+    const back=line.left<0?null:attackMap!.sectors[attackMap!.sidedefs[line.left].sector];
+    if(front.ceilingTex==='F_SKY1'&&(hit.z>intToFixed(front.ceilingHeight)||back?.ceilingTex==='F_SKY1'))return false;
+    spawnHitEffect(hit.x,hit.y,hit.z,damage,false,range===64*FRACUNIT);
+    return false;
+  };
 
   pathTraverse( sourceX, sourceY, x2, y2, attackMap, true, true,
 
@@ -485,7 +500,7 @@ export function lineAttack(
         if(line.special)shootSpecialLine(line,attackMap!,sourceMobj?.type==='MT_PLAYER');
 
         // One-sided line — solid wall, stop
-        if ( line.left < 0 ) return false;
+        if ( line.left < 0 ) return wallImpact(intercept.frac,intercept.lineIdx);
 
         // Two-sided line — check opening
         const opening = lineOpening( intercept.lineIdx, attackMap! );
@@ -500,7 +515,7 @@ export function lineAttack(
         if ( frontSec.floorHeight !== backSec.floorHeight ) {
 
           const floorSlope = fixedDiv( opening.openBottom - shootZ, dist );
-          if ( floorSlope > slope ) return false; // hits floor step
+          if ( floorSlope > slope ) return wallImpact(intercept.frac,intercept.lineIdx); // hits floor step
 
         }
 
@@ -508,7 +523,7 @@ export function lineAttack(
         if ( frontSec.ceilingHeight !== backSec.ceilingHeight ) {
 
           const ceilSlope = fixedDiv( opening.openTop - shootZ, dist );
-          if ( ceilSlope < slope ) return false; // hits ceiling step
+          if ( ceilSlope < slope ) return wallImpact(intercept.frac,intercept.lineIdx); // hits ceiling step
 
         }
 
@@ -530,6 +545,9 @@ export function lineAttack(
       const thingBottomSlope = fixedDiv( thing.z - shootZ, dist );
       if ( thingBottomSlope > slope ) return true; // bullet goes under
 
+      // PTR_ShootTraverse spawns the effect before damage consumes RNG.
+      const hit=impact(intercept.frac,10,!(thing.flags&MF_NOBLOOD));
+      spawnHitEffect(hit.x,hit.y,hit.z,damage,hit.blood,range===64*FRACUNIT);
       // Hit! Apply damage
       if ( damage > 0 ) {
 

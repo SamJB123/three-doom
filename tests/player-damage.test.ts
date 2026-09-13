@@ -56,3 +56,16 @@ test('player health, armor and exit protection match executed P_DamageMobj C fix
   }
   resetThinkers();allMobjs.length=0;gameRules.skill=3;
 });
+
+test('P_DamageMobj player pain sets JUSTHIT only when the pain roll succeeds',async()=>{
+  const {playerPainCheck}=await import('../src/game/PlayerState');
+  const {restoreRandom}=await import('../src/game/DoomRandom');
+  const {MF_JUSTHIT}=await import('../src/game/MobjData');
+  for(const [seed,pain] of [[0,true],[157,false]] as const){
+    resetThinkers();allMobjs.length=0;initMobjSystem({},new Group(),dividedMap());
+    const actor=spawnMobj(40*F,0,0,'MT_PLAYER'),state=createPlayerStatus();
+    restoreRandom({play:seed,misc:0});playerPainCheck(state,actor);
+    assert.equal(!!(actor.flags&MF_JUSTHIT),pain);assert.equal(state.mobjState.name,pain?'S_PLAY_PAIN':'S_PLAY');
+  }
+  resetThinkers();allMobjs.length=0;
+});

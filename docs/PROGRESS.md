@@ -280,3 +280,13 @@ The extended trace exposed a one-unit negative-odd movement split error at tic 1
 All captured original C/player/actor fields agree through DEMO1 tic 209. Tic 210 has three original hit-effect actors absent from the port and a gameplay-RNG mismatch; inspection confirms `P_LineAttack` currently omits puff/blood spawning. That is the next slice. The original C 350-tic comparison still correctly fails; later differences remain downstream.
 
 Validation: 104 unit tests, typecheck and build pass. Installed-Chrome monster movement, mobile tap/weapon wheel and 350-tic replay checks pass, including pause and changed frame batching. Extended traces have a dedicated timeout after the initial 45-second smoke limit proved too short. The preceding full 19-check browser suite passed at the first world-oracle checkpoint.
+
+## 2026-09-13 — hit effects and passing 350-tic original world comparison
+
+**COMBAT-01 / PLAYER-01 / LOOP-02.** Connected `PTR_ShootTraverse` wall/thing impacts to source-style `P_SpawnPuff` and `P_SpawnBlood`: original nearer-impact offsets, vertical jitter, four RNG draws including spawn/lifetime, upward momentum, damage-dependent blood states and punch puff state. Sky-wall impacts suppress puffs. Effects spawn before damage, including zero-damage traces. Gameplay tests cover wall/target/no-blood/sky paths and state/lifetime/RNG boundaries.
+
+Missing effects explained the three absent actors and twelve missing RNG draws at DEMO1 tic 210. With those restored, all captured player fields and gameplay RNG match through tic 350. The remaining 141 actor differences were solely player `MF_JUSTHIT`; `playerPainCheck` now sets it on a successful roll. A regression also covers random value 255, which correctly skips pain.
+
+The complete 350-tic original C comparison now passes with zero captured player or actor differences. Scope remains the documented hosted-source field set, not whole-engine/DOS parity: target links, inventory, sectors and longer/cross-map command streams need C comparisons. Next: expand that trace coverage and continue remaining actor/player behavior, title demos, save/special scenarios and release gates. The full-port milestone remains open.
+
+Validation: 107 unit tests, typecheck and build pass. Installed-Chrome monster movement, death/Use-rebirth and 350-tic repeatability/pause checks pass (59.7 seconds). The separately executed original C comparison passes all 350 tics. No commercial assets or local trace artifacts are committed.

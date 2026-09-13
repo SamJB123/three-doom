@@ -1,5 +1,5 @@
 import type {Mobj} from './Mobj';
-import {MOBJ_STATES,MF_SOLID,MF_SHOOTABLE,MF_FLOAT,MF_SKULLFLY,MF_NOGRAVITY,MF_CORPSE,MF_DROPOFF} from './MobjData';
+import {MOBJ_STATES,MF_JUSTHIT,MF_SOLID,MF_SHOOTABLE,MF_FLOAT,MF_SKULLFLY,MF_NOGRAVITY,MF_CORPSE,MF_DROPOFF} from './MobjData';
 // Player mobj state machine — ported from info.c and p_user.c.
 // Drives pain sounds, death sequences, and state transitions.
 // States mirror the original S_PLAY_* states from info.c.
@@ -24,7 +24,7 @@ interface PlayerStateEntry {
 const PLAYER_STATES = MOBJ_STATES;
 
 // Player mobjinfo constants (from info.c MT_PLAYER)
-const PLAYER_PAINCHANCE = 255; // always enters pain state when hit
+const PLAYER_PAINCHANCE = 255; // all random values except 255 enter pain
 
 // ============================================================
 // Set player mobj state — mirrors P_SetMobjState for the player
@@ -87,9 +87,10 @@ export function tickPlayerMobjState( state: PlayerStatusState, actor?:Mobj ): vo
 
 export function playerPainCheck( state: PlayerStatusState, actor?:Mobj ): void {
 
-  // Player painchance = 255 (always enter pain state)
+  // P_DamageMobj marks a successful pain roll before entering the state.
   if ( ( P_Random() < PLAYER_PAINCHANCE ) ) {
 
+    if(actor)actor.flags|=MF_JUSTHIT;
     setPlayerMobjState( state, 'S_PLAY_PAIN', actor );
 
   }
