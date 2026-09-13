@@ -16,6 +16,7 @@ export class Finale {
     this.background=graphics.flat(['FLOOR4_8','SFLR6_1','MFLR8_4','MFLR8_3'][episode-1]);
     this.draw();
   }
+  get willTransition():boolean {return !this.art && this.count+1>FINALE_TEXT[this.episode-1].length*3+250;}
   tick():void {
     this.count++;
     if(!this.art && this.count>FINALE_TEXT[this.episode-1].length*3+250){this.art=true;this.count=0;}

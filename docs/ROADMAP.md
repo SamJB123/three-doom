@@ -36,7 +36,7 @@ Status vocabulary: **missing**, **partial** (implemented but incomplete or not c
 | BOSS-01 | `p_enemy.c A_BossDeath`, episode/map rules | connected; last-boss/living-player exit checks pass | E1M8/E2M8/E3M8/E4M6/E4M8 progression and surviving-boss checks |
 | UI-01 | `st_stuff.c`, `hu_stuff.c`, `am_map.c` | partial | HUD state/timing and messages; automap; palette/power effects |
 | UI-03 | `hu_stuff.c HU_Ticker/HU_Drawer`, `p_inter.c P_TouchSpecialThing`, `d_englsh.h GOT*` | connected; pickup families, timing, pause and options checks pass | Original health/armor/ammo/weapon/key/powerup messages, WAD HUD glyphs, timeout in simulation tics, message toggle; only successful pickups notify, including dropped items |
-| UI-02 | `wi_stuff.c`, `f_finale.c`, `d_main.c` demo sequence | connected: stats, animated maps/music and episode finales; wipe/title demos pending | Stats/par/intermission maps, episode finales, title/credit/demo cycle |
+| UI-02 | `wi_stuff.c`, `f_finale.c`, `d_main.c` demo sequence | connected: stats, animated maps/music and episode finales; melt connected; title demos pending | Stats/par/intermission maps, episode finales, title/credit/demo cycle |
 | SAVE-01 | `p_saveg.c`, `G_DoSaveGame`, `G_DoLoadGame` | connected; synthetic continued traces and browser persistence verified | Versioned snapshots preserve player, thinkers, world, RNG; round-trip identical continued traces |
 | RENDER-01 | `r_*` rendering rules | partial: holes, masked walls, pegging, scrolling and texture animation have scoped checks | Holes/disconnected sector geometry, pegging, masked walls, skies, sprite rotation/lighting and palette comparisons |
 | AUDIO-01 | `s_sound.c`, MUS/GENMIDI | partial | Correct per-map music, volume controls, attenuation, lifecycle, browser resume, audio smoke |
@@ -51,4 +51,4 @@ These remain open unless a progress entry and acceptance test explicitly close t
 
 ## Next slice
 
-Close the remaining E1M1 fidelity/playthrough gate, including remaining actor actions, original tic ordering and deterministic gameplay traces. Episode routing is connected across all 36 maps, but this does not prove combat playthrough or original simulation parity. Remaining release blockers include save edge cases, complete IWAD-special scenarios, original wipe/title-demo presentation, broader geometry comparisons, and browser/performance validation.
+Close the remaining E1M1 fidelity/playthrough gate, including remaining actor actions, original tic ordering and deterministic gameplay traces. Episode routing is connected across all 36 maps, but this does not prove combat playthrough or original simulation parity. Remaining release blockers include save edge cases, complete IWAD-special scenarios, original title/demo presentation, broader geometry comparisons, and browser/performance validation.

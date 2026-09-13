@@ -34,3 +34,4 @@
 #hud-message { position:fixed; top:max(4px, env(safe-area-inset-top)); left:max(4px, env(safe-area-inset-left)); width:min(640px, calc(100vw - 240px)); height:auto; image-rendering:pixelated; pointer-events:none; z-index:20; }
 #hud-message[hidden] { display:none; }
 @media (pointer:coarse) { #hud-message { top:max(84px, calc(env(safe-area-inset-top) + 72px)); width:min(640px, calc(100vw - 8px)); } }
+#screen-wipe[hidden] { display: none; }

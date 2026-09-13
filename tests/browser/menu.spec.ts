@@ -11,6 +11,7 @@ async function startGame(page: Page, episode = 'Knee-Deep in the Dead') {
   await page.getByRole('button', {name:'New game',exact:true}).click();
   await page.getByRole('button', {name:episode,exact:true}).click();
   await page.getByRole('button', {name:'Hurt me plenty.',exact:true}).click();
+  await expect(page.locator('#screen-wipe')).toBeHidden();
 }
 
 test('title, help, keyboard start, pause isolation, resume and end game', async ({ page }) => {
@@ -109,7 +110,7 @@ test('missing WAD reports a useful startup error', async ({ page }) => {
 // Exercises real level teardown/load, routing and menu integration. Exit is
 // requested via the game module; this is not a claim of a combat playthrough.
 test('all four episodes load and traverse normal, secret and finale routes', async ({page}) => {
-  test.setTimeout(120_000);
+  test.setTimeout(240_000);
   const errors: string[]=[]; page.on('pageerror',error=>errors.push(error.message));
   await ready(page);
   const episodes=['Knee-Deep in the Dead','The Shores of Hell','Inferno','Thy Flesh Consumed'];
@@ -127,12 +128,15 @@ test('all four episodes load and traverse normal, secret and finale routes', asy
       await page.evaluate(async secret=>{
         const module=await import('/src/game/UseAction.ts'); module.requestExit(secret);
       },secret);
+      await expect.poll(async()=>(await snapshot(page)).phase).not.toBe('level');
+      await expect(page.locator('#screen-wipe')).toBeHidden();
       const next=map===8 ? null : secret ? 9 : map===9 ? [0,4,6,7,3][episode] : map+1;
       if(next===null) {await page.getByRole('button',{name:'Return to title',exact:true}).click();break;}
       await page.getByRole('button',{name:'Show totals',exact:true}).click();
       await page.getByRole('button',{name:`Continue to E${episode}M${next}`,exact:true}).click();
       await page.getByRole('button',{name:`Enter E${episode}M${next}`,exact:true}).click();
       await expect.poll(async()=>(await snapshot(page)).map).toBe(next);
+      await expect(page.locator('#screen-wipe')).toBeHidden();
       map=next;
     }
   }
@@ -210,6 +214,7 @@ test('exit switch starts full intermission music/stats/map sequence and loads ne
   });
   await expect.poll(async()=>(await snapshot(page)).phase).toBe('intermission');
   await expect.poll(async()=>(await snapshot(page)).music).toBe('D_INTER');
+  await expect(page.locator('#screen-wipe')).toBeHidden();
   const tic=(await snapshot(page)).tic;
   await page.getByRole('button',{name:'Show totals',exact:true}).click();
   await expect(page.getByRole('button',{name:'Continue to E1M2',exact:true})).toBeVisible();
@@ -402,7 +407,31 @@ test('death keeps the corpse until Use, then rebirth resets the level in process
   await page.keyboard.up('KeyE');
   expect((await snapshot(page)).player.ammo.clip).toBe(50);
   expect((await snapshot(page)).running).toBe(true);
+  await expect(page.locator('#screen-wipe')).toBeHidden();
   const x=(await snapshot(page)).player.y;await page.keyboard.down('KeyW');
   await expect.poll(async()=>(await snapshot(page)).player.y).not.toBe(x);
   await page.keyboard.up('KeyW');
+});
+
+test('exit melt captures the world, freezes gameplay and presentation, and pauses with the menu',async({page})=>{
+  await ready(page);await startGame(page);
+  await page.evaluate(async()=>{const {requestExit}=await import('/src/game/UseAction.ts');requestExit(false);});
+  await expect(page.locator('#screen-wipe')).toBeVisible();
+  const start=await snapshot(page);
+  expect(start.phase).toBe('intermission');expect(start.wipe.active).toBe(true);
+  await page.waitForTimeout(100);
+  const during=await snapshot(page);expect(during.tic).toBe(start.tic);expect(during.presentation.tic).toBe(start.presentation.tic);
+  expect(during.wipe.columns).not.toEqual(start.wipe.columns);
+  const colors=await page.locator('#screen-wipe').evaluate((canvas:HTMLCanvasElement)=>{
+    const pixels=canvas.getContext('2d')!.getImageData(0,0,320,200).data;
+    return new Set(Array.from({length:320*200},(_,i)=>`${pixels[i*4]},${pixels[i*4+1]},${pixels[i*4+2]}`)).size;
+  });
+  expect(colors).toBeGreaterThan(20);
+  await page.screenshot({path:'artifacts/exit-melt.png'});
+  await page.keyboard.press('Escape');await expect(page.locator('#screen-wipe')).toBeHidden();
+  const paused=await snapshot(page);await page.waitForTimeout(200);expect((await snapshot(page)).wipe).toEqual(paused.wipe);
+  await page.getByRole('button',{name:'Resume game',exact:true}).click();
+  await expect(page.locator('#screen-wipe')).toBeHidden({timeout:4000});
+  await expect.poll(async()=>(await snapshot(page)).presentation.tic).toBeGreaterThan(start.presentation.tic);
+  expect((await snapshot(page)).tic).toBe(start.tic);
 });

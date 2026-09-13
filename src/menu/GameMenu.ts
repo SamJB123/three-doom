@@ -9,6 +9,8 @@ import { GameSession } from '../game/GameSession';
 import './menu.css';
 
 interface Actions {
+  beginWipe?:()=>void;
+  transitionBusy?:()=>boolean;
   messages: (enabled:boolean)=>void;
   changed: () => void;
   save: (slot: number) => void;
@@ -27,12 +29,16 @@ export interface CompletionStats {
 
 export class GameMenu {
   private wadGraphics: WadGraphics;
+  get screen():HTMLCanvasElement|null {
+    if(!this.session.started)return this.wadGraphics.patch('TITLEPIC')?.canvas??null;
+    return this.session.phase==='finale'?this.finale?.canvas??null:this.session.phase==='intermission'?this.intermission?.canvas??null:null;
+  }
   private finale: Finale | null = null;
   get presentationMusic(): string {return this.session.phase==='finale' ? this.finale?.music ?? 'D_VICTOR' : 'D_INTER';}
   private intermission: Intermission | null = null;
   private advanceButton: HTMLButtonElement | null = null;
   tickPresentation(): boolean {
-    if(this.session.phase==='finale'){this.finale?.tick();return false;}
+    if(this.session.phase==='finale'){if(this.finale?.willTransition)this.actions.beginWipe?.();this.finale?.tick();return false;}
     const done=this.intermission?.tick() ?? false;
     if(this.advanceButton && this.intermission){const label=this.intermission.state.label;if(this.advanceButton.getAttribute('aria-label')!==label){this.advanceButton.replaceChildren(this.wadGraphics.label(label));this.advanceButton.setAttribute('aria-label',label);}}
     return done;
@@ -110,7 +116,7 @@ export class GameMenu {
       const img = document.createElement( 'img' ); img.src = src; img.alt = label;
       button.append( img );
     } else button.append(this.wadGraphics.label(label));
-    button.onclick = action;
+    button.onclick = ()=>{if(this.session.presenting && this.actions.transitionBusy?.())return;action();};
     this.panel.append( button );
     return button;
   }
@@ -167,7 +173,7 @@ export class GameMenu {
       this.panel.append(title);
       if(this.finale){
         this.panel.append(this.finale.canvas);
-        this.button('Show ending art',()=>this.finale?.showArt());
+        this.button('Show ending art',()=>{this.actions.beginWipe?.();this.finale?.showArt();});
       } else if(this.intermission) {
         this.panel.append(this.intermission.canvas);
         this.intermission.canvas.onclick=()=>this.intermission?.state.advance();
@@ -214,6 +220,7 @@ export class GameMenu {
       else { this.session.back(); this.changed(); }
       return;
     }
+    if(this.actions.transitionBusy?.() && (this.session.running||this.session.presenting)){e.preventDefault();e.stopImmediatePropagation();return;}
     if ( this.session.running ) return;
     if(this.session.presenting && ['ControlLeft','ControlRight','KeyE','KeyF'].includes(e.code)){
       e.preventDefault();e.stopImmediatePropagation();if(!e.repeat)this.intermission?.state.advance();return;
