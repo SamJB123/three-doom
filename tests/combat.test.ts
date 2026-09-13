@@ -147,11 +147,11 @@ test('vanilla actor collision blocks walking beneath an elevated lost soul',asyn
   const {tryMove}=await import('../src/physics/DoomMovement');
   resetThinkers();allMobjs.length=0;
   const map=dividedMap();map.sectors[0].ceilingHeight=512;initMobjSystem({},new Group(),map);
-  const player=createPlayer(100,0,0);
-  const skull=spawnMobj(150*F,0,256*F,'MT_SKULL');
+  const player=createPlayer(50,0,0);
+  const skull=spawnMobj(100*F,0,256*F,'MT_SKULL');
   assert(skull.z>player.mo.z+player.mo.height);
-  assert.equal(tryMove(player.mo,150*F,0,map),false);
-  assert.equal(tryMove(player.mo,100*F,60*F,map),true);
+  assert.equal(tryMove(player.mo,100*F,0,map),false);
+  assert.equal(tryMove(player.mo,50*F,60*F,map),true);
   resetThinkers();allMobjs.length=0;
 });
 

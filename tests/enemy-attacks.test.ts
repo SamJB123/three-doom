@@ -49,3 +49,11 @@ test('P_SpawnMobj starts with east movedir, so the first chase rotates a south-f
   A_Chase(actor,map);assert.equal(actor.angle,7*Math.PI/4);
   gameRules.skill=3;resetThinkers();allMobjs.length=0;
 });
+
+test('P_LookForPlayers respects the initial lastlook stop before checking player zero',async()=>{
+  const {A_Look,setPlayerMobj}=await import('../src/game/EnemyAI');
+  const {map,actor,target}=setup();setPlayerMobj(target);actor.target=null;actor.angle=Math.PI;actor.lastLook=1;
+  A_Look(actor,map);assert.equal(actor.target,null);assert.equal(actor.lastLook,0);
+  A_Look(actor,map);assert.equal(actor.target,target);
+  resetThinkers();allMobjs.length=0;
+});

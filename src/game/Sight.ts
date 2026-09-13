@@ -253,7 +253,7 @@ export function P_CheckSight(
   t1: Mobj,
   t2: Mobj,
   map: DoomMapData,
-  rejectMatrix?: Uint8Array
+  rejectMatrix: Uint8Array | undefined = map.reject
 ): boolean {
 
   // Reject matrix quick-rejection

@@ -300,3 +300,13 @@ Player and monster damage now share that tail, preserving immunity, lethal-hit a
 All four episode demos now have 350-tic port-repeatability/pause checks. Trace polling/transfer was made cheaper and longer streams up to 4000 commands are supported. C comparisons deliberately remain failing for DEMO2 (projectile position, tic 103), DEMO3 (player fixed thrust, tic 168) and DEMO4 (sight/RNG, tic 1). Next: source projectile subdivision, exact command thrust and the missing REJECT connection, then extend the recordings.
 
 Validation: 109 unit tests, typecheck and build pass; four installed-Chrome demo checks pass (1.2 minutes). DEMO1's expanded C gate passes; the three newly exposed episode mismatches are recorded, not waived. Full campaign and presentation/release gates remain open.
+
+## 2026-09-13 — cross-episode movement, AI and weapon corrections
+
+**LOOP-02 / PHYS-01 / ACTOR-02 / COMBAT-01 / SAVE-01.** Original-world comparisons now pass every captured field for the first 350 tics of DEMO1, DEMO2 and DEMO3. DEMO4 agrees through 157; its first remaining divergence is an enemy waking at tic 158, with downstream RNG differences. These remain short hosted-C samples, not complete demo or campaign parity.
+
+Fixed command thrust rounding, original `P_XYMovement` projectile subdivision, `P_PathTraverse` fixed blockmap sliding, the missing REJECT connection, and `P_LookForPlayers`' four-slot scan timing. `P_SetThingPosition` ordering now determines collision candidates and persists through save/load; this corrected a projectile hitting the player instead of a monster. Weapon timing now consumes the current tic's attack command, preserves action-replaced zero-tic psprite states, synchronizes player attack states and retains source refire cadence. `P_BulletSlope` is sampled once per shot at the original 1024-unit aim range; seven shotgun pellets no longer retarget vertically after killing their first target. Super-shotgun vertical spread also consumes its original RNG pair.
+
+Added `npm run verify:world -- 350` to compare existing browser captures against fresh C runs for all four demos, retaining separate ignored provenance/reports. It deliberately fails while any demo differs. Full hitscan blockmap ordering, three-angle bullet autoaim, longer recordings and presentation/campaign/device gates remain open. Next: investigate DEMO4's first sight/wake difference, then extend recordings.
+
+Validation: 119 unit tests, typecheck and production build pass. All four 350-tic browser replay checks pass, including pause and changed frame batching. The preceding save/load and mobile checks passed with the new collision-link persistence; all 36 WAD maps pass smoke verification. The C gate passes DEMO1–3 and correctly fails DEMO4 at tic 158.

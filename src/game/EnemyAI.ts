@@ -344,28 +344,34 @@ export function A_FaceTarget( mo: Mobj ): void {
 // A_Look — idle state scanning for player
 // ============================================================
 
+/** P_LookForPlayers, retaining the four-slot scan in single-player games. */
+export function P_LookForPlayers(mo:Mobj,allAround:boolean,map:DoomMapData):boolean {
+  if(!playerMobj)return false;
+  const stop=(mo.lastLook-1)&3;let count=0;
+  for(;;mo.lastLook=(mo.lastLook+1)&3){
+    if(mo.lastLook!==0)continue;
+    if(count++===2||mo.lastLook===stop)return false;
+    if(playerMobj.health<=0||!P_CheckSight(mo,playerMobj,map))continue;
+    if(!allAround){
+      const delta=(radiansToAngle(angleTo(mo.x,mo.y,playerMobj.x,playerMobj.y))-radiansToAngle(mo.angle))>>>0;
+      if(delta>0x40000000&&delta<0xc0000000&&approxDistance(playerMobj.x-mo.x,playerMobj.y-mo.y)>MELEERANGE)continue;
+    }
+    mo.target=playerMobj;return true;
+  }
+}
+
 export function A_Look( mo: Mobj, map: DoomMapData ): void {
 
   mo.threshold = 0;
 
-  if ( ! playerMobj || playerMobj.health <= 0 ) return;
-
-  // Check if player is visible
-  const canSee = P_CheckSight( mo, playerMobj, map );
-
   const sector = findSectorAtFixed(mo.x, mo.y, map);
   const soundTarget = sector ? sectorSoundTarget.get(map.sectors.indexOf(sector)) : null;
-  const heard = soundTarget && soundTarget.health > 0 && (!(mo.flags & MF_AMBUSH) || canSee);
-  if (!heard) {
-    if (!canSee) return;
-    const angleToPlayer = angleTo(mo.x, mo.y, playerMobj.x, playerMobj.y);
-    let delta = normalizeAngle(angleToPlayer - normalizeAngle(mo.angle));
-    if (delta > Math.PI) delta = 2 * Math.PI - delta;
-    if (delta > Math.PI / 2 && approxDistance(playerMobj.x - mo.x, playerMobj.y - mo.y) > MELEERANGE) return;
+  let heard=false;
+  if(soundTarget&&(soundTarget.flags&MF_SHOOTABLE)){
+    mo.target=soundTarget;
+    heard=!(mo.flags&MF_AMBUSH)||P_CheckSight(mo,soundTarget,map);
   }
-
-  // Found the player — go to see state
-  mo.target = playerMobj;
+  if(!heard&&!P_LookForPlayers(mo,false,map))return;
 
   if ( mo.info.seeSound ) {
 
@@ -421,9 +427,7 @@ export function A_Chase( mo: Mobj, map: DoomMapData ): void {
   // No target or target dead — look for players
   if ( ! mo.target || ( mo.target.flags & MF_SHOOTABLE ) === 0 ) {
 
-    if ( playerMobj && playerMobj.health > 0 && P_CheckSight( mo, playerMobj, map ) ) {
-
-      mo.target = playerMobj;
+    if ( P_LookForPlayers(mo,true,map) ) {
       return;
 
     } else {

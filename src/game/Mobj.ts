@@ -1,3 +1,4 @@
+import {linkThing,restoreThingLinks,thingsInBounds} from '../physics/ThingLinks';
 import {stopSound} from '../sound/SoundManager';
 import {fineSin,fineCos,pointToRadians} from '../math/angles';
 // Map object (mobj) system — ported from p_mobj.c.
@@ -69,6 +70,7 @@ export interface Mobj {
   tracer: Mobj | null;    // homing missile target / archvile fire
   threshold: number;
   reactionTime: number;
+  blockOrder?: number;   // saved blockmap insertion order
   moveDir: number;        // current movement direction (0–8, 8 = no dir)
   movecount: number;      // tics remaining in current move direction
   lastLook: number;       // player index last looked for
@@ -107,6 +109,7 @@ export function initMobjSystem(
   spriteGroup = group;
   mapData = map;
   map.mobjs = allMobjs;
+  map.thingLinkSequence=0;
 
 }
 
@@ -216,6 +219,7 @@ export function spawnMobj(
   restoreMobjThinker(mo);
 
   allMobjs.push( mo );
+  if(mapData)linkThing(mo,mapData);
   return mo;
 
 }
@@ -331,22 +335,24 @@ export function setMissileAimCallback(callback:NonNullable<typeof missileAim>):v
 
 function xyMovement( mo: Mobj ): void {
   if (!(mo.flags & (MF_MISSILE | MF_SKULLFLY))) { xyMovementStep(mo); return; }
-  const mx = mo.momx, my = mo.momy;
-  const steps = Math.max(1, Math.ceil(Math.max(Math.abs(mx), Math.abs(my)) / (8 * FRACUNIT)));
-  for (let i=0; i<steps; i++) {
-    mo.momx = Math.trunc(mx * (i+1) / steps) - Math.trunc(mx * i / steps);
-    mo.momy = Math.trunc(my * (i+1) / steps) - Math.trunc(my * i / steps);
-    xyMovementStep(mo);
-    if (mo.removed || !(mo.flags & (MF_MISSILE | MF_SKULLFLY)) || (mo.momx===0 && mo.momy===0)) return;
-  }
-  mo.momx = mx; mo.momy = my;
+  mo.momx=Math.max(-30*FRACUNIT,Math.min(30*FRACUNIT,mo.momx));
+  mo.momy=Math.max(-30*FRACUNIT,Math.min(30*FRACUNIT,mo.momy));
+  let xmove=mo.momx,ymove=mo.momy;
+  do {
+    let dx:number,dy:number;
+    if(xmove>15*FRACUNIT||ymove>15*FRACUNIT){
+      dx=Math.trunc(xmove/2);dy=Math.trunc(ymove/2);xmove>>=1;ymove>>=1;
+    }else{dx=xmove;dy=ymove;xmove=ymove=0;}
+    xyMovementStep(mo,dx,dy);
+    if(mo.removed||!(mo.flags&(MF_MISSILE|MF_SKULLFLY))||(!mo.momx&&!mo.momy))return;
+  }while(xmove||ymove);
 }
 
 // PIT_CheckThing projectile/skull branches. Check the candidate position
 // before committing movement, including the initial half-tic missile step.
 function projectileThingImpact(mo:Mobj,x:Fixed,y:Fixed):boolean {
   if(!(mo.flags & (MF_MISSILE|MF_SKULLFLY)) || mo.flags & MF_NOCLIP)return false;
-  for(const thing of allMobjs){
+  for(const thing of mapData?thingsInBounds(mapData,x-mo.radius-32*FRACUNIT,y-mo.radius-32*FRACUNIT,x+mo.radius+32*FRACUNIT,y+mo.radius+32*FRACUNIT):allMobjs){
     if(thing===mo || thing.removed || !(thing.flags & (MF_SOLID|MF_SPECIAL|MF_SHOOTABLE)))continue;
     const distance=thing.radius+mo.radius;
     if(Math.abs(thing.x-x)>=distance || Math.abs(thing.y-y)>=distance)continue;
@@ -370,7 +376,7 @@ function projectileThingImpact(mo:Mobj,x:Fixed,y:Fixed):boolean {
   return false;
 }
 
-function xyMovementStep( mo: Mobj ): void {
+function xyMovementStep( mo: Mobj, dx=mo.momx, dy=mo.momy ): void {
 
   if ( mo.momx === 0 && mo.momy === 0 ) {
 
@@ -389,8 +395,8 @@ function xyMovementStep( mo: Mobj ): void {
 
   }
 
-  const nextX = mo.x + mo.momx;
-  const nextY = mo.y + mo.momy;
+  const nextX = mo.x + dx;
+  const nextY = mo.y + dy;
 
   if(projectileThingImpact(mo,nextX,nextY))return;
 
@@ -1085,8 +1091,10 @@ export function restoreMobjs(saved: SavedMobj[], player: Mobj): void {
     if(mo===player)allMobjs.push(mo);
     const {target,tracer,...scalar}=state;
     Object.assign(mo,scalar,{info:MOBJ_TYPES[state.type],target:null,tracer:null});
+    if(state.blockOrder===undefined)delete mo.blockOrder;
     if(mo!==player)updateMobjSprite(mo);
   }
+  if(mapData)restoreThingLinks(mapData);
   saved.forEach((state,i)=>{
     allMobjs[i].target=allMobjs[state.target] ?? null;
     allMobjs[i].tracer=allMobjs[state.tracer] ?? null;

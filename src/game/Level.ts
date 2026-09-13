@@ -1,3 +1,4 @@
+import {linkThing} from '../physics/ThingLinks';
 import {P_Random} from './DoomRandom';
 import { Group, Mesh, MeshBasicMaterial } from 'three/webgpu';
 import * as w from '../wad';
@@ -55,7 +56,8 @@ export class Level {
       vertexes:w.parseVertexes(wad,lumps.VERTEXES), linedefs:w.parseLinedefs(wad,lumps.LINEDEFS),
       sidedefs:w.parseSidedefs(wad,lumps.SIDEDEFS), sectors:w.parseSectors(wad,lumps.SECTORS),
       segs:w.parseSegs(wad,lumps.SEGS), subsectors:w.parseSubsectors(wad,lumps.SSECTORS),
-      nodes:w.parseNodes(wad,lumps.NODES), blockmap:w.parseBlockmap(wad,lumps.BLOCKMAP)
+      nodes:w.parseNodes(wad,lumps.NODES), blockmap:w.parseBlockmap(wad,lumps.BLOCKMAP),
+      reject:wad.buf.slice(lumps.REJECT.offset,lumps.REJECT.offset+lumps.REJECT.size)
     };
     this.map=map;
     setFloorTextureHeights(Object.fromEntries(Object.entries(assets.textures).map(([name,texture])=>[name,texture.height])));
@@ -79,7 +81,7 @@ export class Level {
     this.startYaw=this.player.mo.angle-Math.PI/2;
     setPlayerMobj(this.player.mo);
     for(const thing of this.things){
-      if(thing===start){this.player.mo.lastLook=P_Random()%4;allMobjs.push(this.player.mo);restoreMobjThinker(this.player.mo);}
+      if(thing===start){this.player.mo.lastLook=P_Random()%4;allMobjs.push(this.player.mo);linkThing(this.player.mo,map);restoreMobjThinker(this.player.mo);}
       else if(DOOMEDNUM_TO_TYPE[thing.type])spawnMapThing(thing);
     }
     this.totalKills=allMobjs.filter(m=>m.flags&MF_COUNTKILL).length;

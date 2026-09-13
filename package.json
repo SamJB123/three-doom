@@ -17,7 +17,8 @@
     "inventory:specials": "tsx scripts/inventory-specials.ts",
     "verify:audio": "tsx scripts/verify-audio.ts",
     "reference:world": "node scripts/reference-world.mjs",
-    "compare:world": "tsx scripts/compare-world.ts --check"
+    "compare:world": "tsx scripts/compare-world.ts --check",
+    "verify:world": "node scripts/verify-world.mjs"
   },
   "dependencies": {
     "crashcat": "^0.0.2",

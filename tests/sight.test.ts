@@ -15,3 +15,13 @@ test('P_CheckSight preserves large fixed products when narrowing a raised-floor 
   assert.equal(P_CheckSight(source,target,map),false);
   resetThinkers();allMobjs.length=0;
 });
+
+test('P_CheckSight uses the map REJECT sector-pair bitmap by default',()=>{
+  const map=dividedMap();resetThinkers();allMobjs.length=0;initMobjSystem({},new Group(),map);
+  const source=spawnMobj(80*F,0,0,'MT_TROOP'),target=spawnMobj(-80*F,0,0,'MT_PLAYER');
+  assert.equal(P_CheckSight(source,target,map),true);
+  map.reject=new Uint8Array([1<<(source.sectorIndex*map.sectors.length+target.sectorIndex)]);
+  assert.equal(P_CheckSight(source,target,map),false);
+  assert.equal(P_CheckSight(source,target,map,new Uint8Array([0])),true);
+  resetThinkers();allMobjs.length=0;
+});

@@ -1,3 +1,4 @@
+import {linkThing} from '../physics/ThingLinks';
 import {fineSin,fineCos} from '../math/angles';
 // Doom teleporter system — ported from p_telept.c / p_spec.c EV_Teleport.
 // Moves a thing to the teleport destination in the tagged sector.
@@ -85,6 +86,7 @@ export function evTeleport(
       // Set player position
       mover.x = destX;
       mover.y = destY;
+      linkThing(mover,map);
       mover.z = destFloorZ;
       mover.floorz = destFloorZ;
       mover.ceilingz = intToFixed(map.sectors[si].ceilingHeight);

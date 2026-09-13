@@ -1,3 +1,5 @@
+import {linkThing,thingsInBounds} from './ThingLinks';
+import {traceLines} from './LineTrace';
 import {slideProjection} from './SlideProjection';
 import {fineSin,fineCos} from '../math/angles';
 import {finesine} from '../math/AngleTables';
@@ -64,6 +66,8 @@ export interface DoomMapData {
   nodes: BspNode[];
   blockmap: Blockmap;
   mobjs?: Mobj[];
+  reject?: Uint8Array;
+  thingLinkSequence?: number;
 }
 
 // Temporary collision state (fixed-point)
@@ -306,7 +310,7 @@ export function checkPosition(
   // PIT_CheckThing: ordinary actors are infinitely tall in vanilla Doom.
   // Missile/skull damage is resolved by the mobj movement path.
   if ( !ignoreThings && !(mo.flags & (MF_MISSILE | MF_SKULLFLY)) ) {
-    for ( const other of map.mobjs ?? [] ) {
+    for ( const other of thingsInBounds(map,bbox.left-32*FRACUNIT,bbox.bottom-32*FRACUNIT,bbox.right+32*FRACUNIT,bbox.top+32*FRACUNIT) ) {
       if ( other === mo || other.removed || !(other.flags & MF_SOLID) ) continue;
       const distance = other.radius + mo.radius;
       if ( Math.abs(other.x - x) < distance && Math.abs(other.y - y) < distance ) return false;
@@ -377,6 +381,7 @@ export function tryMove(
 
   const sector = findSectorAtFixed( x, y, map );
   mo.sectorIndex = sector ? map.sectors.indexOf( sector ) : -1;
+  linkThing(mo,map);
   if ( crossSpecialCallback && !(mo.flags & (MF_NOCLIP | MF_TELEPORT | MF_MISSILE)) ) {
     // Copy: teleport/other nested position checks may overwrite spechit.
     for ( const ldIdx of [...spechit].reverse() ) {
@@ -407,23 +412,17 @@ export function slideMove(
     const leadY=mo.y+(mo.momy>0 ? mo.radius : -mo.radius), trailY=mo.y-(mo.momy>0 ? mo.radius : -mo.radius);
     let best=FRACUNIT+1, hit: Linedef | null=null;
     for (const [x,y] of [[leadX,leadY],[trailX,leadY],[leadX,trailY]]) {
-      for (const line of map.linedefs) {
-        const a=map.vertexes[line.v1], b=map.vertexes[line.v2];
+      for (const {lineIdx,frac} of traceLines(x,y,x+mo.momx,y+mo.momy,map).intercepts) {
+        const line=map.linedefs[lineIdx],a=map.vertexes[line.v1],b=map.vertexes[line.v2];
         if(line.left<0&&pointOnLineSide(mo.x,mo.y,a,b))continue;
         let blocking=line.left<0;
-        if (!blocking) {
+        if(!blocking){
           const opening=lineOpening(line,map.sidedefs,map.sectors);
-          blocking=opening.openRange<mo.height || opening.openTop-mo.z<mo.height || opening.openBottom-mo.z>MAXSTEP;
+          blocking=opening.openRange<mo.height||opening.openTop-mo.z<mo.height||opening.openBottom-mo.z>MAXSTEP;
         }
-        if (!blocking) continue;
-        const ax=a.x*FRACUNIT, ay=a.y*FRACUNIT, dx=(b.x-a.x)*FRACUNIT, dy=(b.y-a.y)*FRACUNIT;
-        const den=mo.momx*dy-mo.momy*dx;
-        if (!den) continue;
-        const u=((ax-x)*mo.momy-(ay-y)*mo.momx)/den;
-        const divisor=(fixedMul(dy>>8,mo.momx)-fixedMul(dx>>8,mo.momy))|0;
-        const numerator=(fixedMul((ax-x)>>8,dy)+fixedMul((y-ay)>>8,dx))|0;
-        const frac=divisor?fixedDiv(numerator,divisor):0;
-        if (frac>=0 && frac<=FRACUNIT && frac<best && u>=0 && u<=1) { best=frac; hit=line; }
+        if(!blocking)continue;
+        if(frac<best){best=frac;hit=line;}
+        break;
       }
     }
     if (!hit) break;
@@ -580,7 +579,7 @@ export function movePlayer(
 
   if ( forwardMove !== 0 ) {
 
-    const thrust = fwdThrust * forwardMove;
+    const thrust = Math.round(fwdThrust * forwardMove);
     player.mo.momx += fixedMul( thrust, fineCos(angle) );
     player.mo.momy += fixedMul( thrust, fineSin(angle) );
 
@@ -588,7 +587,7 @@ export function movePlayer(
 
   if ( sideMove !== 0 ) {
 
-    const thrust = sideThrust * sideMove;
+    const thrust = Math.round(sideThrust * sideMove);
     player.mo.momx += fixedMul( thrust, fineCos(angle - Math.PI / 2) );
     player.mo.momy += fixedMul( thrust, fineSin(angle - Math.PI / 2) );
 

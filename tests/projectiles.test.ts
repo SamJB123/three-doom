@@ -81,3 +81,24 @@ test('player missile aim probes and vertical launch momentum match executed orig
   }
   initAttackSystem();
 });
+
+test('P_XYMovement does not insert extra eight-unit projectile collision steps',()=>{
+  const map=dividedMap();map.linedefs[0].left=-1;map.linedefs[0].flags=0;
+  resetThinkers();allMobjs.length=0;initMobjSystem({},new Group(),map);
+  const shot=spawnMobj(12*F,0,32*F,'MT_TROOPSHOT');shot.momx=-10*F;
+  runThinkers();assert.equal(shot.x,12*F);assert.equal(shot.momx,0);assert.equal(shot.state,shot.info.deathState);
+  resetThinkers();allMobjs.length=0;
+});
+
+test('overlapping projectile candidates follow block-link order, including same-block relinking',async()=>{
+  const {tryMove}=await import('../src/physics/DoomMovement');
+  const {getMobjMapData}=await import('../src/game/Mobj');
+  for(const movePlayer of [false,true]){
+    setup();const player=spawnMobj(40*F,0,0,'MT_PLAYER'),monster=spawnMobj(78*F,0,0,'MT_POSSESSED');
+    const source=spawnMobj(-80*F,0,0,'MT_TROOP');
+    if(movePlayer)assert(tryMove(player,41*F,0,getMobjMapData()!));
+    const shot=spawnMobj(60*F,0,32*F,'MT_TROOPSHOT');shot.target=source;shot.momx=F;
+    runThinkers();assert.equal(player.health<100,movePlayer);assert.equal(monster.health<20,!movePlayer);
+  }
+  resetThinkers();allMobjs.length=0;
+});

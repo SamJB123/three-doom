@@ -1,3 +1,5 @@
+import {setPlayerMobjState} from './PlayerState';
+import type {Mobj} from './Mobj';
 import {finesine} from '../math/AngleTables';
 // Weapon system — ported from p_pspr.c
 // Manages psprite state machine, weapon switching, firing, and ammo consumption.
@@ -214,10 +216,12 @@ export class WeaponSystem {
 
   archive() {return structuredClone({psprites:this.psprites,attackDown:this.attackDown,refire:this.refire,lastAngle:this.lastAngle});}
   restore(saved: ReturnType<WeaponSystem['archive']>): void {
-    this.psprites=structuredClone(saved.psprites);this.attackDown=saved.attackDown;this.refire=saved.refire;this.lastAngle=saved.lastAngle;
+    this.psprites=structuredClone(saved.psprites);this.attackDown=saved.attackDown;this.refire=Number(saved.refire);this.lastAngle=saved.lastAngle;
   }
   private attackDown = false;
-  private refire = false;
+  private attackHeld = false;
+  private playerActor:Mobj|undefined;
+  private refire = 0;
   private aimCallback: ((angle: number, range: Fixed) => Fixed) | null = null;
   private noiseCallback: (() => void) | null = null;
   setAimCallback(cb: (angle: number, range: Fixed) => Fixed): void { this.aimCallback = cb; }
@@ -260,6 +264,8 @@ export class WeaponSystem {
     const input = world.get( Input );
     if ( ! state || ! input ) return;
 
+    this.attackHeld=input.attack;
+    this.playerActor=world.get(DoomWorld)?.player?.mo;
     this.bob=world.get(DoomWorld)?.player?.bob??0;
     this.levelTime=world.get(Time)?.levelTime??0;
 
@@ -295,7 +301,7 @@ export class WeaponSystem {
     }
 
     // Process psprite state machines
-    this.movePsprites( state, input.attack );
+    this.movePsprites( state );
 
   }
 
@@ -347,16 +353,15 @@ export class WeaponSystem {
       // Execute action
       if ( st.action ) this.execAction( st.action, state, psp );
 
-      // If tics > 0, stop and wait; if 0, immediately advance
-      if ( st.tics > 0 ) return;
-
-      stateName = st.next;
+      // Actions may replace or remove this psprite (notably zero-tic refire).
+      if(!psp.state||psp.tics!==0)return;
+      stateName=STATES[psp.state].next;
 
     }
 
   }
 
-  private movePsprites( state: PlayerStatusState, attackHeld: boolean ): void {
+  private movePsprites( state: PlayerStatusState ): void {
 
     for ( let i = 0; i < 2; i ++ ) {
 
@@ -382,8 +387,7 @@ export class WeaponSystem {
     this.psprites[ 1 ].sx = this.psprites[ 0 ].sx;
     this.psprites[ 1 ].sy = this.psprites[ 0 ].sy;
 
-    // Track attack button state for refire
-    this.attackDown = attackHeld;
+
 
   }
 
@@ -444,9 +448,10 @@ export class WeaponSystem {
 
     if ( ! this.checkAmmo( state ) ) return;
 
-    this.noiseCallback?.();
+    setPlayerMobjState(state,'S_PLAY_ATK1',this.playerActor);
     const info = WEAPON_INFO[ state.currentWeapon ];
     this.setPsprite( state, 0, info.atkState );
+    this.noiseCallback?.();
 
   }
 
@@ -487,8 +492,10 @@ export class WeaponSystem {
 
   private A_WeaponReady( state: PlayerStatusState, psp: PSpriteDef ): void {
 
-    // Check for weapon change
-    if ( state.pendingWeapon !== null ) {
+    if(state.mobjState.name==='S_PLAY_ATK1'||state.mobjState.name==='S_PLAY_ATK2')setPlayerMobjState(state,'S_PLAY',this.playerActor);
+    if(state.currentWeapon==='chainsaw'&&psp.state==='SAW')playSound('sawidl');
+    // Check for weapon change or death.
+    if ( state.pendingWeapon !== null || !state.health ) {
 
       this.setPsprite( state, 0, WEAPON_INFO[ state.currentWeapon ].downState );
       return;
@@ -496,12 +503,11 @@ export class WeaponSystem {
     }
 
     // Check for fire
-    if ( this.attackDown ) {
-
-      this.fireWeapon( state );
-      return;
-
-    }
+    if(this.attackHeld){
+      if(!this.attackDown||(state.currentWeapon!=='missile'&&state.currentWeapon!=='bfg')){
+        this.attackDown=true;this.fireWeapon(state);return;
+      }
+    }else this.attackDown=false;
 
     this.applyBob(this.bob,this.levelTime);
 
@@ -541,20 +547,22 @@ export class WeaponSystem {
 
   private A_ReFire( state: PlayerStatusState, _psp: PSpriteDef ): void {
 
-    if ( this.attackDown && state.health > 0 ) {
+    if ( this.attackHeld && state.pendingWeapon===null && state.health > 0 ) {
 
-      this.refire = true;
+      this.refire++;
       this.fireWeapon( state );
 
     } else {
 
-      this.refire = false;
+      this.refire = 0;
+      this.checkAmmo(state);
 
     }
 
   }
 
   private A_GunFlash( state: PlayerStatusState ): void {
+    setPlayerMobjState(state,'S_PLAY_ATK2',this.playerActor);
 
     const info = WEAPON_INFO[ state.currentWeapon ];
     if ( info.flashState ) {
@@ -568,9 +576,9 @@ export class WeaponSystem {
   // --- Hitscan / projectile actions ---
   // Ported from p_pspr.c — hitscans now call lineAttack via fireCallback
 
-  private fireHitscan( angle: number, damage: number, range = 2048 * FRACUNIT ): void {
+  private fireHitscan( angle: number, damage: number, range = 2048 * FRACUNIT, slope = this.aimCallback?.(this.lastAngle, range) ?? 0 ): void {
 
-    if ( this.fireCallback ) this.fireCallback( angle, this.aimCallback?.(this.lastAngle, range) ?? 0, damage, range );
+    if ( this.fireCallback ) this.fireCallback( angle, slope, damage, range );
 
   }
 
@@ -580,10 +588,13 @@ export class WeaponSystem {
     state.ammo.clip --;
     this.A_GunFlash( state );
 
+    // P_BulletSlope is sampled once before any pellet changes the world.
+    const slope = this.aimCallback?.(this.lastAngle, 1024 * FRACUNIT) ?? 0;
+
     // Pistol: 5 * (1d3) damage, with ±5.625° spread
     const damage = 5 * ( ( P_Random() % 3 ) + 1 );
     const spread = this.refire ? ( P_Random() - P_Random() ) * ( 5.625 / 256 ) * ( Math.PI / 180 ) : 0;
-    this.fireHitscan( this.lastAngle + spread, damage );
+    this.fireHitscan( this.lastAngle + spread, damage, 2048 * FRACUNIT, slope );
 
   }
 
@@ -593,12 +604,15 @@ export class WeaponSystem {
     state.ammo.shell --;
     this.A_GunFlash( state );
 
+    // P_BulletSlope is sampled once before any pellet changes the world.
+    const slope = this.aimCallback?.(this.lastAngle, 1024 * FRACUNIT) ?? 0;
+
     // Shotgun: 7 pellets, each 5 * (1d3) damage
     for ( let i = 0; i < 7; i ++ ) {
 
       const damage = 5 * ( ( P_Random() % 3 ) + 1 );
       const spread = ( P_Random() - P_Random() ) * ( 5.625 / 256 ) * ( Math.PI / 180 );
-      this.fireHitscan( this.lastAngle + spread, damage );
+      this.fireHitscan( this.lastAngle + spread, damage, 2048 * FRACUNIT, slope );
 
     }
 
@@ -610,12 +624,16 @@ export class WeaponSystem {
     state.ammo.shell -= 2;
     this.A_GunFlash( state );
 
+    // P_BulletSlope is sampled once before any pellet changes the world.
+    const slope = this.aimCallback?.(this.lastAngle, 1024 * FRACUNIT) ?? 0;
+
     // SSG: 20 pellets, each 5 * (1d3) damage, wider spread (±11.25°)
     for ( let i = 0; i < 20; i ++ ) {
 
       const damage = 5 * ( ( P_Random() % 3 ) + 1 );
       const spread = ( P_Random() - P_Random() ) * ( 11.25 / 256 ) * ( Math.PI / 180 );
-      this.fireHitscan( this.lastAngle + spread, damage );
+      const verticalSpread = ( P_Random() - P_Random() ) << 5;
+      this.fireHitscan( this.lastAngle + spread, damage, 2048 * FRACUNIT, slope + verticalSpread );
 
     }
 
@@ -627,6 +645,10 @@ export class WeaponSystem {
     if ( state.ammo.clip <= 0 ) return;
     state.ammo.clip --;
 
+    setPlayerMobjState(state,'S_PLAY_ATK2',this.playerActor);
+    // P_BulletSlope is sampled once before any pellet changes the world.
+    const slope = this.aimCallback?.(this.lastAngle, 1024 * FRACUNIT) ?? 0;
+
     // Alternate flash states
     const psp = this.psprites[ 0 ];
     const flashState = psp.state === 'CHAIN1' ? 'CHAINFLASH1' : 'CHAINFLASH2';
@@ -635,14 +657,13 @@ export class WeaponSystem {
     // Chaingun: same as pistol per bullet
     const damage = 5 * ( ( P_Random() % 3 ) + 1 );
     const spread = this.refire ? ( P_Random() - P_Random() ) * ( 5.625 / 256 ) * ( Math.PI / 180 ) : 0;
-    this.fireHitscan( this.lastAngle + spread, damage );
+    this.fireHitscan( this.lastAngle + spread, damage, 2048 * FRACUNIT, slope );
 
   }
 
   private A_FireMissile( state: PlayerStatusState ): void {
 
     state.ammo.misl --;
-    this.A_GunFlash( state );
     if ( this.missileCallback ) this.missileCallback( this.lastAngle, 'MT_ROCKET' );
 
   }

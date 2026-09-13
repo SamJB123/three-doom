@@ -16,6 +16,7 @@ import { restoreLights, type LightState } from './Lights';
 export function archiveWorld(map: DoomMapData, player: DoomPlayer) {
   const {mo,...body}=player;
   return structuredClone({
+    thingLinkSequence:map.thingLinkSequence??0,
     sectors:map.sectors, sides:map.sidedefs, lines:map.linedefs, player:body,
     actors:archiveMobjs(),thinkers:archiveThinkers(),random:archiveRandom(),
     ai:archiveEnemyAI(),use:archiveUseActions(map.sidedefs)
@@ -43,6 +44,7 @@ export function restoreWorld(map: DoomMapData, player: DoomPlayer, saved: WorldA
   state.lines.forEach((value,i)=>Object.assign(map.linedefs[i],value));
   Object.assign(player,state.player);
   restoreMobjs(state.actors,player.mo);
+  map.thingLinkSequence=state.thingLinkSequence??map.thingLinkSequence;
   resetThinkers();resetDoors();resetFloors();resetPlatforms();resetStairs();resetCeilings();
   state.thinkers.forEach(record=>restoreThinker(record,map));
   restoreUseActions(state.use,map.sidedefs);restoreEnemyAI(state.ai);restoreRandom(state.random);

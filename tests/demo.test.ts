@@ -22,3 +22,16 @@ test('command decoding matches executed original G_ReadDemoTiccmd',async()=>{
     assert.deepEqual(command?[command.forward,command.side,command.turn,command.buttons,0]:[0,0,0,0,1],expected);
   }
 });
+
+test('demo movement preserves every signed command magnitude through fixed thrust',async()=>{
+  const {createPlayer,movePlayer}=await import('../src/physics/DoomMovement');
+  const {fineCos,fineSin}=await import('../src/math/angles');
+  const {fixedMul}=await import('../src/math/fixed');
+  for(let command=-127;command<=127;command++)for(const side of [false,true]){
+    const player=createPlayer(0,0,0),angle=.37;
+    movePlayer(player,side?0:command/25,side?command/24:0,angle);
+    const heading=angle-(side?Math.PI/2:0),thrust=command*2048;
+    assert.equal(player.mo.momx,fixedMul(thrust,fineCos(heading)),`${command}/${side}/x`);
+    assert.equal(player.mo.momy,fixedMul(thrust,fineSin(heading)),`${command}/${side}/y`);
+  }
+});
