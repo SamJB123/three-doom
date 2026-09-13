@@ -53,3 +53,37 @@ test('A_Punch aims its spread ray and turns toward a hit target only',async()=>{
   miss.world.set(Input,{attack:true});for(let i=0;i<5;i++)miss.system.tick(miss.world);
   assert.equal(miss.player.mo.angle,before);miss.world.destroy();
 });
+
+test('A_Saw uses spread/aim, hit-only facing and pull flag; a miss retains player heading',async()=>{
+  const {clearRandom,archiveRandom}=await import('../src/game/DoomRandom');
+  const {MF_JUSTATTACKED}=await import('../src/game/MobjData');
+  const {radiansToAngle}=await import('../src/math/angles');
+  const {world,state,player,system}=setup();state.currentWeapon='chainsaw';state.weapons.chainsaw=true;
+  const target=createPlayer(40,50,0).mo;player.mo.angle=0;
+  (system as any).playerActor=player.mo;(system as any).lastAngle=0;
+  let aimAngle=0;
+  system.setAimCallback((angle,range)=>{aimAngle=angle;assert.equal(range,64*65536+1);return 123;});
+  system.setFireCallback((angle,slope,damage,range)=>{
+    assert.equal(angle,aimAngle);assert.equal(slope,123);assert.equal(damage,18);assert.equal(range,64*65536+1);return target;
+  });
+  clearRandom();(system as any).A_Saw(state);
+  assert.equal(aimAngle,(109-220)*Math.PI*2/16384);assert.equal(archiveRandom().play,3);
+  assert.equal(radiansToAngle(player.mo.angle),0x3fffffff-Math.trunc(0x40000000/21));
+  assert.ok(player.mo.flags&MF_JUSTATTACKED);
+  player.mo.flags&=~MF_JUSTATTACKED;const before=player.mo.angle;system.setFireCallback(()=>null);
+  clearRandom();(system as any).A_Saw(state);
+  assert.equal(player.mo.angle,before);assert.equal(player.mo.flags&MF_JUSTATTACKED,0);world.destroy();
+});
+test('P_CheckAmmo chooses remaining rockets/BFG, respects retail exclusions and source thresholds',()=>{
+  const {world,state,system}=setup();
+  state.ammo={clip:0,shell:0,misl:1,cell:0};state.weapons.missile=true;
+  assert.equal((system as any).checkAmmo(state),false);assert.equal(state.pendingWeapon,'missile');
+  state.weapons.chainsaw=true;(system as any).checkAmmo(state);assert.equal(state.pendingWeapon,'chainsaw');
+  state.weapons.chainsaw=false;state.ammo.misl=0;state.weapons.bfg=true;state.ammo.cell=40;
+  (system as any).checkAmmo(state);assert.equal(state.pendingWeapon,'fist');
+  state.ammo.cell=41;(system as any).checkAmmo(state);assert.equal(state.pendingWeapon,'bfg');
+  state.weapons.plasma=true;(system as any).checkAmmo(state);assert.equal(state.pendingWeapon,'plasma');
+  state.weapons.plasma=false;state.ammo.cell=0;state.weapons.supershotgun=true;state.ammo.shell=3;
+  (system as any).checkAmmo(state);assert.equal(state.pendingWeapon,'fist');
+  state.weapons.shotgun=true;(system as any).checkAmmo(state);assert.equal(state.pendingWeapon,'shotgun');world.destroy();
+});

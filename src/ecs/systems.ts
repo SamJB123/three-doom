@@ -5,7 +5,7 @@ import { fixedToFloat, FRACUNIT } from '../math/fixed';
 import { runThinkers } from '../game/Thinkers';
 import { handleUseInput, updateButtons } from '../game/UseAction';
 import { playerInSpecialSector } from '../game/PlayerDamage';
-import { MF_NOCLIP, MF_SHADOW } from '../game/MobjData';
+import { MF_NOCLIP, MF_SHADOW, MF_JUSTATTACKED } from '../game/MobjData';
 import { tickPlayerMobjState, setPlayerMobjState } from '../game/PlayerState';
 
 const SCALE = 1.0 / 32.0;
@@ -20,6 +20,14 @@ export function playerTickSystem( world: World, tickWeapons:()=>void=()=>{} ): v
   if ( ! time || ! input || ! doomRef?.player || ! doomRef.map ) return;
 
   const { player, map } = doomRef;
+
+  // P_PlayerThink: a chainsaw hit pulls forward on the following tic,
+  // replacing movement/turn commands while retaining fire/use buttons.
+  if(player.mo.flags&MF_JUSTATTACKED){
+    input.forward=4;input.strafe=0;input.run=false;input.yaw=player.mo.angle-Math.PI/2;
+    world.set(Input,input);
+    player.mo.flags&=~MF_JUSTATTACKED;
+  }
 
   // Sync run state from input
   player.running = input.run;

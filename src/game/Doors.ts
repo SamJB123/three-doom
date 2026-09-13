@@ -180,6 +180,7 @@ export function evVerticalDoor(
 ): boolean {
 
   const color = ({26:'blue',32:'blue',27:'yellow',34:'yellow',28:'red',33:'red'} as const)[line.special as 26];
+  if(color&&!playerUse)return false;
   if (color && (!state || !(state.cards[`${color}card`] || state.cards[`${color}skull`]))) {
     playSound('oof');
     return false;

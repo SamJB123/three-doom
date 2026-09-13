@@ -212,12 +212,16 @@ export function P_Move( mo: Mobj, map: DoomMapData ): boolean {
     const contacts = specialContacts();
     if (!contacts.length) return false;
     mo.moveDir = DI_NODIR;
-    let opened = false;
+    let accepted = false;
     for (const idx of contacts.reverse()) {
       const line = map.linedefs[idx];
-      if (line.special === 1 && evVerticalDoor(line,map.linedefs,map.sidedefs,map.sectors,undefined,false)) opened = true;
+      // P_UseSpecialLine accepts these monster uses, even when a locked
+      // EV_VerticalDoor cannot open. Secret doors are never monster-usable.
+      if(!(line.flags&32)&&[1,32,33,34].includes(line.special)){
+        evVerticalDoor(line,map.linedefs,map.sidedefs,map.sectors,undefined,false);accepted=true;
+      }
     }
-    return opened;
+    return accepted;
   }
   mo.flags &= ~MF_INFLOAT;
   if (!(mo.flags & MF_FLOAT)) mo.z = mo.floorz;

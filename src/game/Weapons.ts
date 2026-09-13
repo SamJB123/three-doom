@@ -1,4 +1,5 @@
-import {pointToRadians} from '../math/angles';
+import {MF_JUSTATTACKED} from './MobjData';
+import {pointToRadians,pointToAngle,radiansToAngle,angleToRadians} from '../math/angles';
 import {setPlayerMobjState} from './PlayerState';
 import type {Mobj} from './Mobj';
 import {finesine} from '../math/AngleTables';
@@ -423,24 +424,15 @@ export class WeaponSystem {
 
     if ( state.ammo[ info.ammo ] >= ammoNeeded ) return true;
 
-    // Out of ammo — switch to best available weapon
-    const priority: WeaponSlot[] = [
-      'plasma', 'supershotgun', 'chaingun', 'shotgun',
-      'pistol', 'chainsaw', 'fist'
-    ];
-
-    for ( const w of priority ) {
-
-      if ( ! state.weapons[ w ] ) continue;
-      const wi = WEAPON_INFO[ w ];
-      if ( ! wi.ammo || state.ammo[ wi.ammo ] > 0 ) {
-
-        state.pendingWeapon = w;
-        break;
-
-      }
-
-    }
+    // P_CheckAmmo, retail rules (the super shotgun is commercial-only).
+    if(state.weapons.plasma&&state.ammo.cell>0)state.pendingWeapon='plasma';
+    else if(state.weapons.chaingun&&state.ammo.clip>0)state.pendingWeapon='chaingun';
+    else if(state.weapons.shotgun&&state.ammo.shell>0)state.pendingWeapon='shotgun';
+    else if(state.ammo.clip>0)state.pendingWeapon='pistol';
+    else if(state.weapons.chainsaw)state.pendingWeapon='chainsaw';
+    else if(state.weapons.missile&&state.ammo.misl>0)state.pendingWeapon='missile';
+    else if(state.weapons.bfg&&state.ammo.cell>40)state.pendingWeapon='bfg';
+    else state.pendingWeapon='fist';
 
     // Start lowering current weapon
     this.setPsprite( state, 0, WEAPON_INFO[ state.currentWeapon ].downState );
@@ -676,7 +668,7 @@ export class WeaponSystem {
 
     state.ammo.cell --;
     // Randomize flash between the two plasma flash states
-    const flashState = P_Random() < 128 ? 'PLASMAFLASH1' : 'PLASMAFLASH2';
+    const flashState = (P_Random() & 1) === 0 ? 'PLASMAFLASH1' : 'PLASMAFLASH2';
     this.setPsprite( state, 1, flashState );
     if ( this.missileCallback ) this.missileCallback( this.lastAngle, 'MT_PLASMA' );
 
@@ -707,8 +699,19 @@ export class WeaponSystem {
   private A_Saw( state: PlayerStatusState ): void {
 
     const damage = 2 * ( P_Random() % 10 + 1 );
-    playSound( 'sawful' );
-    this.fireHitscan( this.lastAngle, damage, 65 * FRACUNIT );
+    const angle=this.lastAngle+(P_Random()-P_Random())*(Math.PI*2/16384);
+    const range=64*FRACUNIT+1;
+    const slope=this.aimCallback?.(angle,range)??0;
+    const target=this.fireHitscan(angle,damage,range,slope);
+    if(!target){playSound('sawful');return;}
+    playSound('sawhit');
+    const actor=this.playerActor;if(!actor)return;
+    const toward=pointToAngle(target.x-actor.x,target.y-actor.y),current=radiansToAngle(actor.angle);
+    const difference=(toward-current)>>>0,step=Math.trunc(0x40000000/20),offset=Math.trunc(0x40000000/21);
+    const next=difference>0x80000000
+      ? difference<(-step>>>0)?toward+offset:current-step
+      : difference>step?toward-offset:current+step;
+    actor.angle=angleToRadians(next>>>0);actor.flags|=MF_JUSTATTACKED;
 
   }
 

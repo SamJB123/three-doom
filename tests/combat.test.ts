@@ -43,14 +43,14 @@ test('map spawning preserves angle, ambush flag, sector and spawn tic range', ()
 });
 
 test('fist/chainsaw attacks supply melee ranges rather than bullet range', () => {
-  for (const [weapon,range] of [['fist',64],['chainsaw',65]] as const) {
+  for (const [weapon,range] of [['fist',64*F],['chainsaw',64*F+1]] as const) {
     const world=createWorld(Input,PlayerStatus), state=world.get(PlayerStatus)!;
     state.currentWeapon=weapon; state.weapons[weapon]=true;
     const weapons=new WeaponSystem(), ranges:number[]=[];
     weapons.setFireCallback((_a,_s,_d,r)=>{ranges.push(r);}); weapons.setup(state);
     world.set(Input,{attack:true});
     for (let i=0;i<100;i++) weapons.tick(world);
-    assert(ranges.length>0); assert(ranges.every(r=>r===range*F)); world.destroy();
+    assert(ranges.length>0); assert(ranges.every(r=>r===range)); world.destroy();
   }
 });
 
@@ -202,4 +202,17 @@ test('P_BulletSlope probes both side angles in source order before falling back 
   positive.flags=0;assert.equal(bulletSlope(source,0),lo.slope);
   negative.flags=0;assert.equal(bulletSlope(source,0),0);
   resetThinkers();allMobjs.length=0;
+});
+
+test('monster door use rejects secrets and accepts only original manual-door families',async()=>{
+  const {P_Move}=await import('../src/game/EnemyAI');const {resetDoors}=await import('../src/game/Doors');
+  const {runThinkers}=await import('../src/game/Thinkers');
+  for(const [special,secret,accepted,opens] of [[1,false,true,true],[1,true,false,false],[32,false,true,false],[33,false,true,false],[34,false,true,false],[26,false,false,false],[31,false,false,false],[117,false,false,false]] as const){
+    resetThinkers();resetDoors();allMobjs.length=0;
+    const map=dividedMap();map.sectors[1].ceilingHeight=0;map.linedefs[0].special=special;if(secret)map.linedefs[0].flags|=32;
+    initMobjSystem({},new Group(),map);const monster=spawnMobj(22*F,0,0,'MT_TROOP');monster.moveDir=4;
+    assert.equal(P_Move(monster,map),accepted,`special ${special}, secret ${secret}`);
+    runThinkers();assert.equal(map.sectors[1].ceilingHeight>0,opens);
+  }
+  resetThinkers();resetDoors();allMobjs.length=0;
 });

@@ -66,3 +66,19 @@ test('teleport reaction time freezes turning and thrust while weapons use the ac
   world.set(Input,{forward:0,attack:false});playerTickSystem(world,()=>weapon.tick(world));
   assert.equal(player.mo.angle,0);world.destroy();resetThinkers();allMobjs.length=0;
 });
+
+test('P_PlayerThink consumes chainsaw pull once and preserves attack/use buttons',async()=>{
+  const {MF_JUSTATTACKED}=await import('../src/game/MobjData');
+  resetThinkers();allMobjs.length=0;
+  const map=dividedMap(),player=createPlayer(50,0,0);initMobjSystem({},new Group(),map);
+  const world=createWorld(Time,Input,DoomWorld,PlayerStatus);world.set(DoomWorld,{map,player});
+  player.mo.angle=0;player.mo.flags|=MF_JUSTATTACKED;
+  world.set(Input,{forward:-1,strafe:1,run:true,yaw:0,attack:true,use:false});
+  playerTickSystem(world,()=>{
+    const command=world.get(Input)!;assert.equal(command.forward,4);assert.equal(command.strafe,0);
+    assert.equal(command.run,false);assert.equal(command.attack,true);assert.equal(player.mo.angle,0);
+    assert.equal(player.mo.flags&MF_JUSTATTACKED,0);assert.ok(player.mo.momx>0);
+  });
+  world.set(Input,{forward:0,strafe:0,run:false,yaw:0});playerTickSystem(world);
+  assert.equal(player.mo.angle,Math.PI/2);world.destroy();resetThinkers();allMobjs.length=0;
+});
