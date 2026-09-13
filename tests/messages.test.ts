@@ -56,3 +56,27 @@ test('empty ammo replenishment uses P_GiveAmmo weapon preferences without overri
     world.destroy();
   }
 });
+
+test('locked manual doors and tagged objects report original key colors only on player refusal',async()=>{
+  const {setDoorMessageCallback,evVerticalDoor,resetDoors}=await import('../src/game/Doors');
+  const {useSpecialLine}=await import('../src/game/UseAction');
+  const {resetThinkers}=await import('../src/game/Thinkers');
+  const {dividedMap}=await import('./fixtures/maps');
+  const {createPlayerStatus}=await import('../src/ecs/traits');
+  const messages:string[]=[];setDoorMessageCallback(text=>messages.push(text));
+  for(const [color,manual,objects] of [['blue',[26,32],[99,133]],['red',[28,33],[134,135]],['yellow',[27,34],[136,137]]] as const){
+    for(const special of [...manual,...objects])for(const key of ['card','skull'] as const){
+      resetThinkers();resetDoors();messages.length=0;
+      const map=dividedMap(),status=createPlayerStatus();map.sectors[1].tag=7;map.sectors[1].ceilingHeight=0;
+      const line={...map.linedefs[0],special,tag:7};useSpecialLine(line,map,status);
+      const object=objects.some(id=>id===special);
+      assert.deepEqual(messages,[`You need a ${color} key to ${object?'activate this object':'open this door'}`]);
+      assert.equal(line.special,special);status.cards[`${color}${key}`]=true;
+      useSpecialLine(line,map,status);assert.equal(messages.length,1,'successful unlock does not report missing key');
+    }
+    messages.length=0;const map=dividedMap();
+    evVerticalDoor({...map.linedefs[0],special:manual[0]},map.linedefs,map.sidedefs,map.sectors,undefined,false);
+    assert.equal(messages.length,0,'monster use cannot post a player message');
+  }
+  resetThinkers();resetDoors();setDoorMessageCallback(()=>{});
+});

@@ -10,7 +10,7 @@ import { pointOnLineSide } from '../physics/DoomMovement';
 import type { Linedef, Sidedef, Thing } from '../wad';
 import { getLinedefsInBounds } from '../wad/BlockmapParser';
 import type { DoomPlayer, DoomMapData } from '../physics/DoomMovement';
-import { evVerticalDoor, evDoDoor } from './Doors';
+import { evVerticalDoor, evDoDoor, reportLockedDoor } from './Doors';
 import { evDoPlat, evStopPlat } from './Platforms';
 import { evDoFloor, evDoDonut } from './Floors';
 import { evDoCeiling, evCeilingCrushStop } from './Ceilings';
@@ -152,7 +152,7 @@ export function useSpecialLine( line: Linedef, map: DoomMapData, state?: PlayerS
       break;
     case 99: case 133: case 134: case 135: case 136: case 137: {
       const color=[99,133].includes(line.special)?'blue':[134,135].includes(line.special)?'red':'yellow';
-      if(!state || !(state.cards[`${color}card`]||state.cards[`${color}skull`])){playSound('oof');break;}
+      if(!state || !(state.cards[`${color}card`]||state.cards[`${color}skull`])){if(state)reportLockedDoor(color,true);playSound('oof');break;}
       if(evDoDoor('blazeOpen',line.tag,linedefs,sidedefs,sectors))changeSwitchTexture(line,sidedefs,[99,134,136].includes(line.special));
       break;
     }

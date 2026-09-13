@@ -434,3 +434,12 @@ Validation: typecheck, 157 unit tests, build and all-36-map WAD validation pass.
 The sound regression reproduced special 118 selecting doropn after its one-shot line had been cleared. Opening sound now follows the selected door type, preserving bdopn for both fast manual variants as in `EV_VerticalDoor`. The regression fails before the fix and passes afterward, alongside normal/manual-open cases. README now describes the connected wipe/attract sequence and mobile weapon-wheel controls.
 
 Validation: typecheck, 163 unit tests and production build pass. WebKit audio lifecycle and automap layout/saved marks both pass (7.1 seconds, clean exit). Full combined Chrome suite: 28 checks pass in 4.0 minutes with a clean exit, including all 36 lifecycle routes, finales, saves, mobile input, all-demo attract playback and rendering checks. Remaining campaign/device/performance checks are not closed by these synthetic movement scenarios. Next: original locked-door key feedback, then remaining presentation and campaign/release work.
+
+
+## 2026-09-13 — original locked-door key feedback
+
+**UI-03 / SPEC-01.** `EV_VerticalDoor` and `EV_DoLockedDoor` now post original `PD_BLUEK/REDK/YELLOWK` and `PD_BLUEO/REDO/YELLOWO` wording through the WAD-font HUD. Missing keys identify the required color and distinguish opening a door from activating an object. Successful card/skull unlocking and monster attempts do not post refusal messages. Existing HU_Ticker timeout, pause, refresh and message options apply.
+
+Validation: typecheck, 164 unit tests and build pass. Unit coverage exercises all twelve keyed door/object variants with cards and skulls. Two Chrome HUD checks pass (28 seconds, clean exit), including pickup message options and locked-door feedback surviving a pause longer than its normal lifetime. The preceding combined checkpoint passed the full 28-check Chrome suite and scoped WebKit checks. No further full-suite pass is implied after this small HUD addition.
+
+Next: broader scene lighting/presentation comparison and remaining special topology/obstruction scenarios, then actual campaign combat routes, campaign saves and release performance/device evidence. The port remains incomplete; physical hardware checks, full combat completion and documented long C differences are unresolved.

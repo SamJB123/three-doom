@@ -32,6 +32,13 @@ export interface VDoor {
   topCountdown: number;
 }
 
+// EV_VerticalDoor / EV_DoLockedDoor assign the original PD_* player message.
+let messageCallback: ((text:string)=>void)|null=null;
+export function setDoorMessageCallback(callback:(text:string)=>void):void {messageCallback=callback;}
+export function reportLockedDoor(color:'blue'|'red'|'yellow',object=false):void {
+  messageCallback?.(`You need a ${color} key to ${object?'activate this object':'open this door'}`);
+}
+
 // Track which sectors already have active door thinkers
 const activeDoorSectors = new Map<number, VDoor>();
 export function resetDoors(): void { activeDoorSectors.clear(); }
@@ -182,6 +189,7 @@ export function evVerticalDoor(
   const color = ({26:'blue',32:'blue',27:'yellow',34:'yellow',28:'red',33:'red'} as const)[line.special as 26];
   if(color&&!playerUse)return false;
   if (color && (!state || !(state.cards[`${color}card`] || state.cards[`${color}skull`]))) {
+    if(state)reportLockedDoor(color);
     playSound('oof');
     return false;
   }

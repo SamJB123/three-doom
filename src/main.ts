@@ -1,3 +1,4 @@
+import {setDoorMessageCallback} from './game/Doors';
 import {initDoomLighting,updateDoomLighting} from './renderer/DoomLighting';
 import {AttractSequence} from './game/AttractSequence';
 import {readDemo,demoInput,type Demo} from './game/Demo';
@@ -73,6 +74,7 @@ async function main(): Promise<void> {
   }
   const messages=new HudMessages(new WadGraphics(wad,palette));
   setPickupMessageCallback(text=>messages.state.post(text));
+  setDoorMessageCallback(text=>messages.state.post(text));
   const hud=new StatusBar(); hud.loadGraphics(wad,palette);
   const weaponOverlay=new WeaponOverlay();
   let weapons=new WeaponSystem();

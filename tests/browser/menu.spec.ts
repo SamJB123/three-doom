@@ -821,3 +821,19 @@ test('automap preserves HUD space, uses WAD glyphs and saves circular numbered m
   expect(saved.marks).toHaveLength(10);expect(saved.nextMark).toBe(1);expect(saved.marks[0].x).toBeGreaterThan(saved.marks[1].x);
   expect(await page.evaluate(()=>(window as any).__mapFallback)).toBe(0);
 });
+
+test('locked doors show original key feedback in the WAD HUD and pause its lifetime',async({page})=>{
+  await ready(page);await startGame(page);
+  await page.evaluate(async()=>{
+    const {useSpecialLine}=await import('/src/game/UseAction.ts');
+    const {createPlayerStatus}=await import('/src/ecs/traits.ts');
+    const {dividedMap}=await import('/tests/fixtures/maps.ts');
+    const map=dividedMap();useSpecialLine({...map.linedefs[0],special:26},map,createPlayerStatus());
+  });
+  await expect(page.getByRole('status')).toHaveText('You need a blue key to open this door');
+  await expect(page.locator('#hud-message')).toBeVisible();
+  await page.keyboard.press('Escape');await page.waitForTimeout(4200);
+  await expect(page.getByRole('status')).toHaveText('You need a blue key to open this door');
+  await page.getByRole('button',{name:'Resume game',exact:true}).click();
+  await expect(page.locator('#hud-message')).toBeHidden({timeout:6000});
+});
