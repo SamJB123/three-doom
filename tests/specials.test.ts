@@ -6,7 +6,7 @@ import {resetThinkers,runThinkers,archiveThinkers} from '../src/game/Thinkers';
 import {evDoFloor,evDoDonut,resetFloors,setFloorTextureHeights} from '../src/game/Floors';
 import {evDoPlat,evStopPlat,resetPlatforms} from '../src/game/Platforms';
 import {resetDoors} from '../src/game/Doors';
-import {useSpecialLine,crossSpecialLine} from '../src/game/UseAction';
+import {useSpecialLine,crossSpecialLine,shootSpecialLine,resetUseActions,updateButtons,archiveUseActions} from '../src/game/UseAction';
 import {createPlayer} from '../src/physics/DoomMovement';
 import {createPlayerStatus} from '../src/ecs/traits';
 import {lineAttack,setAttackMap,initAttackSystem} from '../src/game/Attack';
@@ -14,7 +14,7 @@ import {initMobjSystem,resetMobjs,spawnMobj} from '../src/game/Mobj';
 import {FRACUNIT as F} from '../src/math/fixed';
 import {consumeTeleport} from '../src/game/Teleport';
 
-function clean(){resetThinkers();resetFloors();resetPlatforms();resetDoors();resetMobjs();}
+function clean(){resetUseActions();resetThinkers();resetFloors();resetPlatforms();resetDoors();resetMobjs();}
 test('lower-and-change transfers destination texture/special on arrival; raise-to-texture uses shortest lower texture',()=>{
   clean();const m=dividedMap();m.sectors[0].floorHeight=16;m.sectors[0].tag=7;
   m.sectors[1].floorTex='NUKAGE1';m.sectors[1].special=5;
@@ -71,4 +71,42 @@ test('tagged lights change on crossing and clear one-shot specials',()=>{
   for(const [special,expected] of [[13,255],[35,35],[104,35]]){
     const line={...m.linedefs[0],special,tag:7};crossSpecialLine(line,m);assert.equal(m.sectors[0].lightLevel,expected);assert.equal(line.special,0);
   }clean();
+});
+
+test('projectiles cannot consume walk triggers or teleport, while monsters can open doors',async()=>{
+  const {evTeleport}=await import('../src/game/Teleport');
+  for(const type of ['MT_ROCKET','MT_PLASMA','MT_BFG','MT_TROOPSHOT','MT_HEADSHOT','MT_BRUISERSHOT'] as const){
+    for(const special of [4,10,39,88,97,125,126]){
+      clean();const m=dividedMap();m.sectors[1].tag=7;m.sectors[1].ceilingHeight=64;
+      initMobjSystem({},new Group(),m);const missile=spawnMobj(60*F,0,32*F,type);
+      const line={...m.linedefs[0],special,tag:7},things=[{type:14,x:-80,y:0,angle:90,flags:7}];
+      const count=archiveThinkers().length;
+      crossSpecialLine(line,m,undefined,things,0,missile);
+      assert.equal(line.special,special,`${type} consumed ${special}`);
+      assert.equal(archiveThinkers().length,count);assert.equal(missile.x,60*F);
+      assert.equal(evTeleport(line,0,missile,m,things),false);
+    }
+  }
+  clean();const m=dividedMap();m.sectors[1].tag=7;m.sectors[1].ceilingHeight=0;
+  initMobjSystem({},new Group(),m);const monster=spawnMobj(60*F,0,0,'MT_TROOP');
+  const line={...m.linedefs[0],special:4,tag:7};crossSpecialLine(line,m,undefined,[],0,monster);
+  assert.equal(line.special,0);assert.equal(archiveThinkers().length,2);clean();
+});
+
+test('one-shot switches clear without artwork, and switch-list order chooses the texture',()=>{
+  clean();const m=dividedMap(),line={...m.linedefs[0],special:24};
+  m.sidedefs[0].middle='-';shootSpecialLine(line,m,true);assert.equal(line.special,0);
+  m.sidedefs[0].upper='SW1WOOD';m.sidedefs[0].middle='SW1BRCOM';line.special=24;
+  shootSpecialLine(line,m,true);assert.equal(m.sidedefs[0].upper,'SW1WOOD');assert.equal(m.sidedefs[0].middle,'SW2BRCOM');clean();
+});
+test('repeated gun buttons flip artwork without restarting their original 35-tic timer',()=>{
+  clean();const m=dividedMap(),line={...m.linedefs[0],special:46};
+  shootSpecialLine(line,m,true);assert.equal(m.sidedefs[0].middle,'SW2BRCOM');
+  for(let i=0;i<10;i++)updateButtons(m.sidedefs);
+  shootSpecialLine(line,m,true);assert.equal(m.sidedefs[0].middle,'SW1BRCOM');
+  assert.equal(archiveUseActions(m.sidedefs).buttons[0].timer,25);
+  shootSpecialLine(line,m,true);assert.equal(m.sidedefs[0].middle,'SW2BRCOM');
+  for(let i=0;i<24;i++)updateButtons(m.sidedefs);
+  assert.equal(m.sidedefs[0].middle,'SW2BRCOM');updateButtons(m.sidedefs);
+  assert.equal(m.sidedefs[0].middle,'SW1BRCOM');assert.equal(archiveUseActions(m.sidedefs).buttons.length,0);clean();
 });

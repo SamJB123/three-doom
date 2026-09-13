@@ -16,7 +16,7 @@ import { evDoFloor, evDoDonut } from './Floors';
 import { evDoCeiling, evCeilingCrushStop } from './Ceilings';
 import { evBuildStairs } from './Stairs';
 import { evTeleport } from './Teleport';
-import { getSwitchPartner } from './Switches';
+import { SWITCH_PAIRS } from './Switches';
 import { markSectorDirty } from './Thinkers';
 import { playSound } from '../sound';
 import { FRACBITS, fixedToFloat } from '../math/fixed';
@@ -352,7 +352,11 @@ export function crossSpecialLine(
 
   if ( line.special === 0 ) return;
   actor ??= player?.mo;
-  if(actor && actor.type!=='MT_PLAYER' && ![4,10,39,88,97,125,126].includes(line.special))return;
+  if(actor && actor.type!=='MT_PLAYER'){
+    // P_CrossSpecialLine excludes these types even after their missile flag clears.
+    if(['MT_ROCKET','MT_PLASMA','MT_BFG','MT_TROOPSHOT','MT_HEADSHOT','MT_BRUISERSHOT'].includes(actor.type))return;
+    if(![4,10,39,88,97,125,126].includes(line.special))return;
+  }
 
   const { linedefs, sidedefs, sectors } = map;
   let clearSpecial = true; // most walk-overs are one-time triggers
@@ -454,63 +458,25 @@ const activeButtons: ActiveButton[] = [];
 export function resetUseActions(): void { useDown = false; activeButtons.length = 0; }
 export function requestExit(secret = false): void { exitCallback?.(secret); }
 
-function changeSwitchTexture(
-  line: Linedef,
-  sidedefs: Sidedef[],
-  useAgain: boolean
-): void {
-
-  if ( line.right < 0 ) return;
-
-  const side = sidedefs[ line.right ];
-
-  // Check upper, middle, lower textures for switch matches
-  const texKeys: ( 'upper' | 'middle' | 'lower' )[] = [ 'upper', 'middle', 'lower' ];
-
-  for ( let i = 0; i < 3; i ++ ) {
-
-    const key = texKeys[ i ];
-    const tex = side[ key ];
-    const partner = getSwitchPartner( tex );
-
-    if ( partner ) {
-
-      // Check if button already active for this side+position (don't double-activate)
-      if ( useAgain ) {
-
-        const alreadyActive = activeButtons.some( b => b.side === side && b.position === key );
-        if ( alreadyActive ) return;
-
+function changeSwitchTexture(line:Linedef,sidedefs:Sidedef[],useAgain:boolean):void {
+  // P_ChangeSwitchTexture clears one-shot actions even without switch artwork.
+  if(!useAgain)line.special=0;
+  if(line.right<0)return;
+  const side=sidedefs[line.right];
+  // The source searches switch-list order first, then upper/middle/lower.
+  for(const pair of SWITCH_PAIRS)for(const tex of pair){
+    for(const key of ['upper','middle','lower'] as const){
+      if(side[key]!==tex)continue;
+      side[key]=pair[0]===tex?pair[1]:pair[0];
+      // P_StartButton refuses a duplicate timer after the artwork has flipped.
+      if(useAgain && !activeButtons.some(button=>button.side===side)){
+        activeButtons.push({side,position:key,originalTex:tex,timer:BUTTONTIME});
       }
-
-      side[ key ] = partner;
-
-      if ( useAgain ) {
-
-        activeButtons.push( {
-          side,
-          position: key,
-          originalTex: tex,
-          timer: BUTTONTIME
-        } );
-
-      } else {
-
-        line.special = 0;
-
-      }
-
-      // Play switch sound (p_switch.c: sfx_swtchn for one-time, sfx_swtchx for button)
-      playSound( useAgain ? 'swtchx' : 'swtchn' );
-
-      // Mark dirty for visual update
-      markSectorDirty( side.sector );
-      return;
-
+      // The supplied source checks special 11 after clearing one-shot specials.
+      playSound(line.special===11?'swtchx':'swtchn');
+      markSectorDirty(side.sector);return;
     }
-
   }
-
 }
 
 // Run button timers (call every tic) — revert texture when timer expires

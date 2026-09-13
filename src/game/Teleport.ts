@@ -8,7 +8,7 @@ import { intToFixed } from '../math/fixed';
 import { playSoundAt } from '../sound';
 import { allMobjs, spawnMobj, type Mobj } from './Mobj';
 import { damageMobj } from './Attack';
-import { MF_SHOOTABLE } from './MobjData';
+import { MF_SHOOTABLE, MF_MISSILE } from './MobjData';
 
 const TELEPORT_DOOMEDNUM = 14; // Teleport destination thing type
 
@@ -46,6 +46,7 @@ export function evTeleport(
 
   const player = 'mo' in actor ? actor : null;
   const mover = player ? player.mo : actor as Mobj;
+  if(mover.flags & MF_MISSILE)return false;
   // Don't teleport from the back side
   if ( side === 1 ) return false;
 

@@ -2,7 +2,7 @@
 // Ported from p_switch.c
 
 // Switch pairs: SW1* → SW2* (off → on)
-const SWITCH_PAIRS: [string, string][] = [
+export const SWITCH_PAIRS: [string, string][] = [
   // Doom shareware / episode 1
   [ 'SW1BRCOM', 'SW2BRCOM' ],
   [ 'SW1BRN1', 'SW2BRN1' ],
