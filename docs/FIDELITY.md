@@ -99,3 +99,11 @@ Current cross-episode result supersedes the preceding first-divergence limits: D
 Preserving the supplied C `P_DivlineSide` horizontal X/Y quirk extends DEMO4 agreement through 216 tics. Tic 217 first exposes hitscan actor collection outside traversed cells. Synthetic occlusion fixtures avoid that boundary and a dedicated regression records it explicitly.
 
 All four 350-tic original-world comparisons now pass after replacing global hitscan actor collection with fixed visited-cell traversal and linked-actor ordering. Impact coordinates use the nudged trace. This supersedes the preceding DEMO4 first-divergence boundary. The passing scope remains the captured field set and 350 commands per demo; complete recordings, all internal counters, title playback and release gates remain open.
+
+## Longer recordings and lifecycle boundaries
+
+The 4000-command diagnostic request reaches actual recording ends for DEMO1 (1710) and DEMO4 (818); both port-versus-port repetitions pass with pause and different frame schedules. Original C first differs at DEMO1 tic 463 (RNG) and DEMO4 tic 368 (RNG). DEMO2 retains 1769 commands before divergent gameplay reaches rebirth; its first C difference is player angle at 600, in `A_Punch`. DEMO3 retains 3194 commands before rebirth; its first C difference is health at 417. Neither partial recording is a complete-demo pass. The large DEMO3 repeat run was interrupted after retaining its first trace; no repeatability claim is made for that long sample.
+
+Developer replay now pauses and retains its trace on rebirth/level-exit boundaries instead of losing it during a level rebuild. The browser harness writes partial traces before rejecting an early boundary. `DOOM_TRACE_SPEED=1–16` optionally scales test clock input; simulation still uses `TicClock`, and a second complete run changes frame batching and pauses. Per-demo C comparison directories now retain the paired port trace as well as C trace, provenance and report, so later captures do not erase the input behind a failure report.
+
+Mobile touch-handler/menu assertions pass in installed Chrome and Playwright WebKit 26.6 using portable synthetic events. Those assertions do not establish trusted hardware delivery, thumb comfort, mobile Safari/Android performance or sound quality. See RELEASE-CHECKS.md for reproducible commands and outstanding campaign/device gates.

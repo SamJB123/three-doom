@@ -99,7 +99,7 @@ async function main(): Promise<void> {
   automap.button.setAttribute('aria-label','Map');
   automap.button.replaceChildren(new WadGraphics(wad,palette).label('Map'));
   let level: Level;
-  let replay:{demo:Demo;index:number;limit:number;trace:unknown[]}|null=null;
+  let replay:{demo:Demo;index:number;limit:number;trace:unknown[];stopped?:string}|null=null;
   let exitRequested: boolean | null=null;
   let destination: number | null=null;
 
@@ -239,7 +239,7 @@ async function main(): Promise<void> {
       replay={demo,index:0,limit:Math.max(1,Math.min(4000,Math.trunc(limit)||70)),trace:[]};menu.start();controls.setEnabled(false);
     }});
     Object.defineProperty(window,'__doomInspect',{value:()=>({
-      replay:replay?{tic:replay.index,length:replay.demo.commands.length,trace:replay.trace}:null,
+      replay:replay?{tic:replay.index,length:replay.demo.commands.length,stopped:replay.stopped??null,trace:replay.trace}:null,
       wipe:wipe.inspect(),audio:audio.state,music:musicName,presentation:menu.inspectPresentation(), started:session.started,running:session.running, phase:session.phase,
       episode:gameRules.episode,map:gameRules.map,skill:gameRules.skill,tic:world.get(Time)!.levelTime,
       player:{x:level.player.mo.x,y:level.player.mo.y,z:level.player.mo.z,health:world.get(PlayerStatus)!.health,ammo:{...world.get(PlayerStatus)!.ammo}},
@@ -279,18 +279,22 @@ async function main(): Promise<void> {
         sectors:level.map.sectors.map(s=>[s.floorHeight,s.ceilingHeight,s.lightLevel,s.special]),
         sides:level.map.sidedefs.map(s=>[s.xoff,s.yoff,s.upper,s.middle,s.lower])
       });
+      if(replay&&(state.playerState==='PST_REBORN'||exitRequested!==null)){
+        replay.stopped=state.playerState==='PST_REBORN'?'rebirth':'level-exit';
+        menu.open();
+      }
       messages.tick();
       updateSpriteAnimations(1/35);hud.update(world);
     });
     if(finishPresentation)menu.finishPresentation();
-    if(exitRequested!==null) {
+    if(exitRequested!==null&&!replay?.stopped) {
       beginWipe();
       if(gameRules.map===9)world.get(PlayerStatus)!.didSecret=true;
       destination=nextMap(gameRules.episode,gameRules.map,exitRequested);exitRequested=null;
       menu.complete({didSecret:world.get(PlayerStatus)!.didSecret,episode:gameRules.episode,map:gameRules.map,next:destination,kills:level.kills,totalKills:level.totalKills,
         items:level.items,totalItems:level.things.filter(t=>COUNTED_ITEMS.has(t.type)).length,secrets:level.secrets,totalSecrets:level.totalSecrets,time:Math.floor(time.levelTime/35)});
     }
-    if(world.get(PlayerStatus)!.playerState==='PST_REBORN'){beginWipe();loadLevel(gameRules.episode,gameRules.map,gameRules.skill);menu.start();}
+    if(world.get(PlayerStatus)!.playerState==='PST_REBORN'&&!replay?.stopped){beginWipe();loadLevel(gameRules.episode,gameRules.map,gameRules.skill);menu.start();}
     time=world.get(Time)!;
     if(session.presenting && audio.state==='running')playMusic(menu.presentationMusic);
     cameraSystem(world);

@@ -1,6 +1,21 @@
 import { test, expect, type Page } from '@playwright/test';
 
 const snapshot = (page: Page) => page.evaluate(() => (window as any).__doomInspect());
+// Synthetic gestures exercise the app's touch handlers in Chromium and WebKit.
+// They do not claim trusted hardware touch delivery or physical-device coverage.
+async function touchGesture(page:Page,type:string,x:number,y:number,hitTest=false){
+  await page.evaluate(({type,x,y,hitTest})=>{
+    const target=hitTest?document.elementFromPoint(x,y)!:document.getElementById('touch-input-zone')!;
+    if(target.id!=='touch-input-zone')throw new Error(`Touch zone obscured by ${target.id||target.tagName}`);
+    const touch={identifier:81,target,clientX:x,clientY:y};
+    const event=new Event(type,{bubbles:true,cancelable:true});
+    Object.defineProperties(event,{
+      touches:{value:type==='touchend'||type==='touchcancel'?[]:[touch]},
+      changedTouches:{value:[touch]}
+    });
+    target.dispatchEvent(event);
+  },{type,x,y,hitTest});
+}
 async function ready(page: Page) {
   await page.goto('/?inspect');
   await expect(page.getByRole('dialog', { name: 'Doom menu' })).toBeVisible();
@@ -83,11 +98,7 @@ test('touch menu button pauses and resumes without held fire', async ({ browser 
   await page.getByRole('button', { name: 'Knee-Deep in the Dead', exact: true }).tap();
   await page.getByRole('button', { name: 'Hurt me plenty.', exact: true }).tap();
   await page.waitForFunction(() => (window as any).__doomInspect().tic > 2);
-  await page.evaluate(() => {
-    const zone = [...document.querySelectorAll('div')].find(el => el.style.zIndex === '-1')!;
-    const touch = new Touch({ identifier: 42, target: zone, clientX: 330, clientY: 650 });
-    zone.dispatchEvent(new TouchEvent('touchstart', { touches: [touch], changedTouches: [touch], bubbles: true }));
-  });
+  await touchGesture(page,'touchstart',330,650);
   await page.waitForFunction(() => (window as any).__doomInspect().input.attack);
   await page.getByRole('button', { name: 'Open menu' }).tap();
   await expect.poll(async () => (await snapshot(page)).audio).toBe('suspended');
@@ -308,12 +319,7 @@ test('mobile action hints match touch hit areas and top-right buttons never over
       expect(await page.locator(`[data-touch-action="${action}"]`).evaluate(el=>getComputedStyle(el).borderRadius)).toBe('50%');
       const x=hint!.x+hint!.width/2,y=hint!.y+hint!.height/2;
       async function touchAt(y:number,type='touchstart',touchX=x){
-        await page.evaluate(({x,y,type})=>{
-          const target=document.elementFromPoint(x,y)!;
-          if(target.id!=='touch-input-zone')throw new Error(`Touch zone obscured by ${target.id||target.tagName}`);
-          const touch=new Touch({identifier:71,target,clientX:x,clientY:y});
-          target.dispatchEvent(new TouchEvent(type,{touches:type==='touchstart'?[touch]:[],changedTouches:[touch],bubbles:true}));
-        },{x:touchX,y,type});
+        await touchGesture(page,type,touchX,y,true);
       }
       await touchAt(y);
       await expect.poll(async()=>(await snapshot(page)).input[action==='sprint'?'run':'attack']).toBe(true);
@@ -520,10 +526,7 @@ test('mobile taps use doors and holding the aiming side opens an owned-weapon wh
     return {sector:map.sidedefs[line.left].sector,height:map.sectors[map.sidedefs[line.left].sector].ceilingHeight};
   });
   const gesture=async(type:string,x=285,y=430)=>{
-    await page.evaluate(({type,x,y})=>{
-      const target=document.getElementById('touch-input-zone')!,touch=new Touch({identifier:81,target,clientX:x,clientY:y});
-      target.dispatchEvent(new TouchEvent(type,{touches:type==='touchend'||type==='touchcancel'?[]:[touch],changedTouches:[touch],bubbles:true}));
-    },{type,x,y});
+    await touchGesture(page,type,x,y);
   };
   await gesture('touchstart');await gesture('touchend');
   await expect.poll(async()=>(await snapshot(page)).sectors[door.sector][1]).toBeGreaterThan(door.height);
@@ -557,11 +560,33 @@ test('mobile taps use doors and holding the aiming side opens an owned-weapon wh
   await context.close();
 });
 
+test('developer replay retains its trace at a rebirth boundary and can restart',async({page})=>{
+  await ready(page);
+  await page.evaluate(async()=>{
+    const {WeaponSystem}=await import('/src/game/Weapons.ts');const {PlayerStatus}=await import('/src/ecs/traits.ts');
+    const tick=WeaponSystem.prototype.tick;let once=true;
+    WeaponSystem.prototype.tick=function(world){tick.call(this,world);if(once){once=false;world.get(PlayerStatus).playerState='PST_REBORN';}};
+    (window as any).__doomReplay('DEMO1',70);
+  });
+  await expect.poll(async()=>(await snapshot(page)).replay?.stopped).toBe('rebirth');
+  const stopped=await snapshot(page);expect(stopped.replay.trace).toHaveLength(1);expect(stopped.running).toBe(false);
+  await page.waitForTimeout(120);expect((await snapshot(page)).replay).toEqual(stopped.replay);
+  await page.evaluate(()=>(window as any).__doomReplay('DEMO1',10));
+  await expect.poll(async()=>(await snapshot(page)).replay?.tic).toBe(10);
+  expect((await snapshot(page)).replay.stopped).toBeNull();
+});
+
 for(const demoName of (process.env.DOOM_TRACE_DEMOS??'DEMO1').split(','))test(`original IWAD demo ${demoName} commands produce repeatable gameplay traces and pause with the menu`,async({page})=>{
   const limit=Number(process.env.DOOM_TRACE_TICS??70);
   if(!Number.isInteger(limit)||limit<1||limit>4000)throw Error('DOOM_TRACE_TICS must be 1–4000');
   test.setTimeout(Math.max(45000,limit/35*4000+30000));
   await ready(page);
+  const speed=Number(process.env.DOOM_TRACE_SPEED??1);
+  if(!Number.isFinite(speed)||speed<1||speed>16)throw Error('DOOM_TRACE_SPEED must be 1–16');
+  if(speed!==1)await page.evaluate(async speed=>{
+    const {TicClock}=await import('/src/game/TicClock.ts');const advance=TicClock.prototype.advance;
+    TicClock.prototype.advance=function(delta:number,running:boolean,tick:()=>void){return advance.call(this,delta*speed,running,tick);};
+  },speed);
   const replayTic=()=>page.evaluate(()=>(window as any).__doomInspect().replay?.tic??0);
   const run=async(pause:boolean)=>{
     const expected=await page.evaluate(({demoName,limit})=>{
@@ -574,13 +599,14 @@ for(const demoName of (process.env.DOOM_TRACE_DEMOS??'DEMO1').split(','))test(`o
       expect((await snapshot(page)).replay).toEqual(stopped.replay);
       await page.getByRole('button',{name:'Resume game',exact:true}).click();
     }
-    await expect.poll(replayTic,{timeout:limit/35*2000+10000}).toBe(expected);
+    await expect.poll(()=>page.evaluate(expected=>{const r=(window as any).__doomInspect().replay;return !!r&&(!!r.stopped||r.tic===expected);},expected),{timeout:limit/35*2000+10000}).toBe(true);
     await expect(page.getByRole('dialog',{name:'Doom menu'})).toBeVisible();
-    return page.evaluate(()=>JSON.stringify((window as any).__doomInspect().replay.trace));
+    return page.evaluate(()=>{const r=(window as any).__doomInspect().replay;return {trace:JSON.stringify(r.trace),stopped:r.stopped};});
   };
   const first=await run(false);
   const {writeFileSync,mkdirSync}=await import('node:fs');mkdirSync('artifacts',{recursive:true});
-  writeFileSync(`artifacts/port-${demoName.toLowerCase()}-trace.json`,first);
+  writeFileSync(`artifacts/port-${demoName.toLowerCase()}-trace.json`,first.trace);
+  expect(first.stopped,`Replay stopped at a gameplay lifecycle boundary; partial trace retained`).toBeNull();
   await page.evaluate(async()=>{
     const {TicClock}=await import('/src/game/TicClock.ts');const advance=TicClock.prototype.advance;let frame=0;
     TicClock.prototype.advance=function(delta:number,running:boolean,tick:()=>void){return advance.call(this,running&&delta>0?(frame++%3===0?3/35:1/140):delta,running,tick);};
@@ -588,6 +614,6 @@ for(const demoName of (process.env.DOOM_TRACE_DEMOS??'DEMO1').split(','))test(`o
   const second=await run(true);
   const {createHash}=await import('node:crypto');
   const hash=(value:string)=>createHash('sha256').update(value).digest('hex');
-  if(hash(second)!==hash(first))writeFileSync(`artifacts/port-${demoName.toLowerCase()}-repeat.json`,second);
-  expect(hash(second)).toBe(hash(first));
+  if(hash(second.trace)!==hash(first.trace))writeFileSync(`artifacts/port-${demoName.toLowerCase()}-repeat.json`,second.trace);
+  expect(hash(second.trace)).toBe(hash(first.trace));
 });

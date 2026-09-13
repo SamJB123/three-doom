@@ -22,7 +22,7 @@ Status vocabulary: **missing**, **partial** (implemented but incomplete or not c
 | MENU-01 | `m_menu.c`: `M_Responder`, `M_Drawer`; `d_main.c` title | verified browser foundation; circular touch actions, tap-use and weapon wheel checked | WAD-backed title; start, pause, resume, help, restart/end confirmations; desktop/touch; no input leakage |
 | MENU-02 | `M_Episode`, `M_ChooseSkill`, options, save/load menus | partial: episode/skill, volume and six save/load slots connected | Real episode/skill selection with gameplay effects; working options and save/load flows |
 | LOOP-01 | `p_tick.c P_Ticker`, `g_game.c G_Ticker` | verified scheduler | One 35 Hz clock; no tics in menus; frame-rate invariant tick count; no pause catch-up |
-| LOOP-02 | `P_RunThinkers`, `P_PlayerThink`, ticcmd ordering | partial: all four demos pass 350-tic C actor/target, inventory and sector comparisons | Match C action ordering, RNG consumption, input quantization and deterministic state traces |
+| LOOP-02 | `P_RunThinkers`, `P_PlayerThink`, ticcmd ordering | partial: all four demos pass 350-tic C actor/target, inventory and sector comparisons; longer traces expose documented failures | Match C action ordering, RNG consumption, input quantization and deterministic state traces |
 | FLOW-02 | `G_InitNew`, `G_DoLoadLevel`, `G_DoCompleted`, `G_WorldDone` | connected; 36-map routing browser check passes | In-process teardown/load; preserve inventory across normal exits; reset state on new game; secret map routing |
 | MAP-01 | `w_wad.c`, `p_setup.c`, `r_data.c` | partial | All 36 maps parse (smoke exists); validate malformed input, duplicate lumps, patch overrides, spawn counts |
 | PHYS-01 | `p_map.c P_CheckPosition`, `P_TryMove`, `P_SlideMove` | partial: fixed blockmap slide traversal, signed splits, step support and dynamic thing order checked | Solid actors, blocking flags, steps/dropoffs, diagonal sliding; player/monster/projectile consistency |
@@ -43,6 +43,8 @@ Status vocabulary: **missing**, **partial** (implemented but incomplete or not c
 | FIXED-01 | `m_fixed.c`, `tables.c`, `m_random.c` | partial: arithmetic/angle C fixtures and source tables checked | Signed arithmetic, overflow/division and angle tables; separate gameplay/cosmetic RNG; C differential vectors |
 | NET-01 | `d_net.c`, `i_net.c`, ticcmd networking | missing | Separate multiplayer milestone after deterministic single-player simulation |
 
+Release evidence and the explicit campaign/device matrix are tracked in [RELEASE-CHECKS.md](RELEASE-CHECKS.md).
+
 ## Known confirmed baseline defects
 
 The initial review reproduced: solid actor overlap; ignored two-sided `ML_BLOCKING`; cross trigger before centre crossing; stationary player left behind by rising floor; ignored multiplayer spawn flag and angle; signed fixed multiply/divide differences. Code inspection also found unlocked keyed doors, long-range melee, missing autoaim/noise integration, missing boss actions, and E1M1-only reload flow.
@@ -51,4 +53,4 @@ These remain open unless a progress entry and acceptance test explicitly close t
 
 ## Next slice
 
-Close the remaining E1M1 fidelity/playthrough gate, including remaining actor actions, original tic ordering and deterministic gameplay traces. Episode routing is connected across all 36 maps, but this does not prove combat playthrough or original simulation parity. Remaining release blockers include save edge cases, complete IWAD-special scenarios, original title/demo presentation, broader geometry comparisons, and browser/performance validation.
+Resolve the first longer-trace differences: DEMO1 RNG at 463, DEMO2 fist targeting at 600, DEMO3 damage at 417 and DEMO4 RNG at 368. Then extend passing prefixes and close the remaining E1M1 fidelity/playthrough gate, including remaining actor actions and original tic ordering. Episode routing is connected across all 36 maps, but this does not prove combat playthrough or original simulation parity. Remaining release blockers include save edge cases, complete IWAD-special scenarios, original title/demo presentation, broader geometry comparisons, and browser/performance validation.

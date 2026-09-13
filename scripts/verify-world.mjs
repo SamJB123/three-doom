@@ -18,6 +18,7 @@ for(const demo of demos){
   let report;
   try{report=JSON.parse(compare.stdout);}catch{results.push({demo,passed:false,error:'Comparison failed; see compare.log'});continue;}
   copyFileSync(resolve('artifacts/reference-world/comparison.json'),join(dir,'comparison.json'));
+  copyFileSync(resolve(`artifacts/port-${demo.toLowerCase()}-trace.json`),join(dir,'port-trace.json'));
   const first=[...Object.values(report.firstByField),report.firstActor,report.firstWorld].filter(Boolean).sort((a,b)=>a.tic-b.tic)[0];
   results.push({demo,passed:compare.status===0,compared:report.compared,first});
 }
