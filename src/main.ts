@@ -113,6 +113,7 @@ async function main(): Promise<void> {
     if(!attract.demo){const page=attractGraphics.patch(attract.name);if(page)attractView.append(page.canvas);}
   }
   function advanceAttractStage():void {
+    beginWipe();
     advanceAttract=false;attract.advance();
     if(attract.demo){
       const lump=getLump(wad,attract.name)!;
@@ -289,11 +290,11 @@ async function main(): Promise<void> {
     time.delta=0; time.elapsed=time.levelTime/35;
     controls.update();
     let finishPresentation=false;
-    wipe.setPaused(!(session.running||session.presenting));
+    wipe.setPaused(!(session.running||session.presenting||session.attracting));
     ticks.advance(dt,session.running || session.presenting || session.attracting,()=>{
       if(advanceAttract)return;
-      if(session.attracting&&!attract.demo){advanceAttract=attract.tick();return;}
       if(wipe.active){wipe.tick();if(!wipe.active)controls.setEnabled(session.running&&!replay);return;}
+      if(session.attracting&&!attract.demo){advanceAttract=attract.tick();return;}
       if(session.presenting){finishPresentation=menu.tickPresentation() || finishPresentation;return;}
       if(!(session.running || session.attracting) || exitRequested!==null || world.get(PlayerStatus)!.playerState==='PST_REBORN') return;
       if(replay){

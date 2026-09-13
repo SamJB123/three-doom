@@ -2,7 +2,7 @@ import type {WorldArchive} from './WorldArchive';
 import {THINKER_KINDS} from './WorldArchive';
 import {MOBJ_TYPES,MOBJ_STATES} from './MobjData';
 import {createPlayerStatus, type PlayerStatusState} from '../ecs/traits';
-import type {WeaponSystem} from './Weapons';
+import {isWeaponState,type WeaponSystem} from './Weapons';
 import type {archiveStaticSprites} from '../renderer/SpriteRenderer';
 import type {Automap} from '../hud/Automap';
 import type {Skill} from './GameRules';
@@ -19,6 +19,12 @@ export const SAVE_SLOTS=6;
 const integer=(value:unknown,min:number,max:number):value is number=>Number.isInteger(value)&&Number(value)>=min&&Number(value)<=max;
 function invalid():never {throw new Error('This save is damaged or incompatible.');}
 export function decodeSave(text:string,wad:string): SaveGame {
+  try {return decodeSaveData(text,wad);} catch(error) {
+    if(error instanceof Error&&error.message==='This save belongs to a different WAD.')throw error;
+    return invalid();
+  }
+}
+function decodeSaveData(text:string,wad:string): SaveGame {
   if(text.length>8_000_000)invalid();
   let save:SaveGame;
   try {save=JSON.parse(text);} catch {return invalid();}
@@ -32,7 +38,7 @@ export function decodeSave(text:string,wad:string): SaveGame {
   for(const actor of w.actors) {
     if(actor.lastAttacker!==undefined&&!integer(actor.lastAttacker,-1,w.actors.length-1))invalid();
     if(actor.blockOrder!==undefined&&!integer(actor.blockOrder,0,w.thingLinkSequence??Number.MAX_SAFE_INTEGER))invalid();
-    if(!MOBJ_TYPES[actor.type] || (actor.state!==null && !MOBJ_STATES[actor.state]))invalid();
+    if(!Object.hasOwn(MOBJ_TYPES,actor.type) || (actor.state!==null && !Object.hasOwn(MOBJ_STATES,actor.state)))invalid();
     for(const key of ['x','y','z','momx','momy','momz','radius','height','floorz','ceilingz','angle','health','tics','flags'] as const)if(!Number.isFinite(actor[key]))invalid();
     if(!integer(actor.target,-1,w.actors.length-1)||!integer(actor.tracer,-1,w.actors.length-1))invalid();
   }
@@ -46,6 +52,13 @@ export function decodeSave(text:string,wad:string): SaveGame {
   }
   if(!w.random || !integer(w.random.play,0,255)||!integer(w.random.misc,0,255)||!w.ai||!Array.isArray(w.ai.sounds)||!w.use||!Array.isArray(w.use.buttons))invalid();
   if(!save.player?.ammo||!save.player?.powers||!save.weapons?.psprites||save.weapons.psprites.length!==2||!save.sprites?.sprites||!save.automap?.seen||!save.view||!save.stats)invalid();
+  if(typeof save.label!=='string'||typeof save.savedAt!=='string')invalid();
+  for(const key of ['didSecret','godMode','noClip'] as const)if(typeof save.player[key]!=='boolean')invalid();
+  if(!w.player||typeof w.player.running!=='boolean')invalid();
+  for(const key of ['viewheight','deltaviewheight','viewz','bob'] as const)if(!Number.isFinite(w.player[key]))invalid();
+  if(typeof w.use.useDown!=='boolean'||!integer(w.ai.tic,0,Number.MAX_SAFE_INTEGER))invalid();
+  if(typeof save.weapons.attackDown!=='boolean'||!integer(save.weapons.refire,0,Number.MAX_SAFE_INTEGER)||!Number.isFinite(save.weapons.lastAngle))invalid();
+  if(typeof save.automap.follow!=='boolean'||save.automap.zoom<=0||save.automap.marks.length>10||!Array.isArray(save.sprites.sprites)||!Number.isFinite(save.sprites.fraction))invalid();
   // Reject non-finite/null numeric world fields before replacing the live level.
   for(const sector of w.sectors)for(const key of ['floorHeight','ceilingHeight','lightLevel','special','tag'] as const)if(!Number.isFinite(sector[key]))invalid();
   for(const line of w.lines)if(!integer(line.right,0,w.sides.length-1)||!integer(line.left,-1,w.sides.length-1))invalid();
@@ -59,7 +72,7 @@ export function decodeSave(text:string,wad:string): SaveGame {
   if(!Object.hasOwn(defaults.weapons,save.player.currentWeapon)||!Object.hasOwn(defaults.ammo,save.player.currentAmmo))invalid();
   if(save.player.pendingWeapon!==null&&!Object.hasOwn(defaults.weapons,save.player.pendingWeapon))invalid();
   if(!['PST_LIVE','PST_DEAD','PST_REBORN'].includes(save.player.playerState))invalid();
-  if(!save.player.mobjState||typeof save.player.mobjState.name!=='string'||!Number.isFinite(save.player.mobjState.tics))invalid();
+  if(!save.player.mobjState||!Object.hasOwn(MOBJ_STATES,save.player.mobjState.name)||!Number.isFinite(save.player.mobjState.tics))invalid();
   if(!Number.isFinite(save.view.yaw)||!Number.isFinite(save.view.pitch))invalid();
   for(const key of ['kills','items','secrets'] as const)if(!integer(save.stats[key],0,1000000))invalid();
   if(save.automap.nextMark!==undefined&&!integer(save.automap.nextMark,0,9))invalid();
@@ -67,13 +80,25 @@ export function decodeSave(text:string,wad:string): SaveGame {
   for(const point of [save.automap.center,...save.automap.marks])if(!Number.isFinite(point.x)||!Number.isFinite(point.y))invalid();
   for(const sprite of save.sprites.sprites)if(!integer(sprite.index,0,100000)||!integer(sprite.frame,0,100)||!Number.isFinite(sprite.tics))invalid();
   if(save.weapons.extraLight!==undefined&&!integer(save.weapons.extraLight,0,2))invalid();
-  for(const psp of save.weapons.psprites)if(!(psp.state===null||typeof psp.state==='string')||![psp.tics,psp.sx,psp.sy].every(Number.isFinite))invalid();
+  for(const psp of save.weapons.psprites)if(!(psp.state===null||isWeaponState(psp.state))||![psp.tics,psp.sx,psp.sy].every(Number.isFinite))invalid();
   for(const [sector,index] of w.ai.sounds)if(!integer(sector,0,w.sectors.length-1)||!integer(index,-1,w.actors.length-1))invalid();
   for(const button of w.use.buttons)if(!integer(button.side,0,w.sides.length-1)||!['upper','middle','lower'].includes(button.position)||!integer(button.timer,1,35)||typeof button.originalTex!=='string')invalid();
   const fields:Record<string,string[]>={door:['topHeight','speed','direction','topWait','topCountdown'],floor:['destHeight','speed','direction'],platform:['speed','low','high','wait','count'],stair:['speed','direction','destHeight'],ceiling:['bottomHeight','topHeight','speed','direction','tag','oldDirection'],light:['min','max','count','dark','direction']};
+  const types:Record<string,readonly string[]>={
+    door:['normal','close','open','blazeRaise','blazeOpen','blazeClose','close30ThenOpen'],
+    floor:['lowerFloor','lowerFloorToLowest','turboLower','raiseFloor','raiseFloorToNearest','raiseFloor24','raiseFloor24AndChange','raiseFloorCrush','raiseFloorTurbo','raiseFloor512','lowerAndChange','raiseToTexture','donutRaise'],
+    platform:['downWaitUpStay','blazeDWUS','perpetualRaise','raiseAndChange','raiseToNearestAndChange'],
+    ceiling:['lowerToFloor','raiseToHighest','lowerAndCrush','crushAndRaise','fastCrushAndRaise','silentCrushAndRaise'],
+    light:['fire','flash','strobe','glow']
+  };
   for(const record of w.thinkers) {
     if(record.kind==='mobj')continue;
     const data=record.data as Record<string,unknown>;
+    if(types[record.kind]&&!types[record.kind].includes(String(data.type)))invalid();
+    if(['floor','platform','ceiling'].includes(record.kind)&&typeof data.crush!=='boolean')invalid();
+    if(['door','floor','stair','ceiling'].includes(record.kind)&&!integer(data.direction,-1,1))invalid();
+    if(record.kind==='ceiling'&&!integer(data.oldDirection,-1,1))invalid();
+    if(record.kind==='platform'&&data.oldStatus!==undefined&&!['up','down','waiting','stasis'].includes(String(data.oldStatus)))invalid();
     for(const key of fields[record.kind])if(!Number.isFinite(data[key]))invalid();
     if(record.kind==='platform'&&!['up','down','waiting','stasis'].includes(String(data.status)))invalid();
     if(record.kind==='light'&&!['fire','flash','strobe','glow'].includes(String(data.type)))invalid();

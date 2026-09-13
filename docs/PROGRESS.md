@@ -454,3 +454,14 @@ Implemented `R_InitLightTables` / `R_ExecuteSetViewSize` distance bands for wall
 “Watch demos” now uses original large menu artwork fragments, including capital W from M_EPISOD and D from M_DETAIL, with the same 15-pixel canvas and CSS sizing as the other custom menu labels. The resulting menu screenshot was visually inspected; it no longer uses small HUD glyphs. No IWAD pixels or generated screenshots are committed.
 
 Validation: typecheck, 165 unit tests and build pass. Three focused Chrome checks pass with clean exit (8.9 seconds): 84 wall/flat shader swatch comparisons across three distances, power/flash states and two renderer backends; Watch demos lettering/height; mobile action layout. This is implementation regression coverage, not the deferred broad acceptance pass. Next known implementation items are automap vertical visibility, saved-state validation, title/demo wipe lifecycle, recorded simulation discrepancies and diagnostic worker shutdown.
+
+
+## 2026-09-13 — saved-state validation and title/demo wipes
+
+**UI-01 / SAVE-01 / UI-02.** Corrected a mistaken automap requirement: supplied `R_StoreWallRange` marks ML_MAPPED before vertical clipping. Kept horizontal discovery behavior and documented the source ordering rather than implementing an incompatible vertical restriction.
+
+Save decoding now checks weapon state names against the live state registry, actor/player state membership, door/floor/platform/ceiling types, movement directions, crush/control flags, player view fields and saved counters. Invalid nested shapes receive the same readable damaged-save error; wrong-WAD errors retain their distinct explanation. Legacy optional lighting/mark/link fields remain accepted. Validation happens before restoring the live game.
+
+Title/page/demo changes now begin the existing melt wipe, following `D_Display` / `G_DoLoadLevel` transition behavior. TicClock advances the wipe before page timers or demo commands; menus pause/hide the wipe and resume it with playback. Consecutive demo loads also wipe.
+
+Validation: typecheck, 167 unit tests and build pass. Three focused Chrome checks pass (37.1 seconds, clean exit): actual save persistence/reload, complete title/four-demo cycle, and title-to-demo wipe command freeze/menu pause. No broad release pass was run. Next: refresh the already recorded DEMO3 discrepancy against the current implementation, diagnose remaining concrete simulation differences and the long-worker shutdown issue.

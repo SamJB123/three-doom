@@ -76,6 +76,8 @@ export interface WeaponState {
   next: string;       // next state name
 }
 
+export function isWeaponState(name:unknown):name is string {return typeof name==='string'&&Object.hasOwn(STATES,name);}
+
 const STATES: Record<string, WeaponState> = {
 
   // --- Fist / Punch ---

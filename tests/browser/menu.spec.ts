@@ -852,3 +852,17 @@ test('Watch demos uses the large authored menu lettering and matching height',as
   expect(bounds!.height).toBeCloseTo(canonical!.height,0);
   await page.screenshot({path:'artifacts/watch-demos-lettering.png'});
 });
+
+
+test('title-to-demo melt freezes commands and pauses with the menu',async({page})=>{
+  await ready(page);await page.getByRole('button',{name:'Watch demos',exact:true}).click();
+  await expect(page.locator('#screen-wipe')).toBeVisible({timeout:8000});
+  const first=await snapshot(page);expect(first.attract.stage).toBe('DEMO1');expect(first.attract.command).toBe(0);
+  await page.waitForTimeout(100);const during=await snapshot(page);
+  expect(during.attract.command).toBe(0);expect(during.wipe.columns).not.toEqual(first.wipe.columns);
+  await page.keyboard.press('Escape');const paused=await snapshot(page);
+  await page.waitForTimeout(200);expect(await snapshot(page)).toEqual(paused);
+  await page.getByRole('button',{name:'Watch demos',exact:true}).click();
+  await expect(page.locator('#screen-wipe')).toBeHidden({timeout:4000});
+  await expect.poll(async()=>(await snapshot(page)).attract.command).toBeGreaterThan(0);
+});

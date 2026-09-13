@@ -61,9 +61,9 @@ User direction: finish known implementation gaps before broad verification. Each
 |---|---|---|---|
 | 1 | RENDER-01 | Replace constant approximate lighting with source distance bands, wall direction bias and weapon light-table selection (`R_InitLightTables`, `R_ExecuteSetViewSize`, `R_DrawPlayerSprites`) | Connected; focused table/shader checks pass |
 | 2 | MENU-01 | Match Watch demos lettering to original large menu glyphs | Fixed; rendered menu checked |
-| 3 | UI-01 | Automap discovery lacks vertical visibility clipping; horizontal BSP spans can reveal vertically occluded lines | Open |
-| 4 | SAVE-01 | Reject malformed saved state enums/booleans before restoring runtime thinkers and weapons | Open; input-validation gap, not a confirmed valid-save failure |
-| 5 | UI-02 | Title/demo transitions do not yet reproduce the original wipe lifecycle | Open; title/credit/demo content already connected |
+| 3 | UI-01 | Automap vertical visibility clipping | Removed as a mistaken requirement: `R_StoreWallRange` sets ML_MAPPED before vertical column clipping |
+| 4 | SAVE-01 | Reject malformed saved state enums/booleans before restoring runtime thinkers and weapons | Implemented; malformed state enums/flags rejected before restoration; focused checks pass |
+| 5 | UI-02 | Title/demo transitions do not yet reproduce the original wipe lifecycle | Implemented; title/demo melt lifecycle connected; focused checks pass |
 | 6 | LOOP-02 | Diagnose and repair the already recorded simulation differences; do not expand trace lengths as an end in itself | Open; historical DEMO1 RNG 463, DEMO2 angle 2271, DEMO3 blood height 2036, DEMO4 enemy wake 368. Bullet side probes are implemented; that comparison needs refreshing before claiming an unresolved cause |
 | 7 | BUILD-01 | Resolve long diagnostic worker shutdown stall | Open; tooling defect, not a production attract-cycle failure |
 

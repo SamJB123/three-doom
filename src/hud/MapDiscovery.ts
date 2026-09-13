@@ -3,8 +3,9 @@ import {FRACUNIT} from '../math/fixed';
 
 /** R_RenderBSPNode / R_AddLine / R_ClipSolidWallSegment's horizontal visibility
  * model, adapted to the Three.js camera field of view. Unlike sparse rays,
- * angular spans retain narrow visible walls. Vertical span clipping remains
- * the Three.js presentation's approximation, not software-renderer parity. */
+ * angular spans retain narrow visible walls. R_StoreWallRange marks ML_MAPPED
+ * before vertical clipping; do not hide lines on that basis. Continuous angles
+ * and camera FOV remain adaptations of source integer screen columns. */
 export function visibleMapLines(map:DoomMapData,player:DoomPlayer,halfFov=Math.PI/4):Set<number> {
   const x=player.mo.x/FRACUNIT,y=player.mo.y/FRACUNIT,yaw=player.mo.angle;
   const visible=new Set<number>(),covered:[number,number][]=[];
