@@ -224,6 +224,9 @@ export class WeaponSystem {
   private playerActor:Mobj|undefined;
   private refire = 0;
   private aimCallback: ((angle: number, range: Fixed) => Fixed) | null = null;
+  private bulletAimCallback:((angle:number)=>Fixed)|null=null;
+  setBulletAimCallback(cb:(angle:number)=>Fixed):void {this.bulletAimCallback=cb;}
+  private getBulletSlope():Fixed {return this.bulletAimCallback?.(this.lastAngle)??this.aimCallback?.(this.lastAngle,1024*FRACUNIT)??0;}
   private noiseCallback: (() => void) | null = null;
   setAimCallback(cb: (angle: number, range: Fixed) => Fixed): void { this.aimCallback = cb; }
   setNoiseCallback(cb: () => void): void { this.noiseCallback = cb; }
@@ -590,7 +593,7 @@ export class WeaponSystem {
     this.A_GunFlash( state );
 
     // P_BulletSlope is sampled once before any pellet changes the world.
-    const slope = this.aimCallback?.(this.lastAngle, 1024 * FRACUNIT) ?? 0;
+    const slope = this.getBulletSlope();
 
     // Pistol: 5 * (1d3) damage, with ±5.625° spread
     const damage = 5 * ( ( P_Random() % 3 ) + 1 );
@@ -606,7 +609,7 @@ export class WeaponSystem {
     this.A_GunFlash( state );
 
     // P_BulletSlope is sampled once before any pellet changes the world.
-    const slope = this.aimCallback?.(this.lastAngle, 1024 * FRACUNIT) ?? 0;
+    const slope = this.getBulletSlope();
 
     // Shotgun: 7 pellets, each 5 * (1d3) damage
     for ( let i = 0; i < 7; i ++ ) {
@@ -626,7 +629,7 @@ export class WeaponSystem {
     this.A_GunFlash( state );
 
     // P_BulletSlope is sampled once before any pellet changes the world.
-    const slope = this.aimCallback?.(this.lastAngle, 1024 * FRACUNIT) ?? 0;
+    const slope = this.getBulletSlope();
 
     // SSG: 20 pellets, each 5 * (1d3) damage, wider spread (±11.25°)
     for ( let i = 0; i < 20; i ++ ) {
@@ -648,7 +651,7 @@ export class WeaponSystem {
 
     setPlayerMobjState(state,'S_PLAY_ATK2',this.playerActor);
     // P_BulletSlope is sampled once before any pellet changes the world.
-    const slope = this.aimCallback?.(this.lastAngle, 1024 * FRACUNIT) ?? 0;
+    const slope = this.getBulletSlope();
 
     // Alternate flash states
     const psp = this.psprites[ 0 ];

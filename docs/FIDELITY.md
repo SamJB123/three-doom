@@ -35,7 +35,7 @@ This removes frame batching differences from the prior two-clock loop. It does *
 - Run typecheck, relevant tests, and build; browser checks when UI/input/lifecycle changes.
 - Record evidence and remaining limitations in `PROGRESS.md`; update only the scoped roadmap status.
 
-The next engineering priority is behavioral correctness. A larger table of ported functions or passing build is not a substitute for reference comparison.
+Current priority is missing presentation and gameplay coverage, followed by campaign and release verification. Use focused source comparisons to resolve concrete behavior; increasingly long demo comparisons must not displace those completion gates. A passing build or source inventory is not fidelity evidence.
 
 
 ## Current reference evidence

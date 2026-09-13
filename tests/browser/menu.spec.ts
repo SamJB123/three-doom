@@ -645,3 +645,37 @@ for(const demoName of (process.env.DOOM_TRACE_DEMOS??'DEMO1').split(','))test(`o
   if(hash(second.trace)!==hash(first.trace))writeFileSync(`artifacts/port-${demoName.toLowerCase()}-repeat.json`,second.trace);
   expect(hash(second.trace)).toBe(hash(first.trace));
 });
+
+test('title attract cycle plays all four IWAD demos, pauses, and yields to a new game',async({page})=>{
+  test.setTimeout(120000);
+  const errors:string[]=[];page.on('pageerror',error=>errors.push(error.message));
+  await ready(page);
+  await page.getByRole('button',{name:'Watch demos',exact:true}).click();
+  await expect(page.locator('#attract-view canvas')).toBeVisible();
+  await expect.poll(async()=>(await snapshot(page)).music).toBe('D_INTRO');
+  await page.keyboard.press('Escape');
+  const paused=await snapshot(page);await page.waitForTimeout(150);
+  expect(await snapshot(page)).toEqual(paused);
+  await expect(page.getByRole('button',{name:'Save game',exact:true})).toHaveCount(0);
+  await page.evaluate(async()=>{
+    const {TicClock}=await import('/src/game/TicClock.ts');const advance=TicClock.prototype.advance;
+    TicClock.prototype.advance=function(delta:number,running:boolean,tick:()=>void){return advance.call(this,delta>0?8/35:0,running,tick);};
+  });
+  await page.getByRole('button',{name:'Watch demos',exact:true}).click();
+  for(const [stage,episode,map] of [['DEMO1',1,5],['DEMO2',2,2],['DEMO3',3,5],['DEMO4',4,2]] as const){
+    await expect.poll(async()=>(await snapshot(page)).attract.stage,{timeout:45000,intervals:[100]}).toBe(stage);
+    const state=await snapshot(page);expect(state.started).toBe(false);expect(state.episode).toBe(episode);expect(state.map).toBe(map);
+    expect(state.replay.trace).toHaveLength(0);
+    if(stage==='DEMO1'){
+      await page.locator('#attract-view').click();
+      const stopped=await snapshot(page);await page.waitForTimeout(150);expect(await snapshot(page)).toEqual(stopped);
+      await page.getByRole('button',{name:'Watch demos',exact:true}).click();
+    }
+  }
+  await expect.poll(async()=>(await snapshot(page)).attract.stage,{timeout:15000,intervals:[100]}).toBe('TITLEPIC');
+  await page.keyboard.press('Escape');
+  await startGame(page);
+  expect((await snapshot(page)).started).toBe(true);
+  await expect(page.locator('#attract-view')).toBeHidden();
+  expect(errors).toEqual([]);
+});

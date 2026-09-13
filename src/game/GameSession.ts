@@ -7,6 +7,8 @@ export class GameSession {
   phase: 'level' | 'intermission' | 'finale' = 'level';
   menu: MenuPage | null = 'main';
 
+  get attracting(): boolean { return !this.started && this.menu === null; }
+
   get running(): boolean { return this.started && this.phase === 'level' && this.menu === null; }
 
   get presenting(): boolean {return this.started && this.phase!=='level' && this.menu===this.phase;}

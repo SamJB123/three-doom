@@ -36,7 +36,7 @@ Status vocabulary: **missing**, **partial** (implemented but incomplete or not c
 | BOSS-01 | `p_enemy.c A_BossDeath`, episode/map rules | connected; last-boss/living-player exit checks pass | E1M8/E2M8/E3M8/E4M6/E4M8 progression and surviving-boss checks |
 | UI-01 | `st_stuff.c`, `hu_stuff.c`, `am_map.c` | partial | HUD state/timing and messages; automap; palette/power effects |
 | UI-03 | `hu_stuff.c HU_Ticker/HU_Drawer`, `p_inter.c P_TouchSpecialThing`, `d_englsh.h GOT*` | connected; pickup families, timing, pause and options checks pass | Original health/armor/ammo/weapon/key/powerup messages, WAD HUD glyphs, timeout in simulation tics, message toggle; only successful pickups notify, including dropped items |
-| UI-02 | `wi_stuff.c`, `f_finale.c`, `d_main.c` demo sequence | connected: stats, animated maps/music and episode finales; melt connected; title demos pending | Stats/par/intermission maps, episode finales, title/credit/demo cycle |
+| UI-02 | `wi_stuff.c`, `f_finale.c`, `d_main.c` demo sequence | connected: stats, animated maps/music and episode finales; melt connected; retail title/credit/four-demo cycle browser-checked | Stats/par/intermission maps, episode finales, title/credit/demo cycle |
 | SAVE-01 | `p_saveg.c`, `G_DoSaveGame`, `G_DoLoadGame` | connected; synthetic continued traces and browser persistence verified | Versioned snapshots preserve player, thinkers, world, RNG; round-trip identical continued traces |
 | RENDER-01 | `r_*` rendering rules | partial: holes, masked walls, pegging, scrolling and texture animation have scoped checks; continuous scrolling loops are a presentation adjustment; sky coverage/occlusion checked | Holes/disconnected sector geometry, pegging, masked walls, skies, sprite rotation/lighting and palette comparisons |
 | AUDIO-01 | `s_sound.c`, MUS/GENMIDI | partial: attenuation C fixtures, channels, movement effects and teleport regression checked | Correct per-map music, volume controls, attenuation, lifecycle, browser resume, audio smoke |
@@ -51,6 +51,13 @@ The initial review reproduced: solid actor overlap; ignored two-sided `ML_BLOCKI
 
 These remain open unless a progress entry and acceptance test explicitly close them. Tests marked TODO are not passing fidelity evidence.
 
-## Next slice
+## Next slices — presentation and release coverage first
 
-Resolve the first longer-trace differences: DEMO1 RNG at 463, DEMO2 aim/target angle at 2271, DEMO3 bullet autoaim height at 2036 and DEMO4 RNG at 368. Then extend passing prefixes and close the remaining E1M1 fidelity/playthrough gate, including remaining actor actions and original tic ordering. Episode routing is connected across all 36 maps, but this does not prove combat playthrough or original simulation parity. Remaining release blockers include save edge cases, complete IWAD-special scenarios, original title/demo presentation, broader geometry comparisons, and browser/performance validation.
+1. UI-02: connect the original title/credit/four-demo cycle through the normal UI, retaining the initially visible menu and paused simulation while menus are open.
+2. UI-01 / RENDER-01: close HUD face/timing, palette/power, weapon-lighting and automap behavior gaps, with connected visual checks.
+3. COMBAT-01 / ACTOR-01 / SPEC-01 / SPEC-02: finish known weapon/monster-door omissions and scenario coverage for IWAD-used special families.
+4. SAVE-01 / MAP-01: complex gameplay save/restore and malformed-input cases.
+5. FLOW-02 / BOSS-01 / AUDIO-01: campaign combat progression, secret routes, boss gates, all endings and representative audiovisual checks.
+6. Release browser/device/performance gates in RELEASE-CHECKS.md, including long-worker shutdown. Physical-device checks require actual hardware evidence.
+
+Longer C discrepancies remain tracked (DEMO1 RNG at 463, DEMO2 angle at 2271, DEMO3 blood height at 2036, DEMO4 enemy wake at 368). They do not take priority over the above missing coverage unless a concrete gameplay blocker requires them. The bullet side-probe fix is implemented with a behavioral regression; refreshed C evidence remains pending. Exact full-demo equivalence is not substituted for playable campaign/release coverage.

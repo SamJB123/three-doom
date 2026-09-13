@@ -149,6 +149,15 @@ export function aimLineAttack(source: Mobj, angle: number, range: Fixed): {slope
   return result;
 }
 
+/** P_BulletSlope: centre, positive side, then negative side at 1024 units. */
+export function bulletSlope(source:Mobj,angle:number):Fixed {
+  for(const offset of [0,Math.PI/32,-Math.PI/32]){
+    const aim=aimLineAttack(source,angle+offset,1024*FRACUNIT);
+    if(aim.target)return aim.slope;
+  }
+  return 0;
+}
+
 /**
  * Fire a hitscan from a source position.
  * angle: radians (Doom-space, 0 = east, pi/2 = north)

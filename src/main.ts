@@ -1,3 +1,4 @@
+import {AttractSequence} from './game/AttractSequence';
 import {readDemo,demoInput,type Demo} from './game/Demo';
 import {archiveRandom} from './game/DoomRandom';
 import {ScreenWipe} from './menu/ScreenWipe';
@@ -20,7 +21,7 @@ import { dirtySectors, clearDirtySectors } from './game/Thinkers';
 import { consumeTeleport } from './game/Teleport';
 import { allMobjs, spawnPlayerMissile, setCameraPosition } from './game/Mobj';
 import { MF_COUNTKILL } from './game/MobjData';
-import { aimLineAttack, lineAttack, setPlayerDamageMobjCallback, setKillCallback } from './game/Attack';
+import { aimLineAttack, bulletSlope, lineAttack, setPlayerDamageMobjCallback, setKillCallback } from './game/Attack';
 import { damagePlayer, setPlayerDeathCallback, setSecretCallback } from './game/PlayerDamage';
 import { P_NoiseAlert, advanceEnemyTic } from './game/EnemyAI';
 import { checkPickups, setPickupMessageCallback, setPickupCallback, COUNTED_ITEMS } from './game/Pickups';
@@ -95,11 +96,34 @@ async function main(): Promise<void> {
   const controls=touch ? new TouchControls(world) : new FPSControls(renderer.domElement,world);
   const session=new GameSession(), clock=new Clock(), ticks=new TicClock();
   const wipe=new ScreenWipe();
+  const attract=new AttractSequence();
+  const attractGraphics=new WadGraphics(wad,palette);
+  const attractView=document.createElement('div');attractView.id='attract-view';attractView.hidden=true;
+  attractView.setAttribute('aria-label','Doom title and demo playback');
+  document.body.append(attractView);
+  let advanceAttract=false;
+  function refreshAttract():void {
+    attractView.hidden=!session.attracting;
+    attractView.classList.toggle('demo',attract.demo);
+    attractView.replaceChildren();
+    if(!attract.demo){const page=attractGraphics.patch(attract.name);if(page)attractView.append(page.canvas);}
+  }
+  function advanceAttractStage():void {
+    advanceAttract=false;attract.advance();
+    if(attract.demo){
+      const lump=getLump(wad,attract.name)!;
+      const demo=readDemo(wad.buf.slice(lump.offset,lump.offset+lump.size));
+      clearRandom();loadLevel(demo.episode,demo.map,demo.skill);
+      replay={demo,index:0,limit:demo.commands.length,trace:[],attract:true};
+      playMusic(mapMusic(demo.episode,demo.map));
+    }else{replay=null;stopAllSounds();if(attract.index===0)playMusic('D_INTRO');}
+    refreshAttract();
+  }
   const automap=new Automap(()=>session.running&&!wipe.active);
   automap.button.setAttribute('aria-label','Map');
   automap.button.replaceChildren(new WadGraphics(wad,palette).label('Map'));
   let level: Level;
-  let replay:{demo:Demo;index:number;limit:number;trace:unknown[];stopped?:string}|null=null;
+  let replay:{demo:Demo;index:number;limit:number;trace:unknown[];stopped?:string;attract?:boolean}|null=null;
   let exitRequested: boolean | null=null;
   let destination: number | null=null;
 
@@ -122,6 +146,7 @@ async function main(): Promise<void> {
     weapons=new WeaponSystem(); weapons.setup(world.get(PlayerStatus)!);
     weapons.setNoiseCallback(()=>P_NoiseAlert(level.player.mo,level.player.mo,level.map));
     weapons.setAimCallback((angle,range)=>aimLineAttack(level.player.mo,angle,range).slope);
+    weapons.setBulletAimCallback(angle=>bulletSlope(level.player.mo,angle));
     weapons.setFireCallback((angle,slope,damage,range)=>{
       const mo=level.player.mo;
       return lineAttack(mo.x,mo.y,mo.z+(mo.height>>1)+8*FRACUNIT,angle,slope,range,damage,mo);
@@ -160,6 +185,7 @@ async function main(): Promise<void> {
   }
   function loadGame(slot: number): void {
     const save=slots.read(slot);
+    attract.reset();
     const lumps=getMapLumps(wad,`E${save.episode}M${save.map}`);
     if(save.world.sectors.length!==lumps.SECTORS.size/26 || save.world.lines.length!==lumps.LINEDEFS.size/14 || save.world.sides.length!==lumps.SIDEDEFS.size/30)throw new Error('Saved map dimensions do not match this WAD.');
     loadLevel(save.episode,save.map,save.skill);
@@ -182,7 +208,7 @@ async function main(): Promise<void> {
   function captureScreen():HTMLCanvasElement {
     const screen=document.createElement('canvas');screen.width=320;screen.height=200;
     const ctx=screen.getContext('2d')!;ctx.imageSmoothingEnabled=false;
-    const presentation=menu.screen;
+    const presentation=session.attracting ? (attract.demo?null:attractGraphics.patch(attract.name)?.canvas) : menu.screen;
     if(presentation){ctx.drawImage(presentation,0,0,320,200);return screen;}
     // Submit the current world before copying its GPU canvas into the wipe.
     renderer.render(scene,camera);
@@ -198,10 +224,11 @@ async function main(): Promise<void> {
     messages:enabled=>{messages.state.enabled=enabled;},
     save:saveGame,load:loadGame,slotLabel:slot=>slots.label(slot),
     changed:()=>{
+      refreshAttract();
       controls.setEnabled(session.running&&!wipe.active&&!replay); ticks.advance(0,false,()=>{}); clock.getDelta();
-      if(session.running || session.presenting) {
+      if(session.running || session.presenting || session.attracting) {
         if(session.running)renderer.domElement.focus();
-        void audio.resume().then(()=>{if(session.running)playMusic(mapMusic(gameRules.episode,gameRules.map));else if(session.presenting)playMusic(menu.presentationMusic);}).catch(console.error);
+        void audio.resume().then(()=>{if(session.attracting){if(attract.index===0)playMusic('D_INTRO');else if(attract.demo)playMusic(mapMusic(gameRules.episode,gameRules.map));}else if(session.running)playMusic(mapMusic(gameRules.episode,gameRules.map));else if(session.presenting)playMusic(menu.presentationMusic);}).catch(console.error);
         if(session.running && !touch) renderer.domElement.requestPointerLock()?.catch(()=>{});
         else if(document.pointerLockElement)document.exitPointerLock();
       } else {
@@ -209,23 +236,24 @@ async function main(): Promise<void> {
         void audio.suspend().catch(console.error);
       }
     },
-    newGame:(episode,skill)=>{beginWipe();clearRandom();loadLevel(episode,1,skill);},
+    newGame:(episode,skill)=>{beginWipe();attract.reset();clearRandom();loadLevel(episode,1,skill);},
     end:()=>{
-      loadLevel(1,1,3); session.started=false; session.phase='level'; session.menu='main'; menu.refresh();
+      attract.reset();loadLevel(1,1,3); session.started=false; session.phase='level'; session.menu='main'; menu.refresh();
     },
     next:()=>{
       if(destination!==null)beginWipe();
-      if(destination===null) { session.started=false; session.phase='level'; session.menu='main'; loadLevel(1,1,3); menu.refresh(); }
+      if(destination===null) { attract.reset();session.started=false; session.phase='level'; session.menu='main'; loadLevel(1,1,3); menu.refresh(); }
       else {loadLevel(gameRules.episode,destination,gameRules.skill,world.get(PlayerStatus)!);menu.start();}
     },
     volume:(musicVolume,soundVolume)=>{music.setVolume(musicVolume);setSoundVolume(soundVolume);}
   });
+  attractView.addEventListener('pointerdown',event=>{event.preventDefault();menu.open();});
   const gameActions=document.createElement('div');gameActions.id='game-actions';
   gameActions.append(automap.button,document.getElementById('menu-button')!);
   document.body.append(gameActions);
   document.addEventListener('pointerlockchange',()=>{if(!touch && !document.pointerLockElement && session.running) menu.open();});
-  window.addEventListener('blur',()=>{if(session.running) menu.open();});
-  document.addEventListener('visibilitychange',()=>{if(document.hidden && session.running) menu.open();});
+  window.addEventListener('blur',()=>{if(session.running || session.attracting) menu.open();});
+  document.addEventListener('visibilitychange',()=>{if(document.hidden && (session.running || session.attracting)) menu.open();});
   document.addEventListener('keydown',event=>{if(event.code==='Enter' && session.running && !event.repeat)messages.refresh();});
   document.addEventListener('keypress',e=>{if(session.running) feedCheatChar(e.key,world.get(PlayerStatus)!);});
   const resize=()=>{camera.aspect=container.clientWidth/container.clientHeight;camera.updateProjectionMatrix();renderer.setSize(container.clientWidth,container.clientHeight);};
@@ -240,6 +268,7 @@ async function main(): Promise<void> {
     }});
     Object.defineProperty(window,'__doomInspect',{value:()=>({
       replay:replay?{tic:replay.index,length:replay.demo.commands.length,stopped:replay.stopped??null,trace:replay.trace}:null,
+      attract:{active:session.attracting,stage:attract.name,remaining:attract.remaining,command:replay?.attract?replay.index:null},
       wipe:wipe.inspect(),audio:audio.state,music:musicName,presentation:menu.inspectPresentation(), started:session.started,running:session.running, phase:session.phase,
       episode:gameRules.episode,map:gameRules.map,skill:gameRules.skill,tic:world.get(Time)!.levelTime,
       player:{x:level.player.mo.x,y:level.player.mo.y,z:level.player.mo.z,health:world.get(PlayerStatus)!.health,ammo:{...world.get(PlayerStatus)!.ammo}},
@@ -256,13 +285,15 @@ async function main(): Promise<void> {
     controls.update();
     let finishPresentation=false;
     wipe.setPaused(!(session.running||session.presenting));
-    ticks.advance(dt,session.running || session.presenting,()=>{
+    ticks.advance(dt,session.running || session.presenting || session.attracting,()=>{
+      if(advanceAttract)return;
+      if(session.attracting&&!attract.demo){advanceAttract=attract.tick();return;}
       if(wipe.active){wipe.tick();if(!wipe.active)controls.setEnabled(session.running&&!replay);return;}
       if(session.presenting){finishPresentation=menu.tickPresentation() || finishPresentation;return;}
-      if(!session.running || exitRequested!==null || world.get(PlayerStatus)!.playerState==='PST_REBORN') return;
+      if(!(session.running || session.attracting) || exitRequested!==null || world.get(PlayerStatus)!.playerState==='PST_REBORN') return;
       if(replay){
         const command=replay.demo.commands[replay.index];
-        if(!command||replay.index>=replay.limit){menu.open();return;}
+        if(!command||replay.index>=replay.limit){if(replay.attract)advanceAttract=true;else menu.open();return;}
         world.set(Input,demoInput(command,level.player.mo.angle));replay.index++;
       }
       time.delta=1/35;
@@ -280,19 +311,21 @@ async function main(): Promise<void> {
       const state=world.get(PlayerStatus)!; if(state.playerState==='PST_LIVE')level.player.mo.health=state.health;
       if(state.playerState==='PST_DEAD')automap.active=false;
       if((time.levelTime & 3) === 0) automap.discover(level.map,level.player);
-      if(replay)replay.trace.push({
+      if(replay&&!replay.attract)replay.trace.push({
         tic:time.levelTime,random:archiveRandom().play,player:structuredClone(world.get(PlayerStatus)!),weapons:weapons.archive(),
         actors:allMobjs.map(m=>[m.type,m.x,m.y,m.z,m.momx,m.momy,m.momz,m.angle,m.health,m.state,m.tics,m.flags,m.target?allMobjs.indexOf(m.target):-1]),
         sectors:level.map.sectors.map(s=>[s.floorHeight,s.ceilingHeight,s.lightLevel,s.special]),
         sides:level.map.sidedefs.map(s=>[s.xoff,s.yoff,s.upper,s.middle,s.lower])
       });
       if(replay&&(state.playerState==='PST_REBORN'||exitRequested!==null)){
+        if(replay.attract){advanceAttract=true;exitRequested=null;return;}
         replay.stopped=state.playerState==='PST_REBORN'?'rebirth':'level-exit';
         menu.open();
       }
       messages.tick();
       updateSpriteAnimations(1/35);hud.update(world);
     });
+    if(advanceAttract)advanceAttractStage();
     if(finishPresentation)menu.finishPresentation();
     if(exitRequested!==null&&!replay?.stopped) {
       beginWipe();
@@ -301,7 +334,7 @@ async function main(): Promise<void> {
       menu.complete({didSecret:world.get(PlayerStatus)!.didSecret,episode:gameRules.episode,map:gameRules.map,next:destination,kills:level.kills,totalKills:level.totalKills,
         items:level.items,totalItems:level.things.filter(t=>COUNTED_ITEMS.has(t.type)).length,secrets:level.secrets,totalSecrets:level.totalSecrets,time:Math.floor(time.levelTime/35)});
     }
-    if(world.get(PlayerStatus)!.playerState==='PST_REBORN'&&!replay?.stopped){beginWipe();loadLevel(gameRules.episode,gameRules.map,gameRules.skill);menu.start();}
+    if(session.started&&world.get(PlayerStatus)!.playerState==='PST_REBORN'&&!replay?.stopped){beginWipe();loadLevel(gameRules.episode,gameRules.map,gameRules.skill);menu.start();}
     time=world.get(Time)!;
     if(session.presenting && audio.state==='running')playMusic(menu.presentationMusic);
     cameraSystem(world);

@@ -12,7 +12,7 @@ import { MF_AMBUSH } from '../src/game/MobjData.ts';
 import { gameRules, shouldSpawnThing } from '../src/game/GameRules.ts';
 import { resetThinkers } from '../src/game/Thinkers.ts';
 import { WeaponSystem } from '../src/game/Weapons.ts';
-import { aimLineAttack, setAttackMap } from '../src/game/Attack.ts';
+import { aimLineAttack, bulletSlope, setAttackMap } from '../src/game/Attack.ts';
 import { A_Look, clearSoundTargets, P_NoiseAlert, setPlayerMobj } from '../src/game/EnemyAI.ts';
 
 test('fixed arithmetic matches executed original C reference vectors', () => {
@@ -186,5 +186,20 @@ test('P_PathTraverse only aims at things linked into cells crossed by the ray',(
   assert.equal(aimLineAttack(source,Math.PI/2,160*F).target,null);
   const visible=spawnMobj(10*F,40*F,0,'MT_TROOP');
   assert.equal(aimLineAttack(source,Math.PI/2,160*F).target,visible);
+  resetThinkers();allMobjs.length=0;
+});
+
+test('P_BulletSlope probes both side angles in source order before falling back to level aim',()=>{
+  resetThinkers();allMobjs.length=0;const map=dividedMap();
+  map.blockmap={originX:-512,originY:-512,columns:8,rows:8,blockSize:128,lists:Array.from({length:64},()=>[0])};
+  initMobjSystem({},new Group(),map);setAttackMap(map);
+  const source=spawnMobj(60*F,0,0,'MT_PLAYER');
+  const positive=spawnMobj(300*F,24*F,32*F,'MT_TROOP'),negative=spawnMobj(300*F,-24*F,64*F,'MT_TROOP');
+  assert.equal(aimLineAttack(source,0,1024*F).target,null);
+  const hi=aimLineAttack(source,Math.PI/32,1024*F),lo=aimLineAttack(source,-Math.PI/32,1024*F);
+  assert.equal(hi.target,positive);assert.equal(lo.target,negative);assert.notEqual(hi.slope,lo.slope);
+  assert.equal(bulletSlope(source,0),hi.slope);
+  positive.flags=0;assert.equal(bulletSlope(source,0),lo.slope);
+  negative.flags=0;assert.equal(bulletSlope(source,0),0);
   resetThinkers();allMobjs.length=0;
 });

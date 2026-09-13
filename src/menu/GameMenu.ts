@@ -123,8 +123,8 @@ export class GameMenu {
 
   private render(): void {
     const { session } = this;
-    this.overlay.hidden = session.running;
-    this.menuButton.hidden = !(session.running || session.presenting);
+    this.overlay.hidden = session.running || session.attracting;
+    this.menuButton.hidden = !(session.running || session.presenting || session.attracting);
     this.overlay.classList.toggle( 'title-screen', ! session.started );
     this.overlay.classList.toggle('presentation-screen',session.presenting);
     this.overlay.style.backgroundImage = ! session.started && this.graphics.has( 'TITLEPIC' )
@@ -132,7 +132,7 @@ export class GameMenu {
     this.panel.replaceChildren();
     this.advanceButton=null;
     this.panel.classList.toggle('presentation-panel',session.presenting);
-    if ( session.running ) return;
+    if ( session.running || session.attracting ) return;
     const heading = document.createElement( 'h1' );
     const logo = this.graphics.get( 'M_DOOM' );
     if ( logo ) { const img = document.createElement( 'img' ); img.src = logo; img.alt = 'DOOM'; heading.append( img ); }
@@ -200,6 +200,7 @@ export class GameMenu {
       }, 'M_NGAME' );
       if(session.started && session.phase==='level')this.button('Save game',()=>{this.error=null;session.menu='save';this.changed();},'M_SAVEG');
       this.button('Load game',()=>{this.error=null;session.menu='load';this.changed();},'M_LOADG');
+      if(!session.started)this.button('Watch demos',()=>{session.menu=null;this.changed();});
       this.button('Options',()=>{session.menu='options';this.changed();},'M_OPTION');
       this.button( 'Read this', () => { session.menu = 'help'; this.changed(); }, 'M_RDTHIS' );
       if ( session.started ) this.button( 'End game', () => { session.menu = 'end'; this.changed(); }, 'M_ENDGAM' );
@@ -213,6 +214,7 @@ export class GameMenu {
   }
 
   private keyDown( e: KeyboardEvent ): void {
+    if(this.session.attracting){e.preventDefault();e.stopImmediatePropagation();if(!e.repeat)this.open();return;}
     if ( e.code === 'Escape' ) {
       e.preventDefault(); e.stopImmediatePropagation();
       if ( e.repeat ) return;

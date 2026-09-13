@@ -35,3 +35,7 @@
 #hud-message[hidden] { display:none; }
 @media (pointer:coarse) { #hud-message { top:max(84px, calc(env(safe-area-inset-top) + 72px)); width:min(640px, calc(100vw - 8px)); } }
 #screen-wipe[hidden] { display: none; }
+#attract-view { position:fixed; inset:0; z-index:30; background:#000; display:grid; place-items:center; cursor:pointer; }
+#attract-view[hidden] { display:none; }
+#attract-view.demo { background:transparent; }
+#attract-view canvas { width:min(100vw, 133.333vh); height:auto; aspect-ratio:4 / 3; image-rendering:pixelated; }
