@@ -1,3 +1,5 @@
+import {fineSin,fineCos} from '../math/angles';
+import {finesine} from '../math/AngleTables';
 // Ported from: linuxdoom-1.10/p_map.c, p_mobj.c, p_user.c
 // Doom's 2D collision and movement system.
 //
@@ -574,16 +576,16 @@ export function movePlayer(
   if ( forwardMove !== 0 ) {
 
     const thrust = fwdThrust * forwardMove;
-    player.mo.momx += fixedMul( thrust, floatToFixed( Math.cos( angle ) ) );
-    player.mo.momy += fixedMul( thrust, floatToFixed( Math.sin( angle ) ) );
+    player.mo.momx += fixedMul( thrust, fineCos(angle) );
+    player.mo.momy += fixedMul( thrust, fineSin(angle) );
 
   }
 
   if ( sideMove !== 0 ) {
 
     const thrust = sideThrust * sideMove;
-    player.mo.momx += fixedMul( thrust, floatToFixed( Math.cos( angle - Math.PI / 2 ) ) );
-    player.mo.momy += fixedMul( thrust, floatToFixed( Math.sin( angle - Math.PI / 2 ) ) );
+    player.mo.momx += fixedMul( thrust, fineCos(angle - Math.PI / 2) );
+    player.mo.momy += fixedMul( thrust, fineSin(angle - Math.PI / 2) );
 
   }
 
@@ -654,9 +656,8 @@ export function calcHeight( player: DoomPlayer, levelTime: number ): void {
 
   // Bob oscillation: angle = (FINEANGLES/20 * leveltime) & FINEMASK
   // FINEANGLES = 8192, FINEMASK = 8191
-  const fine = ( ( 8192 / 20 * levelTime ) | 0 ) & 8191;
-  const bobAngle = fine * Math.PI * 2 / 8192;
-  const viewBob = fixedMul( bob >> 1, floatToFixed( Math.sin( bobAngle ) ) );
+  const fine = (409 * levelTime) & 8191;
+  const viewBob = fixedMul(bob >> 1, finesine[fine]);
 
   player.viewz = player.mo.z + player.viewheight + viewBob;
 

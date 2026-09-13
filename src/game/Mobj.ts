@@ -1,3 +1,4 @@
+import {fineSin,fineCos,pointToRadians} from '../math/angles';
 // Map object (mobj) system — ported from p_mobj.c.
 // Handles spawning, state machine, and per-tic thinking for all map objects
 // (barrels, enemies, projectiles, effects).
@@ -656,12 +657,12 @@ export function spawnMissile( source: Mobj, dest: Mobj, typeName: string ): Mobj
   // Calculate angle toward destination
   const dx = dest.x - source.x;
   const dy = dest.y - source.y;
-  missile.angle = Math.atan2( dy, dx );
+  missile.angle = pointToRadians(dx,dy);
 
   // Set horizontal momentum from angle and speed
   const speed = gameRules.skill===5 && ['MT_TROOPSHOT','MT_HEADSHOT','MT_BRUISERSHOT'].includes(typeName) ? 20*FRACUNIT : missile.info.speed;
-  missile.momx = fixedMul( speed, Math.round( Math.cos( missile.angle ) * FRACUNIT ) );
-  missile.momy = fixedMul( speed, Math.round( Math.sin( missile.angle ) * FRACUNIT ) );
+  missile.momx = fixedMul( speed, fineCos(missile.angle) );
+  missile.momy = fixedMul( speed, fineSin(missile.angle) );
 
   // Set vertical momentum to aim at dest's height
   const dist = approxDistance( dx, dy );
@@ -715,8 +716,8 @@ export function spawnPlayerMissile(
 
   // Set momentum from the selected aim angle and slope.
   const speed = gameRules.skill===5 && ['MT_TROOPSHOT','MT_HEADSHOT','MT_BRUISERSHOT'].includes(typeName) ? 20*FRACUNIT : missile.info.speed;
-  missile.momx = fixedMul( speed, Math.round( Math.cos( angle ) * FRACUNIT ) );
-  missile.momy = fixedMul( speed, Math.round( Math.sin( angle ) * FRACUNIT ) );
+  missile.momx = fixedMul( speed, fineCos(angle) );
+  missile.momy = fixedMul( speed, fineSin(angle) );
   missile.momz = fixedMul(speed,slope);
 
   checkMissileSpawn( missile );

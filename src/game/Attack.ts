@@ -1,3 +1,4 @@
+import {fineSin,fineCos,pointToRadians} from '../math/angles';
 // Hitscan attack, damage, and radius attack — ported from p_map.c / p_inter.c.
 // Implements P_LineAttack (bullet tracing via P_PathTraverse-style blockmap DDA),
 // P_DamageMobj, and P_RadiusAttack.
@@ -421,8 +422,8 @@ export function aimLineAttack(source: Mobj, angle: number, range: Fixed): {slope
   if (!attackMap) return result;
   const shootZ = source.z + (source.height >> 1) + 8 * FRACUNIT;
   let top = 100 * FRACUNIT / 160, bottom = -top;
-  pathTraverse(source.x, source.y, source.x + Math.trunc(Math.cos(angle)*range),
-    source.y + Math.trunc(Math.sin(angle)*range), attackMap, true, true, intercept => {
+  pathTraverse(source.x, source.y, source.x + (range >> 16)*fineCos(angle),
+    source.y + (range >> 16)*fineSin(angle), attackMap, true, true, intercept => {
       const distance = Math.max(1, fixedMul(range,intercept.frac));
       if (intercept.isLine) {
         const line = attackMap!.linedefs[intercept.lineIdx];
@@ -464,11 +465,11 @@ export function lineAttack(
 
   if ( ! attackMap ) return;
 
-  const cosA = Math.cos( angle );
-  const sinA = Math.sin( angle );
+  const cosA = fineCos(angle);
+  const sinA = fineSin(angle);
 
-  const x2 = sourceX + Math.trunc( cosA * range );
-  const y2 = sourceY + Math.trunc( sinA * range );
+  const x2 = sourceX + cosA * (range >> 16);
+  const y2 = sourceY + sinA * (range >> 16);
 
   // Shoot from source eye height (center + 8 units for player-like height)
   const shootZ = sourceZ;
@@ -587,11 +588,11 @@ export function damageMobj(
   // Thrust / knockback from damage
   if ( inflictor && damage > 0 ) {
 
-    const angle = Math.atan2( target.y - inflictor.y, target.x - inflictor.x );
+    const angle = pointToRadians(target.x - inflictor.x,target.y - inflictor.y);
     let thrust = Math.trunc( ( damage * ( FRACUNIT >> 3 ) * 100 ) / Math.max( 1, target.info.mass ) );
 
-    target.momx += Math.round( thrust * Math.cos( angle ) );
-    target.momy += Math.round( thrust * Math.sin( angle ) );
+    target.momx += fixedMul(thrust,fineCos(angle));
+    target.momy += fixedMul(thrust,fineSin(angle));
 
   }
 

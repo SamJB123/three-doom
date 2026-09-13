@@ -5,34 +5,12 @@ import {
 import type { TextureData, Palette } from '../wad/types';
 import { lightLevelToColormapIndex } from '../wad/ColormapParser';
 
-// Doom animated flat sequences (Ultimate Doom only — no animated walls in Doom 1).
-// All animate at 8 tics per frame. Each entry: first frame name → array of all frame names.
-const ANIM_FLAT_SEQUENCES: string[][] = [
-  [ 'NUKAGE1', 'NUKAGE2', 'NUKAGE3' ],
-  [ 'FWATER1', 'FWATER2', 'FWATER3', 'FWATER4' ],
-  [ 'SWATER1', 'SWATER2', 'SWATER3', 'SWATER4' ],
-  [ 'LAVA1', 'LAVA2', 'LAVA3', 'LAVA4' ],
-  [ 'BLOOD1', 'BLOOD2', 'BLOOD3' ],
-];
-
-const ANIM_TICS_PER_FRAME = 8;
-
-// Maps any frame name in an animated sequence to its sequence array
-const flatAnimLookup = new Map<string, string[]>();
-
-for ( const seq of ANIM_FLAT_SEQUENCES ) {
-
-  for ( const name of seq ) {
-
-    flatAnimLookup.set( name, seq );
-
-  }
-
-}
+import {textureAnimations,animationFrame,type TextureAnimation} from './TextureAnimations';
 
 interface AnimatedEntry {
   material: MeshBasicMaterial;
   textures: DataTexture[];  // pre-built textures for each frame in the sequence
+  animation: TextureAnimation;
   lastFrame: number;        // last frame index applied (avoid redundant swaps)
 }
 
@@ -40,7 +18,10 @@ export class TextureManager {
 
   private wallCache = new Map<string, MeshBasicMaterial>();
   private flatCache = new Map<string, MeshBasicMaterial>();
-  private animatedFlats: AnimatedEntry[] = [];
+  private animated: AnimatedEntry[] = [];
+  private flatAnimations:Map<string,TextureAnimation>;
+  private wallAnimations:Map<string,TextureAnimation>;
+  private completedTics=0;
 
   readonly wallTextures: Record<string, TextureData>;
 
@@ -52,6 +33,8 @@ export class TextureManager {
   ) {
 
     this.wallTextures = wallTextures;
+    this.flatAnimations=textureAnimations(Object.keys(flats),false);
+    this.wallAnimations=textureAnimations(Object.keys(wallTextures),true);
 
   }
 
@@ -59,9 +42,9 @@ export class TextureManager {
     const materials=new Set([...this.wallCache.values(),...this.flatCache.values()]);
     const textures=new Set<DataTexture>();
     for (const material of materials) { if (material.map) textures.add(material.map as DataTexture); material.dispose(); }
-    for (const entry of this.animatedFlats) for (const texture of entry.textures) textures.add(texture);
+    for (const entry of this.animated) for (const texture of entry.textures) textures.add(texture);
     for (const texture of textures) texture.dispose();
-    this.wallCache.clear(); this.flatCache.clear(); this.animatedFlats.length=0;
+    this.wallCache.clear(); this.flatCache.clear(); this.animated.length=0;
   }
 
   private makeColormappedTexture( texData: TextureData, lightLevel: number ): DataTexture {
@@ -125,6 +108,7 @@ export class TextureManager {
       alphaTest: masked ? 0.5 : 0
     } );
     this.wallCache.set( key, mat );
+    this.registerAnimation(mat,texName,lightLevel,true);
     return mat;
 
   }
@@ -159,57 +143,33 @@ export class TextureManager {
     } );
     this.flatCache.set( key, mat );
 
-    // Register for animation if this flat is part of an animated sequence
-    const seq = flatAnimLookup.get( texName );
-
-    if ( seq ) {
-
-      const textures: DataTexture[] = [];
-
-      for ( const frameName of seq ) {
-
-        const fd = this.flats[ frameName ];
-
-        if ( fd ) {
-
-          textures.push( this.makeColormappedTexture( fd, lightLevel ) );
-
-        } else {
-
-          textures.push( tex ); // fallback
-
-        }
-
-      }
-
-      this.animatedFlats.push( { material: mat, textures, lastFrame: - 1 } );
-
-    }
+    this.registerAnimation(mat,texName,lightLevel,false);
 
     return mat;
 
   }
 
-  /**
-   * Update animated flat textures based on the current level time (in Doom tics).
-   * Call once per frame from the game loop.
-   */
-  updateAnimatedTextures( levelTic: number ): void {
+  private registerAnimation(material:MeshBasicMaterial,name:string,light:number,wall:boolean):void {
+    const animation=(wall?this.wallAnimations:this.flatAnimations).get(name);
+    if(!animation)return;
+    const source=wall?this.wallTextures:this.flats;
+    const textures=animation.frames.map(frame=>frame===name ? material.map as DataTexture : this.makeColormappedTexture(source[frame],light));
+    const entry={material,textures,animation,lastFrame:animation.initial};
+    this.animated.push(entry);
+    this.applyAnimation(entry);
+  }
 
-    for ( const entry of this.animatedFlats ) {
+  private applyAnimation(entry:AnimatedEntry):void {
+    const index=animationFrame(entry.animation,this.completedTics);
+    if(index===entry.lastFrame)return;
+    entry.material.map=entry.textures[index];
+    entry.lastFrame=index;
+  }
 
-      const frameIdx = Math.floor( levelTic / ANIM_TICS_PER_FRAME ) % entry.textures.length;
-
-      if ( frameIdx !== entry.lastFrame ) {
-
-        entry.material.map = entry.textures[ frameIdx ];
-        entry.material.needsUpdate = true;
-        entry.lastFrame = frameIdx;
-
-      }
-
-    }
-
+  /** Called at the render boundary using the authoritative completed tic count. */
+  updateAnimatedTextures(completedTics:number):void {
+    this.completedTics=completedTics;
+    for(const entry of this.animated)this.applyAnimation(entry);
   }
 
 }

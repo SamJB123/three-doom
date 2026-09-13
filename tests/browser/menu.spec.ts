@@ -343,3 +343,44 @@ test('pickup HUD uses WAD glyphs, pauses its timeout, refreshes and obeys messag
   await page.evaluate(async()=>{const {allMobjs,spawnMobj}=await import('/src/game/Mobj.ts');const player=allMobjs.find(m=>m.type==='MT_PLAYER')!;spawnMobj(player.x,player.y,player.z,'MT_CHAINGUN');});
   await page.waitForTimeout(200);await expect(page.locator('#hud-message')).toBeHidden();
 });
+
+test('E1M1 armor pedestal scrolling walls share source tic phase through pause and rebuild',async({page})=>{
+  await ready(page);
+  await page.evaluate(async()=>{
+    const {SceneManager}=await import('/src/renderer/SceneBuilder.ts');
+    const update=SceneManager.prototype.updateAnimatedTextures;
+    SceneManager.prototype.updateAnimatedTextures=function(tic:number){
+      update.call(this,tic);
+      const records:any[]=[];
+      this.root.traverse((object:any)=>{
+        const uv=object.geometry?.getAttribute('uv');
+        for(const record of object.geometry?.userData.scrolls??[])records.push({offset:record.side.xoff,u:uv.getX(record.start),end:uv.getX(record.start+1),span:record.span});
+      });
+      (window as any).__scrollCheck={tic,records};
+      (window as any).__rebuildScroll=()=>this.rebuildDirtySectors(new Set([41]));
+    };
+  });
+  await startGame(page);
+  await page.evaluate(async()=>{
+    const {allMobjs}=await import('/src/game/Mobj.ts');
+    const player=allMobjs.find(m=>m.type==='MT_PLAYER')!;
+    player.x=-224*65536;player.y=-3320*65536;player.z=player.floorz=104*65536;player.ceilingz=264*65536;player.momx=player.momy=0;
+  });
+  const check=async()=>{
+    const {tic,records}=await page.evaluate(()=>(window as any).__scrollCheck);
+    expect(records).toHaveLength(8);
+    for(const r of records){
+      expect(r.offset).toBe(8+tic);
+      expect(r.u).toBe(Math.fround(((8+tic)%128)/128));
+      expect(r.end).toBe(Math.fround(r.u+r.span));
+    }
+    return {tic,records};
+  };
+  await expect.poll(async()=>(await page.evaluate(()=>(window as any).__scrollCheck))?.tic??0).toBeGreaterThan(10);
+  await check();await page.keyboard.press('Escape');
+  const paused=await check();await page.waitForTimeout(150);expect(await check()).toEqual(paused);
+  await page.evaluate(()=>(window as any).__rebuildScroll());await page.waitForTimeout(100);expect(await check()).toEqual(paused);
+  await page.getByRole('button',{name:'Resume game',exact:true}).click();
+  await expect.poll(async()=>(await page.evaluate(()=>(window as any).__scrollCheck)).tic).toBeGreaterThan(paused.tic);
+  await check();await page.screenshot({path:'artifacts/e1m1-armor-scroll.png'});
+});

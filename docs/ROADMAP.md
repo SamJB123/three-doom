@@ -38,9 +38,9 @@ Status vocabulary: **missing**, **partial** (implemented but incomplete or not c
 | UI-03 | `hu_stuff.c HU_Ticker/HU_Drawer`, `p_inter.c P_TouchSpecialThing`, `d_englsh.h GOT*` | connected; pickup families, timing, pause and options checks pass | Original health/armor/ammo/weapon/key/powerup messages, WAD HUD glyphs, timeout in simulation tics, message toggle; only successful pickups notify, including dropped items |
 | UI-02 | `wi_stuff.c`, `f_finale.c`, `d_main.c` demo sequence | connected: stats, animated maps/music and episode finales; wipe/title demos pending | Stats/par/intermission maps, episode finales, title/credit/demo cycle |
 | SAVE-01 | `p_saveg.c`, `G_DoSaveGame`, `G_DoLoadGame` | connected; synthetic continued traces and browser persistence verified | Versioned snapshots preserve player, thinkers, world, RNG; round-trip identical continued traces |
-| RENDER-01 | `r_*` rendering rules | partial: holes, masked walls and door pegging have scoped checks | Holes/disconnected sector geometry, pegging, masked walls, skies, sprite rotation/lighting and palette comparisons |
+| RENDER-01 | `r_*` rendering rules | partial: holes, masked walls, pegging, scrolling and texture animation have scoped checks | Holes/disconnected sector geometry, pegging, masked walls, skies, sprite rotation/lighting and palette comparisons |
 | AUDIO-01 | `s_sound.c`, MUS/GENMIDI | partial | Correct per-map music, volume controls, attenuation, lifecycle, browser resume, audio smoke |
-| FIXED-01 | `m_fixed.c`, `tables.c`, `m_random.c` | partial | Signed arithmetic, overflow/division and angle tables; separate gameplay/cosmetic RNG; C differential vectors |
+| FIXED-01 | `m_fixed.c`, `tables.c`, `m_random.c` | partial: arithmetic/angle C fixtures and source tables checked | Signed arithmetic, overflow/division and angle tables; separate gameplay/cosmetic RNG; C differential vectors |
 | NET-01 | `d_net.c`, `i_net.c`, ticcmd networking | missing | Separate multiplayer milestone after deterministic single-player simulation |
 
 ## Known confirmed baseline defects

@@ -11,7 +11,7 @@ interface WallBatch {
   masked: boolean;
   positions: number[];
   uvs: number[];
-  scrolls: {start:number;side:Sidedef;offset:number;width:number}[];
+  scrolls: {start:number;side:Sidedef;offset:number;width:number;span:number}[];
 }
 
 export class SceneManager {
@@ -84,9 +84,12 @@ export class SceneManager {
       if(!records?.length)return;
       const uv=object.geometry.getAttribute('uv');
       for(const record of records){
-        const delta=(record.side.xoff-record.offset)/record.width;
-        if(!delta)continue;
-        for(let i=record.start;i<record.start+6;i++)uv.setX(i,uv.getX(i)+delta);
+        if(record.side.xoff===record.offset)continue;
+        // Recompute from authoritative sidedef pixels. Incrementing Float32 UVs
+        // accumulates rounding differently at each endpoint and after rebuilds.
+        const u0=((record.side.xoff % record.width)+record.width)%record.width/record.width;
+        const u1=u0+record.span;
+        [u0,u1,u1,u0,u0,u1].forEach((u,i)=>uv.setX(record.start+i,u));
         record.offset=record.side.xoff;uv.needsUpdate=true;
       }
     });
@@ -423,7 +426,7 @@ export class SceneManager {
     let tw = 64, th = 64;
     if ( texData ) { tw = texData.width; th = texData.height; }
 
-    const uOff = ( sidedef.xoff * SCALE ) / ( tw * SCALE );
+    const uOff = ((sidedef.xoff % tw)+tw)%tw/tw;
 
     const u0 = uOff;
     const u1 = uOff + wallWidth / ( tw * SCALE );
@@ -446,7 +449,7 @@ export class SceneManager {
       x1, top, z1, x1, bottom, z1, x2, bottom, z2
     );
 
-    if(this.scrollingSides.has(sidedef))batch.scrolls.push({start:batch.uvs.length/2,side:sidedef,offset:sidedef.xoff,width:tw});
+    if(this.scrollingSides.has(sidedef))batch.scrolls.push({start:batch.uvs.length/2,side:sidedef,offset:sidedef.xoff,width:tw,span:wallWidth/(tw*SCALE)});
     batch.uvs.push(
       u0, v0, u1, v1, u1, v0,
       u0, v0, u0, v1, u1, v1

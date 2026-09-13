@@ -37,3 +37,25 @@ test('masked grates cull the opposite side, discard holes and clip one vertical 
   assert.equal(uv.getY(0),0);assert.equal(uv.getY(1),1);
   manager.dispose();
 });
+
+test('scrolling walls derive phase and span from sidedefs across wraps, rebuilds and restored offsets',()=>{
+  const sectors=[{floorHeight:0,ceilingHeight:128,floorTex:'-',ceilingTex:'-',lightLevel:255,special:0,tag:0}];
+  const sides=[0,1].map(()=>({sector:0,xoff:8,yoff:0,upper:'-',lower:'-',middle:'TEST'}));
+  const vertices=[{x:0,y:0},{x:32,y:0},{x:48,y:16}];
+  const lines=[0,1].map(i=>({v1:i,v2:i+1,right:i,left:-1,flags:0,special:48,tag:0}));
+  const texture={width:128,height:128,indices:new Uint8Array(16384),rgba:new Uint8Array(65536).fill(255)};
+  const manager=new SceneManager(vertices,lines,sides,sectors,{TEST:texture},{},Array.from({length:32},()=>new Uint8Array(256)),new Uint8Array(768));
+  const check=()=>manager.root.traverse(object=>{
+    if(!(object instanceof Mesh))return;
+    const uv=object.geometry.getAttribute('uv');
+    for(const r of object.geometry.userData.scrolls){
+      const u=((r.side.xoff%128)+128)%128/128;
+      assert.equal(uv.getX(r.start),Math.fround(u));
+      assert.equal(uv.getX(r.start+1),Math.fround(u+r.span));
+    }
+  });
+  for(let i=0;i<5000;i++){for(const side of sides)side.xoff++;manager.updateAnimatedTextures(i);}
+  check();manager.rebuildDirtySectors(new Set([0]));check();
+  for(const side of sides)side.xoff=-17;manager.updateAnimatedTextures(0);check();
+  manager.updateAnimatedTextures(0);check();manager.dispose();
+});

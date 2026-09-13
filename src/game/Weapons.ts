@@ -1,3 +1,4 @@
+import {finesine} from '../math/AngleTables';
 // Weapon system — ported from p_pspr.c
 // Manages psprite state machine, weapon switching, firing, and ammo consumption.
 
@@ -689,12 +690,10 @@ export class WeaponSystem {
     // Our bob is already in pixel units (0..16), not fixed-point.
     // Wrap angle like original: (128 * leveltime) & FINEMASK (8191)
     const fine = ( 128 * levelTime ) & 8191;
-    const angle = fine * Math.PI * 2 / 8192;
     const halfFine = fine & 4095;
-    const halfAngle = halfFine * Math.PI * 2 / 8192;
     // Bob is fixed-point from DoomPlayer.bob
-    psp.sx = FRACUNIT + fixedMul( bob, floatToFixed( Math.cos( angle ) ) );
-    psp.sy = WEAPONTOP + fixedMul( bob, floatToFixed( Math.sin( halfAngle ) ) );
+    psp.sx = FRACUNIT + fixedMul( bob, finesine[fine+2048] );
+    psp.sy = WEAPONTOP + fixedMul( bob, finesine[halfFine] );
 
   }
 

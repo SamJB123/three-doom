@@ -1,3 +1,4 @@
+import {fineSin,fineCos,pointToRadians} from '../math/angles';
 // Enemy AI system — ported from p_enemy.c.
 // Handles monster behavior: idle scanning, chase pursuit, attack actions,
 // movement direction calculation, and sound propagation.
@@ -106,7 +107,7 @@ function angleTo( sx: Fixed, sy: Fixed, tx: Fixed, ty: Fixed ): number {
 
   const dx = tx - sx;
   const dy = ty - sy;
-  return Math.atan2( dy, dx );
+  return pointToRadians(dx,dy);
 
 }
 
@@ -660,8 +661,8 @@ export function A_SkullAttack( mo: Mobj ): void {
   A_FaceTarget( mo );
 
   const angle = mo.angle;
-  mo.momx = fixedMul( SKULLSPEED, Math.round( Math.cos( angle ) * FRACUNIT ) );
-  mo.momy = fixedMul( SKULLSPEED, Math.round( Math.sin( angle ) * FRACUNIT ) );
+  mo.momx = fixedMul( SKULLSPEED, fineCos(angle) );
+  mo.momy = fixedMul( SKULLSPEED, fineSin(angle) );
 
   let dist = ( approxDistance( mo.target.x - mo.x, mo.target.y - mo.y ) / SKULLSPEED ) | 0;
   if ( dist < 1 ) dist = 1;
@@ -760,8 +761,8 @@ export function A_Tracer( mo: Mobj ): void {
 
   // Update velocity from new angle
   const speed = mo.info.speed;
-  mo.momx = fixedMul( speed, Math.round( Math.cos( mo.angle ) * FRACUNIT ) );
-  mo.momy = fixedMul( speed, Math.round( Math.sin( mo.angle ) * FRACUNIT ) );
+  mo.momx = fixedMul( speed, fineCos(mo.angle) );
+  mo.momy = fixedMul( speed, fineSin(mo.angle) );
 
   // Adjust vertical speed
   let dist = approxDistance( dest.x - mo.x, dest.y - mo.y );
@@ -805,8 +806,8 @@ export function A_FatAttack1( mo: Mobj ): void {
   if ( missile ) {
 
     missile.angle += FATSPREAD;
-    missile.momx = fixedMul( missile.info.speed, Math.round( Math.cos( missile.angle ) * FRACUNIT ) );
-    missile.momy = fixedMul( missile.info.speed, Math.round( Math.sin( missile.angle ) * FRACUNIT ) );
+    missile.momx = fixedMul( missile.info.speed, fineCos(missile.angle) );
+    missile.momy = fixedMul( missile.info.speed, fineSin(missile.angle) );
 
   }
 
@@ -824,8 +825,8 @@ export function A_FatAttack2( mo: Mobj ): void {
   if ( missile ) {
 
     missile.angle -= FATSPREAD * 2;
-    missile.momx = fixedMul( missile.info.speed, Math.round( Math.cos( missile.angle ) * FRACUNIT ) );
-    missile.momy = fixedMul( missile.info.speed, Math.round( Math.sin( missile.angle ) * FRACUNIT ) );
+    missile.momx = fixedMul( missile.info.speed, fineCos(missile.angle) );
+    missile.momy = fixedMul( missile.info.speed, fineSin(missile.angle) );
 
   }
 
@@ -840,8 +841,8 @@ export function A_FatAttack3( mo: Mobj ): void {
   if ( missileA ) {
 
     missileA.angle -= FATSPREAD / 2;
-    missileA.momx = fixedMul( missileA.info.speed, Math.round( Math.cos( missileA.angle ) * FRACUNIT ) );
-    missileA.momy = fixedMul( missileA.info.speed, Math.round( Math.sin( missileA.angle ) * FRACUNIT ) );
+    missileA.momx = fixedMul( missileA.info.speed, fineCos(missileA.angle) );
+    missileA.momy = fixedMul( missileA.info.speed, fineSin(missileA.angle) );
 
   }
 
@@ -849,8 +850,8 @@ export function A_FatAttack3( mo: Mobj ): void {
   if ( missileB ) {
 
     missileB.angle += FATSPREAD / 2;
-    missileB.momx = fixedMul( missileB.info.speed, Math.round( Math.cos( missileB.angle ) * FRACUNIT ) );
-    missileB.momy = fixedMul( missileB.info.speed, Math.round( Math.sin( missileB.angle ) * FRACUNIT ) );
+    missileB.momx = fixedMul( missileB.info.speed, fineCos(missileB.angle) );
+    missileB.momy = fixedMul( missileB.info.speed, fineSin(missileB.angle) );
 
   }
 
@@ -950,8 +951,8 @@ export function A_VileAttack( mo: Mobj ): void {
   if ( ! fire ) return;
 
   const angle = mo.angle;
-  fire.x = mo.target.x - fixedMul( 24 * FRACUNIT, Math.round( Math.cos( angle ) * FRACUNIT ) );
-  fire.y = mo.target.y - fixedMul( 24 * FRACUNIT, Math.round( Math.sin( angle ) * FRACUNIT ) );
+  fire.x = mo.target.x - fixedMul( 24 * FRACUNIT, fineCos(angle) );
+  fire.y = mo.target.y - fixedMul( 24 * FRACUNIT, fineSin(angle) );
 
   radiusAttack( fire, mo, 70 );
 
@@ -966,8 +967,8 @@ export function A_Fire( mo: Mobj ): void {
   if ( map && ! P_CheckSight( mo.target ?? mo, dest, map ) ) return;
 
   const angle = dest.angle;
-  mo.x = dest.x + fixedMul( 24 * FRACUNIT, Math.round( Math.cos( angle ) * FRACUNIT ) );
-  mo.y = dest.y + fixedMul( 24 * FRACUNIT, Math.round( Math.sin( angle ) * FRACUNIT ) );
+  mo.x = dest.x + fixedMul( 24 * FRACUNIT, fineCos(angle) );
+  mo.y = dest.y + fixedMul( 24 * FRACUNIT, fineSin(angle) );
   mo.z = dest.z;
 
 }
@@ -1010,8 +1011,8 @@ function A_PainShootSkull( mo: Mobj, angle: number ): void {
   const skullRadius = 16 * FRACUNIT;
   const preStep = 4 * FRACUNIT + ( ( 3 * ( mo.info.radius + skullRadius ) ) / 2 ) | 0;
 
-  const x = mo.x + fixedMul( preStep, Math.round( Math.cos( angle ) * FRACUNIT ) );
-  const y = mo.y + fixedMul( preStep, Math.round( Math.sin( angle ) * FRACUNIT ) );
+  const x = mo.x + fixedMul( preStep, fineCos(angle) );
+  const y = mo.y + fixedMul( preStep, fineSin(angle) );
   const z = mo.z + 8 * FRACUNIT;
 
   const skull = spawnMobj( x, y, z, 'MT_SKULL' );

@@ -1,3 +1,4 @@
+import {fineSin,fineCos} from '../math/angles';
 import type { Mobj } from './Mobj';
 import { evLightTurnOn, evLightTurnOff } from './Lights';
 // Doom use action — player presses "use" to activate switches and doors.
@@ -45,8 +46,8 @@ export function useLines(
   // Convert fixed-point player position to integer map units for ray trace
   const x1 = fixedToFloat( player.mo.x );
   const y1 = fixedToFloat( player.mo.y );
-  const x2 = x1 + Math.cos( angle ) * USERANGE;
-  const y2 = y1 + Math.sin( angle ) * USERANGE;
+  const x2 = x1 + fineCos(angle) / 65536 * USERANGE;
+  const y2 = y1 + fineSin(angle) / 65536 * USERANGE;
 
   // Find candidate linedefs via blockmap (integer coords)
   const minX = Math.floor( Math.min( x1, x2 ) ) - 1;

@@ -1,3 +1,4 @@
+import {fineSin,fineCos} from '../math/angles';
 // Doom teleporter system — ported from p_telept.c / p_spec.c EV_Teleport.
 // Moves a thing to the teleport destination in the tagged sector.
 
@@ -103,8 +104,8 @@ export function evTeleport(
 
       spawnMobj(old.x,old.y,old.z,'MT_TFOG');
       playSoundAt('telept',old.x,old.y,old.z);
-      const fogX = destX + intToFixed(20 * Math.cos(mover.angle));
-      const fogY = destY + intToFixed(20 * Math.sin(mover.angle));
+      const fogX = destX + 20 * fineCos(mover.angle);
+      const fogY = destY + 20 * fineSin(mover.angle);
       spawnMobj(fogX,fogY,destFloorZ,'MT_TFOG');
       playSoundAt('telept',fogX,fogY,destFloorZ);
 
