@@ -1,6 +1,7 @@
 import { Group, BufferGeometry, Float32BufferAttribute, Mesh } from 'three/webgpu';
 import type { Vertex, Linedef, Sidedef, Sector, Thing, TextureData, Palette } from '../wad/types';
 import { buildSectorPolygons, triangulateSector } from '../wad/SectorBuilder';
+import {scrollingLoops} from './ScrollingLoops';
 import { TextureManager } from './TextureManager';
 
 const SCALE = 1.0 / 32.0;
@@ -11,12 +12,13 @@ interface WallBatch {
   masked: boolean;
   positions: number[];
   uvs: number[];
-  scrolls: {start:number;side:Sidedef;offset:number;width:number;span:number}[];
+  scrolls: {start:number;side:Sidedef;offset:number;width:number;span:number;phase:number}[];
 }
 
 export class SceneManager {
 
   private texMgr: TextureManager;
+  private scrollMapping:ReturnType<typeof scrollingLoops>;
   private scrollingSides=new Set<Sidedef>();
   private sectorGroups: Map<number, Group> = new Map();
   private sectorLinedefs: Map<number, number[]> = new Map(); // sector → linedef indices
@@ -34,6 +36,7 @@ export class SceneManager {
   ) {
 
     for(const line of linedefs)if(line.special===48)this.scrollingSides.add(sidedefs[line.right]);
+    this.scrollMapping=scrollingLoops(vertexes,linedefs,sidedefs,wallTextures);
     this.texMgr = new TextureManager( wallTextures, flats, colormap, palette );
 
     // Pre-compute which linedefs touch each sector
@@ -87,7 +90,7 @@ export class SceneManager {
         if(record.side.xoff===record.offset)continue;
         // Recompute from authoritative sidedef pixels. Incrementing Float32 UVs
         // accumulates rounding differently at each endpoint and after rebuilds.
-        const u0=((record.side.xoff % record.width)+record.width)%record.width/record.width;
+        const u0=((record.side.xoff % record.width)+record.width)%record.width/record.width+record.phase;
         const u1=u0+record.span;
         [u0,u1,u1,u0,u0,u1].forEach((u,i)=>uv.setX(record.start+i,u));
         record.offset=record.side.xoff;uv.needsUpdate=true;
@@ -428,8 +431,11 @@ export class SceneManager {
 
     const uOff = ((sidedef.xoff % tw)+tw)%tw/tw;
 
-    const u0 = uOff;
-    const u1 = uOff + wallWidth / ( tw * SCALE );
+    const mapping=this.scrollMapping.get(sidedef)?.get(texName);
+    const phase=mapping?.phase??0;
+    const span=wallWidth/(tw*SCALE)*(mapping?.scale??1);
+    const u0 = uOff+phase;
+    const u1 = u0+span;
 
     // R_StoreWallRange / R_RenderMaskedSegRange: absolute world height of
     // texture row zero, including the sidedef row offset.
@@ -449,7 +455,7 @@ export class SceneManager {
       x1, top, z1, x1, bottom, z1, x2, bottom, z2
     );
 
-    if(this.scrollingSides.has(sidedef))batch.scrolls.push({start:batch.uvs.length/2,side:sidedef,offset:sidedef.xoff,width:tw,span:wallWidth/(tw*SCALE)});
+    if(this.scrollingSides.has(sidedef))batch.scrolls.push({start:batch.uvs.length/2,side:sidedef,offset:sidedef.xoff,width:tw,span,phase});
     batch.uvs.push(
       u0, v0, u1, v1, u1, v0,
       u0, v0, u0, v1, u1, v1

@@ -359,7 +359,7 @@ test('E1M1 armor pedestal scrolling walls share source tic phase through pause a
       const records:any[]=[];
       this.root.traverse((object:any)=>{
         const uv=object.geometry?.getAttribute('uv');
-        for(const record of object.geometry?.userData.scrolls??[])records.push({offset:record.side.xoff,u:uv.getX(record.start),end:uv.getX(record.start+1),span:record.span});
+        for(const record of object.geometry?.userData.scrolls??[])records.push({offset:record.side.xoff,u:uv.getX(record.start),end:uv.getX(record.start+1),span:record.span,phase:record.phase});
       });
       (window as any).__scrollCheck={tic,records};
       (window as any).__rebuildScroll=()=>this.rebuildDirtySectors(new Set([41]));
@@ -376,8 +376,14 @@ test('E1M1 armor pedestal scrolling walls share source tic phase through pause a
     expect(records).toHaveLength(8);
     for(const r of records){
       expect(r.offset).toBe(8+tic);
-      expect(r.u).toBe(Math.fround(((8+tic)%128)/128));
-      expect(r.end).toBe(Math.fround(r.u+r.span));
+      expect(r.u).toBe(Math.fround(((8+tic)%128)/128+r.phase));
+      expect(r.end).toBeCloseTo(r.u+r.span,6);
+    }
+    const ordered=[...records].sort((a,b)=>a.phase-b.phase);
+    for(let i=0;i<ordered.length;i++){
+      const next=ordered[(i+1)%ordered.length];
+      const difference=ordered[i].end-next.u;
+      expect(difference).toBeCloseTo(Math.round(difference),6);
     }
     return {tic,records};
   };
