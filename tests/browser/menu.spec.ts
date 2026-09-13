@@ -271,7 +271,7 @@ test('masked walls render transparent holes without opposite-face interference',
   await ready(page);
   const pixels=await page.evaluate(async()=>{
     const {SceneManager}=await import('/src/renderer/SceneBuilder.ts');
-    const {WebGPURenderer,Scene,OrthographicCamera}=await import('/node_modules/three/build/three.webgpu.js');
+    const {WebGPURenderer,Scene,OrthographicCamera}=await import('/tests/browser/three.ts');
     const rgba=new Uint8Array(64*64*4),indices=new Uint8Array(64*64),palette=new Uint8Array(768);palette[0]=255;
     for(let y=0;y<64;y++)for(let x=0;x<32;x++)rgba[(y*64+x)*4+3]=255;
     const sectors=[0,1].map(()=>({floorHeight:0,ceilingHeight:64,floorTex:'-',ceilingTex:'-',lightLevel:255,special:0,tag:0}));
@@ -458,4 +458,39 @@ test('sound effects cannot unpause audio and are stopped when leaving a level',a
   await page.getByRole('button',{name:'End game',exact:true}).click();await page.getByRole('button',{name:'Confirm',exact:true}).click();
   expect(await page.evaluate(()=>(window as any).__effectStopped)).toBe(true);
   expect((await snapshot(page)).started).toBe(false);
+});
+
+test('sky covers steep views and sky ceilings/boundaries occlude distant rooms',async({page})=>{
+  const errors:string[]=[];page.on('console',message=>{if(message.type()==='error')errors.push(message.text());});
+  await ready(page);
+  const results=await page.evaluate(async()=>{
+    const {createSky}=await import('/src/renderer/SkyRenderer.ts');
+    const {SceneManager}=await import('/src/renderer/SceneBuilder.ts');
+    const {WebGPURenderer,Scene,PerspectiveCamera,Mesh,BoxGeometry,MeshBasicMaterial}=await import('/tests/browser/three.ts');
+    const rgba=new Uint8Array(256*128*4);for(let i=0;i<rgba.length;i+=4)rgba.set([0,255,0,255],i);
+    const data={width:256,height:128,rgba,indices:new Uint8Array(256*128)};
+    const sky=createSky(data),scene=new Scene();scene.add(sky.mesh);
+    const renderer=new WebGPURenderer({forceWebGL:true,antialias:false});renderer.setSize(64,64);renderer.setClearColor(0xff00ff);await renderer.init();
+    const camera=new PerspectiveCamera(90,1,.1,500),copy=document.createElement('canvas');copy.width=copy.height=64;const ctx=copy.getContext('2d')!;
+    const draw=()=>{sky.mesh.position.copy(camera.position);renderer.render(scene,camera);ctx.drawImage(renderer.domElement,0,0);return Array.from(ctx.getImageData(32,32,1,1).data);};
+    const views=[];
+    for(const pitch of [-89,-60,0,60,89]){
+      camera.position.set(25,40,-60);const angle=pitch*Math.PI/180;camera.lookAt(25,40+Math.sin(angle),-60-Math.cos(angle));draw();
+      const pixels=ctx.getImageData(0,0,64,64).data;views.push(Array.from(pixels).every((v,i)=>v===[0,255,0,255][i%4]));
+    }
+    const vertices=[[-64,-64],[64,-64],[64,64],[-64,64]].map(([x,y])=>({x,y}));
+    const sides=vertices.map(()=>({sector:0,xoff:0,yoff:0,upper:'-',middle:'-',lower:'-'}));
+    const lines=vertices.map((_,i)=>({v1:i,v2:(i+1)%4,right:i,left:-1,flags:0,special:0,tag:0}));
+    const manager=new SceneManager(vertices,lines,sides,[{floorHeight:0,ceilingHeight:64,floorTex:'-',ceilingTex:'F_SKY1',lightLevel:255,special:0,tag:0}],{},{},Array.from({length:32},()=>new Uint8Array(256)),new Uint8Array(768),data);scene.add(manager.root);
+    const room=new Mesh(new BoxGeometry(20,1,20),new MeshBasicMaterial({color:0xff0000}));room.position.y=4;scene.add(room);
+    camera.position.set(0,1,0);camera.lookAt(0,5,0);const ceiling=draw();
+    room.scale.set(.2,4,.1);room.position.set(0,3,-5);camera.position.set(0,3,0);camera.lookAt(0,3,-5);const boundary=draw();
+    room.scale.z=.025;room.position.z=-1;const foreground=draw();
+    manager.dispose();room.geometry.dispose();room.material.dispose();renderer.dispose();
+    return {views,ceiling,boundary,foreground};
+  });
+  expect(errors).toEqual([]);
+  expect(results.views).toEqual([true,true,true,true,true]);
+  expect(results.ceiling).toEqual([0,255,0,255]);expect(results.boundary).toEqual([0,255,0,255]);
+  expect(results.foreground).toEqual([255,0,0,255]);
 });

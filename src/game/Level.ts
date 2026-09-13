@@ -62,7 +62,7 @@ export class Level {
     this.things=w.parseThings(wad,lumps.THINGS).filter(t=>shouldSpawnThing(t,skill));
     this.totalSecrets=map.sectors.filter(s=>s.special===9).length;
     computeSectorSoundOrigins(map.sectors,map.linedefs,map.sidedefs,map.vertexes);
-    const scene=buildScene(map.vertexes,map.linedefs,map.sidedefs,map.sectors,this.things,assets.textures,assets.flats,assets.colormap,assets.palette);
+    const scene=buildScene(map.vertexes,map.linedefs,map.sidedefs,map.sectors,this.things,assets.textures,assets.flats,assets.colormap,assets.palette,assets.textures[skyTexture(episode)]);
     this.manager=scene.manager; this.root.add(scene.group);
     this.sky=assets.textures[skyTexture(episode)] ? createSky(assets.textures[skyTexture(episode)]).mesh : null;
     if (this.sky) this.root.add(this.sky);

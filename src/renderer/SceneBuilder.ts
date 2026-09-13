@@ -1,6 +1,7 @@
 import { Group, BufferGeometry, Float32BufferAttribute, Mesh } from 'three/webgpu';
 import type { Vertex, Linedef, Sidedef, Sector, Thing, TextureData, Palette } from '../wad/types';
 import { buildSectorPolygons, triangulateSector } from '../wad/SectorBuilder';
+import {createSkyMaterial} from './SkyRenderer';
 import {scrollingLoops} from './ScrollingLoops';
 import { TextureManager } from './TextureManager';
 
@@ -17,6 +18,7 @@ interface WallBatch {
 
 export class SceneManager {
 
+  private skyMaterial:ReturnType<typeof createSkyMaterial>|null=null;
   private texMgr: TextureManager;
   private scrollMapping:ReturnType<typeof scrollingLoops>;
   private scrollingSides=new Set<Sidedef>();
@@ -32,10 +34,12 @@ export class SceneManager {
     wallTextures: Record<string, TextureData>,
     private flats: Record<string, TextureData>,
     colormap: Uint8Array[],
-    palette: Palette
+    palette: Palette,
+    skyTexture?:TextureData
   ) {
 
     for(const line of linedefs)if(line.special===48)this.scrollingSides.add(sidedefs[line.right]);
+    if(skyTexture)this.skyMaterial=createSkyMaterial(skyTexture,true);
     this.scrollMapping=scrollingLoops(vertexes,linedefs,sidedefs,wallTextures);
     this.texMgr = new TextureManager( wallTextures, flats, colormap, palette );
 
@@ -76,6 +80,7 @@ export class SceneManager {
   dispose(): void {
     this.root.traverse(child => { if (child instanceof Mesh) child.geometry.dispose(); });
     this.root.clear(); this.sectorGroups.clear(); this.texMgr.dispose();
+    this.skyMaterial?.map?.dispose();this.skyMaterial?.dispose();
   }
 
   updateAnimatedTextures( levelTic: number ): void {
@@ -194,6 +199,18 @@ export class SceneManager {
 
     }
 
+    // One-sided outdoor boundaries must hide the rest of the map above their
+    // wall tops, as the software renderer's sky clipping does.
+    if(this.skyMaterial)for(const index of ldList??[]){
+      const line=this.linedefs[index];
+      if(line.left>=0||line.right<0||this.sidedefs[line.right].sector!==si||sector.ceilingTex!=='F_SKY1')continue;
+      const a=this.vertexes[line.v1],b=this.vertexes[line.v2],low=sector.ceilingHeight*SCALE,high=32768*SCALE;
+      const geometry=new BufferGeometry();
+      geometry.setAttribute('position',new Float32BufferAttribute([
+        a.x*SCALE,low,-a.y*SCALE,b.x*SCALE,low,-b.y*SCALE,b.x*SCALE,high,-b.y*SCALE,
+        a.x*SCALE,low,-a.y*SCALE,b.x*SCALE,high,-b.y*SCALE,a.x*SCALE,high,-a.y*SCALE],3));
+      group.add(new Mesh(geometry,this.skyMaterial));
+    }
     // Build floor + ceiling
     this.buildSectorFlats( si, group );
 
@@ -359,8 +376,8 @@ export class SceneManager {
 
       }
 
-      // Ceiling (skip sky)
-      if ( sector.ceilingTex !== 'F_SKY1' ) {
+      // Ceiling: sky surfaces also write depth to hide geometry beyond them.
+      if ( sector.ceilingTex !== 'F_SKY1' || this.skyMaterial ) {
 
         const positions: number[] = [];
         const uvs: number[] = [];
@@ -392,7 +409,7 @@ export class SceneManager {
           geom.setAttribute( 'uv', new Float32BufferAttribute( uvs, 2 ) );
           geom.computeVertexNormals();
 
-          const mat = this.texMgr.getFlatMaterial( sector.ceilingTex, sector.lightLevel );
+          const mat = sector.ceilingTex==='F_SKY1'?this.skyMaterial:this.texMgr.getFlatMaterial( sector.ceilingTex, sector.lightLevel );
           if ( mat ) group.add( new Mesh( geom, mat ) );
 
         }
@@ -475,12 +492,13 @@ export function buildScene(
   wallTextures: Record<string, TextureData>,
   flats: Record<string, TextureData>,
   colormap: Uint8Array[],
-  palette: Palette
+  palette: Palette,
+  skyTexture?:TextureData
 ): { group: Group; things: Thing[]; manager: SceneManager } {
 
   const manager = new SceneManager(
     vertexes, linedefs, sidedefs, sectors,
-    wallTextures, flats, colormap, palette
+    wallTextures, flats, colormap, palette, skyTexture
   );
 
   return { group: manager.root, things, manager };
