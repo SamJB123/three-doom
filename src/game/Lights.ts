@@ -1,7 +1,7 @@
 // p_lights.c: all mutable timing is explicit so saving preserves the next tic.
 import type { Sector, Linedef, Sidedef } from '../wad';
 import { P_Random } from './DoomRandom';
-import { addThinker, archivedThinker, markSectorDirty } from './Thinkers';
+import { addThinker, archivedThinker, markSectorDirty, busySectors } from './Thinkers';
 import { lightLevelToColormapIndex } from '../wad/ColormapParser';
 
 export interface LightState {
@@ -80,5 +80,16 @@ export function evLightTurnOn(tag: number, bright: number, map: DoomMapData): vo
       else if(b===i)bright=Math.max(bright,map.sectors[a].lightLevel);
     }
     s.lightLevel=bright;markSectorDirty(i);
+  });
+}
+
+/** EV_StartLightStrobing / P_SpawnStrobeFlash: a moving sector cannot start. */
+export function evStartLightStrobing(tag:number,map:DoomMapData):void {
+  map.sectors.forEach((sector,sectorIdx)=>{
+    if(sector.tag!==tag||busySectors.has(sectorIdx))return;
+    let min=minimum(sectorIdx,map.linedefs,map.sidedefs,map.sectors);
+    if(min===sector.lightLevel)min=0;
+    sector.special=0;
+    restoreLights({sectorIdx,type:'strobe',min,max:sector.lightLevel,count:(P_Random()&7)+1,dark:35,direction:-1},map.sectors);
   });
 }

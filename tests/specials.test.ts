@@ -110,3 +110,60 @@ test('repeated gun buttons flip artwork without restarting their original 35-tic
   assert.equal(m.sidedefs[0].middle,'SW2BRCOM');updateButtons(m.sidedefs);
   assert.equal(m.sidedefs[0].middle,'SW1BRCOM');assert.equal(archiveUseActions(m.sidedefs).buttons.length,0);clean();
 });
+
+test('light triggers honor one-shot/repeat rules and button texture changes',()=>{
+  for(const [special,expected,repeat,use] of [[12,80,false,false],[79,35,true,false],[80,80,true,false],[81,255,true,false],[138,255,true,true],[139,35,true,true]] as const){
+    clean();const m=dividedMap();m.sectors[0].tag=7;m.sectors[1].lightLevel=80;
+    const line={...m.linedefs[0],special,tag:7};
+    if(use)useSpecialLine(line,m);else crossSpecialLine(line,m);
+    assert.equal(m.sectors[0].lightLevel,expected,`special ${special}`);
+    assert.equal(line.special,repeat?special:0);
+    if(use)assert.equal(m.sidedefs[0].middle,'SW2BRCOM');
+  }clean();
+});
+test('walk-triggered slow strobes preserve source timing and skip moving sectors',async()=>{
+  const {busySectors}=await import('../src/game/Thinkers');
+  const {restoreRandom,archiveRandom}=await import('../src/game/DoomRandom');
+  clean();const m=dividedMap();m.sectors[0].tag=7;m.sectors[0].special=8;m.sectors[1].lightLevel=80;
+  const line={...m.linedefs[0],special:17,tag:7};restoreRandom({play:0,misc:0});
+  busySectors.add(0);crossSpecialLine(line,m);assert.equal(archiveThinkers().length,0);assert.equal(line.special,0);
+  busySectors.clear();line.special=17;crossSpecialLine(line,m);
+  assert.equal(archiveRandom().play,1);assert.equal(m.sectors[0].special,0);
+  const state=archiveThinkers()[0].data as any;assert.equal(state.dark,35);
+  for(let i=0;i<state.count;i++)runThinkers();assert.equal(m.sectors[0].lightLevel,80);
+  for(let i=0;i<35;i++)runThinkers();assert.equal(m.sectors[0].lightLevel,160);
+  for(let i=0;i<5;i++)runThinkers();assert.equal(m.sectors[0].lightLevel,80);clean();
+});
+test('remaining floor and platform trigger variants start movers and retain repeatability',()=>{
+  const cases=[
+    [84,'floor','lowerAndChange',false,true],[92,'floor','raiseFloor24',false,true],
+    [93,'floor','raiseFloor24AndChange',false,true],[94,'floor','raiseFloorCrush',false,true],
+    [95,'platform','raiseToNearestAndChange',false,true],[96,'floor','raiseToTexture',false,true],
+    [55,'floor','raiseFloorCrush',true,false],[131,'floor','raiseFloorTurbo',true,false],
+    [132,'floor','raiseFloorTurbo',true,true],[140,'floor','raiseFloor512',true,false],
+    [66,'platform','raiseAndChange',true,true],[67,'platform','raiseAndChange',true,true],[68,'platform','raiseToNearestAndChange',true,true]
+  ] as const;
+  for(const [special,kind,type,use,repeat] of cases){
+    clean();const m=dividedMap();m.sectors[1].tag=7;m.sectors[0].floorHeight=32;
+    const line={...m.linedefs[0],special,tag:7};
+    if(use)useSpecialLine(line,m);else crossSpecialLine(line,m);
+    const record=archiveThinkers().find(record=>record.kind===kind);
+    assert(record,`special ${special} did not start ${kind}`);assert.equal((record.data as any).type,type);
+    assert.equal(line.special,repeat?special:0);
+    if(special===66||special===67)assert.equal((record.data as any).high,special===66?24:32);
+  }clean();
+});
+
+test('all four light thinkers match 140 executed C tics including RNG consumption',async()=>{
+  const {readFileSync}=await import('node:fs');
+  const {restoreLights}=await import('../src/game/Lights');
+  const {restoreRandom,archiveRandom}=await import('../src/game/DoomRandom');
+  const fixture=JSON.parse(readFileSync(new URL('./fixtures/lights-reference.json',import.meta.url),'utf8'));
+  for(const {initial,rows} of fixture.cases){
+    clean();const m=dividedMap();m.sectors[0].lightLevel=initial.max;restoreRandom({play:0,misc:0});
+    const state={...initial};restoreLights(state,m.sectors);
+    for(const [tic,expected] of rows.entries()){
+      runThinkers();assert.deepEqual([m.sectors[0].lightLevel,state.count,state.direction,archiveRandom().play],expected,`${state.type} tic ${tic+1}`);
+    }
+  }clean();
+});

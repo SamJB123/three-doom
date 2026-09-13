@@ -28,7 +28,7 @@ Status vocabulary: **missing**, **partial** (implemented but incomplete or not c
 | PHYS-01 | `p_map.c P_CheckPosition`, `P_TryMove`, `P_SlideMove` | partial | Solid actors, blocking flags, steps/dropoffs, diagonal sliding; player/monster/projectile consistency |
 | PHYS-02 | `P_ChangeSector`, `P_ThingHeightClip`, `T_MovePlane` | partial | Lifts carry stationary occupants; doors reopen when blocked; crushers damage and handle corpses |
 | SPEC-01 | `P_CrossSpecialLine`, `P_UseSpecialLine`, `EV_VerticalDoor` | partial: projectile exclusions and switch retrigger scenarios checked | Actual side-crossing only; use intersections sorted along ray; keys enforced; repeat/use direction semantics |
-| SPEC-02 | `p_floor.c`, `p_plats.c`, `p_ceilng.c`, `p_doors.c`, `p_lights.c`, `p_telept.c` | partial | Table of every IWAD-used special and a scenario per special family; telefrags and teleport effects |
+| SPEC-02 | `p_floor.c`, `p_plats.c`, `p_ceilng.c`, `p_doors.c`, `p_lights.c`, `p_telept.c` | partial: missing trigger variants connected; four light thinkers C-checked | Table of every IWAD-used special and a scenario per special family; telefrags and teleport effects |
 | ACTOR-01 | `p_mobj.c P_SpawnMapThing`, `info.c`, `p_enemy.c` | partial: complete source metadata, map actors and Nightmare respawn checked | Skill/multiplayer filtering, spawn angle/ambush, timing, AI, pain/death/infighting/drop behavior |
 | ACTOR-02 | `P_NoiseAlert`, `A_Look`, `P_CheckSight` | partial | Weapon noise reaches valid sectors, respects sound-block flags; ambush/sight behavior matches C |
 | COMBAT-01 | `p_pspr.c`, `p_map.c` aiming/line attacks | partial | Correct melee range, autoaim, first-shot accuracy, spread, projectile wall impacts and BFG behavior |

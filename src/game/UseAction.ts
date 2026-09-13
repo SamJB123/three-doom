@@ -1,6 +1,6 @@
 import {fineSin,fineCos} from '../math/angles';
 import type { Mobj } from './Mobj';
-import { evLightTurnOn, evLightTurnOff } from './Lights';
+import { evLightTurnOn, evLightTurnOff, evStartLightStrobing } from './Lights';
 // Doom use action — player presses "use" to activate switches and doors.
 // Also handles walk-over (cross) triggers.
 // Ported from p_map.c (P_UseLines, PTR_UseTraverse) and p_spec.c / p_switch.c
@@ -78,7 +78,7 @@ export function useLines(
     // Not special — check if it blocks (one-sided = wall)
     if ( ld.left < 0 ) {
 
-      return; // hit a wall, stop
+      playSound('noway');return; // PTR_UseTraverse blocked opening
 
     }
 
@@ -88,7 +88,7 @@ export function useLines(
     const openRange = Math.min( front.ceilingHeight, back.ceilingHeight ) -
                       Math.max( front.floorHeight, back.floorHeight );
 
-    if ( openRange <= 0 ) return; // blocked
+    if ( openRange <= 0 ) {playSound('noway');return;} // blocked
 
     // Passable two-sided, keep checking
 
@@ -137,6 +137,16 @@ export function useSpecialLine( line: Linedef, map: DoomMapData, state?: PlayerS
       evVerticalDoor( line, linedefs, sidedefs, sectors, state );
       break;
 
+    case 55: case 131: case 132: case 140: {
+      const type=line.special===55?'raiseFloorCrush':line.special===140?'raiseFloor512':'raiseFloorTurbo';
+      if(evDoFloor(type,line.tag,linedefs,sidedefs,sectors,line))changeSwitchTexture(line,sidedefs,line.special===132);
+      break;
+    }
+    case 66: case 67: case 68:
+      if(evDoPlat(line.special===68?'raiseToNearestAndChange':'raiseAndChange',line.tag,line.special===66?24:line.special===67?32:0,linedefs,sidedefs,sectors,line))changeSwitchTexture(line,sidedefs,true);
+      break;
+    case 138: case 139:
+      evLightTurnOn(line.tag,line.special===138?255:35,map);changeSwitchTexture(line,sidedefs,true);break;
     case 9:
       if(evDoDonut(line.tag,linedefs,sidedefs,sectors))changeSwitchTexture(line,sidedefs,false);
       break;
@@ -367,6 +377,15 @@ export function crossSpecialLine(
       clearSpecial=line.special===125 && actor?.type!=='MT_PLAYER';
       if(actor && actor.type!=='MT_PLAYER' && things)evTeleport(line,oldSide,actor,map,things);
       break;
+    case 12: evLightTurnOn(line.tag,0,map);break;
+    case 17: evStartLightStrobing(line.tag,map);break;
+    case 79: case 80: case 81:
+      evLightTurnOn(line.tag,line.special===79?35:line.special===80?0:255,map);clearSpecial=false;break;
+    case 84: case 92: case 93: case 94: case 96: {
+      const type=line.special===84?'lowerAndChange':line.special===92?'raiseFloor24':line.special===93?'raiseFloor24AndChange':line.special===94?'raiseFloorCrush':'raiseToTexture';
+      evDoFloor(type,line.tag,linedefs,sidedefs,sectors,line);clearSpecial=false;break;
+    }
+    case 95: evDoPlat('raiseToNearestAndChange',line.tag,0,linedefs,sidedefs,sectors,line);clearSpecial=false;break;
     case 13: evLightTurnOn(line.tag,255,map); break;
     case 35: evLightTurnOn(line.tag,35,map); break;
     case 104: evLightTurnOff(line.tag,map); break;
