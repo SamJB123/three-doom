@@ -9,7 +9,6 @@ import { Input } from '../ecs/traits';
 // Layout constants (percentage of viewport)
 const STICK_RADIUS = 50;      // pixels — outer ring radius
 const STICK_DEAD = 10;        // dead zone in pixels
-const ACTION_ZONE_FRACTION = 0.4;
 const MARGIN = 20;            // edge margin
 
 // Look sensitivity (scaled to match mouse look feel)
@@ -231,12 +230,13 @@ export class TouchControls {
 
     const makeHint=(action:'sprint'|'fire',icon:string):HTMLDivElement=>{
       const hint=document.createElement('div');hint.dataset.touchAction=action;
-      hint.style.cssText=`position:absolute; width:50%; height:${ACTION_ZONE_FRACTION*100}%;
-        ${action==='sprint'?'top:0;left:0':'bottom:0;right:0'};
-        box-sizing:border-box; border:1px dashed rgba(255,255,255,.18);
-        background:rgba(255,255,255,.025); pointer-events:none;
-        display:flex; align-items:${action==='fire'?'flex-start':'center'}; justify-content:center;
-        ${action==='fire'?'padding-top:5vmin;':''} transition:opacity .6s;`;
+      hint.style.cssText=`position:absolute; width:clamp(80px,24vmin,120px); aspect-ratio:1;
+        bottom:max(clamp(56px,16vh,110px),env(safe-area-inset-bottom));
+        ${action==='sprint'?'left:max(8vw,env(safe-area-inset-left))':'right:max(8vw,env(safe-area-inset-right))'};
+        border-radius:50%;
+        box-sizing:border-box; border:2px solid rgba(255,255,255,.35);
+        background:rgba(0,0,0,.18); pointer-events:none;
+        display:flex; align-items:center; justify-content:center; transition:opacity .6s;`;
       hint.innerHTML=`<span style="text-align:center;color:rgba(255,255,255,.5);font:bold 12px monospace;">
         <span style="font-size:5vmin">${icon}</span><br>${action.toUpperCase()}</span>`;
       this.container.append(hint);return hint;
@@ -245,12 +245,18 @@ export class TouchControls {
     this.rightHint=makeHint('fire','🔫');
   }
 
+  private inActionCircle(element:HTMLElement,x:number,y:number):boolean {
+    const bounds=element.getBoundingClientRect();
+    const radius=bounds.width/2;
+    return Math.hypot(x-bounds.left-radius,y-bounds.top-bounds.height/2)<=radius;
+  }
+
   private hideHints(): void {
 
     if ( ! this.hintsVisible ) return;
     this.hintsVisible = false;
-    this.leftHint.style.opacity = '0.4';
-    this.rightHint.style.opacity = '0.4';
+    this.leftHint.style.opacity = '0.75';
+    this.rightHint.style.opacity = '0.75';
 
   }
 
@@ -281,7 +287,7 @@ export class TouchControls {
     this.hideHints();
     const bounds = this.container.getBoundingClientRect();
     const w = bounds.width;
-    const h = bounds.height;
+
 
     for ( let i = 0; i < e.changedTouches.length; i ++ ) {
 
@@ -290,7 +296,7 @@ export class TouchControls {
       if ( t.clientX - bounds.left < w / 2 ) {
 
         // Left half → movement stick
-        // Top 40% of left half = sprint zone: sprint is active for this touch
+        // Starting inside the visible circle enables sprint for this drag.
         if ( ! this.leftStick.active ) {
 
           this.leftStick.id = t.identifier;
@@ -299,7 +305,7 @@ export class TouchControls {
           this.leftStick.currentX = t.clientX;
           this.leftStick.currentY = t.clientY;
           this.leftStick.active = true;
-          this.runActive = t.clientY - bounds.top < h * ACTION_ZONE_FRACTION;
+          this.runActive = this.inActionCircle(this.leftHint,t.clientX,t.clientY);
           this.showStick( this.leftRing, this.leftKnob, t.clientX, t.clientY, 0, 0 );
 
         }
@@ -307,7 +313,7 @@ export class TouchControls {
       } else {
 
         // Right half → look stick
-        // Bottom 40% of right half = fire zone: fires while this touch is held
+        // Starting inside the visible circle enables firing while aiming.
         if ( ! this.rightStick.active ) {
 
           this.rightStick.id = t.identifier;
@@ -316,7 +322,7 @@ export class TouchControls {
           this.rightStick.currentX = t.clientX;
           this.rightStick.currentY = t.clientY;
           this.rightStick.active = true;
-          this.fireDown = t.clientY - bounds.top >= h * (1-ACTION_ZONE_FRACTION);
+          this.fireDown = this.inActionCircle(this.rightHint,t.clientX,t.clientY);
           this.showStick( this.rightRing, this.rightKnob, t.clientX, t.clientY, 0, 0 );
 
         }

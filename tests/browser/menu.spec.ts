@@ -303,15 +303,17 @@ test('mobile action hints match touch hit areas and top-right buttons never over
     const bounds=await page.locator('#touch-controls').boundingBox();
     for(const action of ['sprint','fire'] as const){
       const hint=await page.locator(`[data-touch-action="${action}"]`).boundingBox();
-      expect(hint!.width).toBeCloseTo(bounds!.width*.5,0);expect(hint!.height).toBeCloseTo(bounds!.height*.4,0);
+      expect(hint!.width).toBeCloseTo(hint!.height,1);expect(hint!.width).toBeGreaterThanOrEqual(80);
+      expect(hint!.y).toBeGreaterThan(bounds!.height/2);expect(hint!.y+hint!.height).toBeLessThan(bounds!.height);
+      expect(await page.locator(`[data-touch-action="${action}"]`).evaluate(el=>getComputedStyle(el).borderRadius)).toBe('50%');
       const x=hint!.x+hint!.width/2,y=hint!.y+hint!.height/2;
-      async function touchAt(y:number,type='touchstart'){
+      async function touchAt(y:number,type='touchstart',touchX=x){
         await page.evaluate(({x,y,type})=>{
           const target=document.elementFromPoint(x,y)!;
           if(target.id!=='touch-input-zone')throw new Error(`Touch zone obscured by ${target.id||target.tagName}`);
           const touch=new Touch({identifier:71,target,clientX:x,clientY:y});
           target.dispatchEvent(new TouchEvent(type,{touches:type==='touchstart'?[touch]:[],changedTouches:[touch],bubbles:true}));
-        },{x,y,type});
+        },{x:touchX,y,type});
       }
       await touchAt(y);
       await expect.poll(async()=>(await snapshot(page)).input[action==='sprint'?'run':'attack']).toBe(true);
@@ -321,6 +323,10 @@ test('mobile action hints match touch hit areas and top-right buttons never over
       await touchAt(outside);await page.waitForTimeout(70);
       expect((await snapshot(page)).input[action==='sprint'?'run':'attack']).toBe(false);
       await touchAt(outside,'touchcancel');
+      // Inside the bounding square but outside its circular edge.
+      await touchAt(hint!.y+2,'touchstart',hint!.x+2);await page.waitForTimeout(70);
+      expect((await snapshot(page)).input[action==='sprint'?'run':'attack']).toBe(false);
+      await touchAt(hint!.y+2,'touchcancel',hint!.x+2);
     }
     await page.screenshot({path:`artifacts/touch-zones-${viewport.width}.png`});
   }
