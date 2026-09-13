@@ -8,7 +8,7 @@ import type {Automap} from '../hud/Automap';
 import type {Skill} from './GameRules';
 
 export interface SaveGame {
-  format: 'three-doom'; version: 1; wad: string; label: string; savedAt: string;
+  format: 'three-doom'; version: 1 | 2; wad: string; label: string; savedAt: string;
   episode: number; map: number; skill: Skill; tic: number;
   world: WorldArchive; player: PlayerStatusState; weapons: ReturnType<WeaponSystem['archive']>;
   sprites: ReturnType<typeof archiveStaticSprites>; automap: ReturnType<Automap['archive']>;
@@ -22,7 +22,7 @@ export function decodeSave(text:string,wad:string): SaveGame {
   if(text.length>8_000_000)invalid();
   let save:SaveGame;
   try {save=JSON.parse(text);} catch {return invalid();}
-  if(!save || save.format!=='three-doom'||save.version!==1)invalid();
+  if(!save || save.format!=='three-doom'||(save.version!==1 && save.version!==2))invalid();
   if(save.wad!==wad)throw new Error('This save belongs to a different WAD.');
   if(!integer(save.episode,1,4)||!integer(save.map,1,9)||!integer(save.skill,1,5)||!integer(save.tic,0,0x7fffffff))invalid();
   const w=save.world;

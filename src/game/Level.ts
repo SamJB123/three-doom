@@ -1,3 +1,4 @@
+import {P_Random} from './DoomRandom';
 import { Group, Mesh, MeshBasicMaterial } from 'three/webgpu';
 import * as w from '../wad';
 import { buildScene } from '../renderer/SceneBuilder';
@@ -5,7 +6,7 @@ import { buildThingSprites, disposeThingSprites } from '../renderer/SpriteRender
 import { createSky } from '../renderer/SkyRenderer';
 import { createPlayer, findSectorAt, type DoomMapData } from '../physics/DoomMovement';
 import { intToFixed } from '../math/fixed';
-import { allMobjs, initMobjSystem, resetMobjs, spawnMapThing } from './Mobj';
+import { allMobjs, initMobjSystem, resetMobjs, spawnMapThing, restoreMobjThinker } from './Mobj';
 import { DOOMEDNUM_TO_TYPE, MF_COUNTKILL } from './MobjData';
 import { initEnemyAI, setPlayerMobj } from './EnemyAI';
 import { initAttackSystem, setAttackMap } from './Attack';
@@ -68,8 +69,6 @@ export class Level {
     this.sprites=buildThingSprites(this.things,assets.sprites,map,new Set(Object.keys(DOOMEDNUM_TO_TYPE).map(Number)));
     this.root.add(this.sprites);
     initMobjSystem(assets.sprites,this.sprites,map); initAttackSystem(); setAttackMap(map); initEnemyAI();
-    for (const thing of this.things) if (DOOMEDNUM_TO_TYPE[thing.type]) spawnMapThing(thing);
-    this.totalKills=allMobjs.filter(m=>m.flags&MF_COUNTKILL).length;
     const start=this.things.find(t=>t.type===1);
     if (!start) throw new Error(`E${episode}M${number} has no player start`);
     const sector=findSectorAt(start.x,start.y,map)!;
@@ -78,7 +77,12 @@ export class Level {
     this.player.mo.sectorIndex=map.sectors.indexOf(sector);
     this.player.mo.angle=start.angle*Math.PI/180;
     this.startYaw=this.player.mo.angle-Math.PI/2;
-    allMobjs.push(this.player.mo); setPlayerMobj(this.player.mo);
+    setPlayerMobj(this.player.mo);
+    for(const thing of this.things){
+      if(thing===start){this.player.mo.lastLook=P_Random()%4;allMobjs.push(this.player.mo);restoreMobjThinker(this.player.mo);}
+      else if(DOOMEDNUM_TO_TYPE[thing.type])spawnMapThing(thing);
+    }
+    this.totalKills=allMobjs.filter(m=>m.flags&MF_COUNTKILL).length;
     spawnLightSpecials(map.sectors,map.linedefs,map.sidedefs);
   }
 

@@ -22,17 +22,17 @@ Status vocabulary: **missing**, **partial** (implemented but incomplete or not c
 | MENU-01 | `m_menu.c`: `M_Responder`, `M_Drawer`; `d_main.c` title | verified browser foundation | WAD-backed title; start, pause, resume, help, restart/end confirmations; desktop/touch; no input leakage |
 | MENU-02 | `M_Episode`, `M_ChooseSkill`, options, save/load menus | partial: episode/skill, volume and six save/load slots connected | Real episode/skill selection with gameplay effects; working options and save/load flows |
 | LOOP-01 | `p_tick.c P_Ticker`, `g_game.c G_Ticker` | verified scheduler | One 35 Hz clock; no tics in menus; frame-rate invariant tick count; no pause catch-up |
-| LOOP-02 | `P_RunThinkers`, `P_PlayerThink`, ticcmd ordering | partial | Match C action ordering, RNG consumption, input quantization and deterministic state traces |
+| LOOP-02 | `P_RunThinkers`, `P_PlayerThink`, ticcmd ordering | partial: player/weapon phases and THINGS thinker order checked | Match C action ordering, RNG consumption, input quantization and deterministic state traces |
 | FLOW-02 | `G_InitNew`, `G_DoLoadLevel`, `G_DoCompleted`, `G_WorldDone` | connected; 36-map routing browser check passes | In-process teardown/load; preserve inventory across normal exits; reset state on new game; secret map routing |
 | MAP-01 | `w_wad.c`, `p_setup.c`, `r_data.c` | partial | All 36 maps parse (smoke exists); validate malformed input, duplicate lumps, patch overrides, spawn counts |
 | PHYS-01 | `p_map.c P_CheckPosition`, `P_TryMove`, `P_SlideMove` | partial | Solid actors, blocking flags, steps/dropoffs, diagonal sliding; player/monster/projectile consistency |
 | PHYS-02 | `P_ChangeSector`, `P_ThingHeightClip`, `T_MovePlane` | partial | Lifts carry stationary occupants; doors reopen when blocked; crushers damage and handle corpses |
 | SPEC-01 | `P_CrossSpecialLine`, `P_UseSpecialLine`, `EV_VerticalDoor` | partial | Actual side-crossing only; use intersections sorted along ray; keys enforced; repeat/use direction semantics |
 | SPEC-02 | `p_floor.c`, `p_plats.c`, `p_ceilng.c`, `p_doors.c`, `p_lights.c`, `p_telept.c` | partial | Table of every IWAD-used special and a scenario per special family; telefrags and teleport effects |
-| ACTOR-01 | `p_mobj.c P_SpawnMapThing`, `info.c`, `p_enemy.c` | partial | Skill/multiplayer filtering, spawn angle/ambush, timing, AI, pain/death/infighting/drop behavior |
+| ACTOR-01 | `p_mobj.c P_SpawnMapThing`, `info.c`, `p_enemy.c` | partial: complete source metadata, map actors and Nightmare respawn checked | Skill/multiplayer filtering, spawn angle/ambush, timing, AI, pain/death/infighting/drop behavior |
 | ACTOR-02 | `P_NoiseAlert`, `A_Look`, `P_CheckSight` | partial | Weapon noise reaches valid sectors, respects sound-block flags; ambush/sight behavior matches C |
 | COMBAT-01 | `p_pspr.c`, `p_map.c` aiming/line attacks | partial | Correct melee range, autoaim, first-shot accuracy, spread, projectile wall impacts and BFG behavior |
-| PLAYER-01 | `p_inter.c`, `p_user.c`, `p_pspr.c` | partial | Damage/armor/powers, pickups, cheats, death/rebirth, skill modifiers and weapon selection match C |
+| PLAYER-01 | `p_inter.c`, `p_user.c`, `p_pspr.c` | partial: berserk, key and ammo pickup selection checked | Damage/armor/powers, pickups, cheats, death/rebirth, skill modifiers and weapon selection match C |
 | BOSS-01 | `p_enemy.c A_BossDeath`, episode/map rules | connected; last-boss/living-player exit checks pass | E1M8/E2M8/E3M8/E4M6/E4M8 progression and surviving-boss checks |
 | UI-01 | `st_stuff.c`, `hu_stuff.c`, `am_map.c` | partial | HUD state/timing and messages; automap; palette/power effects |
 | UI-03 | `hu_stuff.c HU_Ticker/HU_Drawer`, `p_inter.c P_TouchSpecialThing`, `d_englsh.h GOT*` | connected; pickup families, timing, pause and options checks pass | Original health/armor/ammo/weapon/key/powerup messages, WAD HUD glyphs, timeout in simulation tics, message toggle; only successful pickups notify, including dropped items |

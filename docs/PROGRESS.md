@@ -136,3 +136,23 @@ Committed accumulated progress as `35905a9` (`Checkpoint Doom campaign, menus, s
 Regression tests also exercise real port sight tracing against elevated/lower targets, both side probes, no-target fallback, blocked sightlines, and sky versus ordinary upper walls. Validation results follow.
 
 Validation: 55 unit tests, all 12 Chrome browser tests (57.1 seconds), typecheck, four-track audio reference comparison and production build pass. Whitespace check passes. Follow-on missile changes remain separate from checkpoint `35905a9`. Existing bundle warning and broader completion gates remain open; next work is original tic ordering and deterministic gameplay traces, alongside remaining actor/special/presentation coverage.
+
+## 2026-09-13 — player thinker ordering and complete source actor metadata
+
+Committed the previous aiming/sky slice as `fa2bbb8`.
+
+**LOOP-02.** Player input/view/sector/use/weapon phases now precede P_RunThinkers; physical player movement and its actor-state ticking run in the player's own THINGS insertion slot. Newly fired projectile thinkers can run in the same tic. Power counters expire after weapons and before actor thinkers, matching the source phase order. Pickups run inside the player actor phase rather than after every actor. Older saves without a player-thinker record receive one on loading. A sequencing regression verifies weapon/power ordering, one player movement, actor insertion order and same-tic appended work. Full collision-side-effect ordering and recorded ticcmd/C world traces remain open.
+
+**ACTOR-01 / MAP-01.** Replaced hand-transcribed actor metadata with generated original info.c tables: 967 states and 137 types, with SHA-256 provenance and a reproducible generator. All Ultimate Doom map objects now resolve to source actor definitions. Pillars/trees/torches and blocking hanging bodies participate in collision; nonblocking hanging bodies retain their distinct flags. Dead-body sprites use the original terminal frames. Pickups and decorative animations are real actor thinkers. The state audit removed nine hand-transcription differences. Doom II definitions are included as data, not a Doom II gameplay-completion claim.
+
+**SAVE-01.** New saves use schema version 2; version 1 remains loadable. A migration rebuilds only the surviving old static sprite indices as actors, preserving collected-item absence and source RNG indices. Legacy animation phase is retained where source loops correspond; original legacy gameplay was already approximate. Normal version-2 saves preserve actor/thinker order directly.
+
+Validation so far: 59 unit tests, typecheck, production build and 36-map WAD smoke pass. The WAD smoke now also checks every map-object type and each used spawn-animation sprite chain. State-table audit reports zero mismatches. Targeted tests cover decorative solidity/ceiling positions, complete state references and legacy survivor migration. Browser results follow.
+
+All 12 Chrome browser checks passed (57.3 seconds), including version-2 save/load and campaign routing with the expanded actor set.
+
+**ACTOR-01.** Nightmare corpse respawn now follows `P_MobjThinker`/`P_NightmareRespawn`: 420-tic minimum, global level-time mask, original random gate, occupied-position refusal, two teleport fogs, source spawn flags/angle and 18-tic reaction delay. Lost souls do not respawn. `P_SpawnMobj` now consumes the source lastlook random draw; the player draw occurs in its THINGS slot. Two behavioral regressions cover these conditions. Full-engine RNG ordering remains unverified.
+
+**PLAYER-01.** `P_GiveAmmo` now requests the source weapon preferences only when replenishing empty ammo. Berserk heals to 100 without reducing surplus health and requests fists. Single-player duplicate keys disappear without repeating the message; first acquisition resets bonuscount before the shared pickup increment, following `P_GiveCard`/`P_TouchSpecialThing`. Two regressions cover weapon preferences, deliberate weapon selection, berserk health and key/message behavior. Pickup collision-side effects still occur after the player's move rather than inside `PIT_CheckThing`.
+
+Validation of the combined actor/ordering/pickup slice: 63 unit tests, typecheck, build, 36-map WAD smoke and zero-mismatch state audit pass. All 12 installed-Chrome browser checks pass (57.3 seconds). The freshly downloaded headless Chromium run hit a WebGPU `Instance dropped in popErrorScope` error during reload; an overlapping attempted rerun also invalidated its trace output. Installed Chrome remains the established passing browser; this does not close cross-browser validation.

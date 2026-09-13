@@ -11,7 +11,7 @@ import { tickPlayerMobjState } from '../game/PlayerState';
 const SCALE = 1.0 / 32.0;
 
 // Exactly one simulation tic. Scheduling belongs to TicClock in main.ts.
-export function playerTickSystem( world: World ): void {
+export function playerTickSystem( world: World, tickWeapons:()=>void=()=>{} ): void {
 
   const time = world.get( Time );
   const input = world.get( Input );
@@ -34,13 +34,7 @@ export function playerTickSystem( world: World ): void {
 
   if ( isDead ) {
 
-    // Still run thinkers so doors/crushers keep moving
-    runThinkers();
-    updateButtons( map.sidedefs );
-    for(const line of map.linedefs)if(line.special===48)map.sidedefs[line.right].xoff++;
-
-    // Tick player mobj state (death animation)
-    tickPlayerMobjState( pState! );
+    tickWeapons();
 
     // Sink view toward floor (P_DeathThink)
     if ( player.viewheight > 6 * FRACUNIT ) {
@@ -51,6 +45,9 @@ export function playerTickSystem( world: World ): void {
 
     if ( pState!.damageCount > 0 ) pState!.damageCount --;
 
+    runThinkers();
+    updateButtons(map.sidedefs);
+    for(const line of map.linedefs)if(line.special===48)map.sidedefs[line.right].xoff++;
     time.levelTime += 1;
     player.viewz = player.mo.z + player.viewheight;
     syncPlayerPositionSystem( world );
@@ -62,23 +59,15 @@ export function playerTickSystem( world: World ): void {
   const doomAngle = input.yaw + Math.PI / 2;
   player.mo.angle = doomAngle;
 
-  // Handle use input
-  handleUseInput( input.use, player, doomAngle, map, pState );
-
   // Apply input thrust
   if (player.mo.reactionTime > 0) player.mo.reactionTime--;
   else movePlayer( player, input.forward, input.strafe, doomAngle );
 
-  // Run movement
-  xyMovement( player.mo, map );
-  zMovement( player.mo, player );
-
-  // Run all active thinkers (doors, platforms, floors)
-  runThinkers();
-
-  // Update button timers
-  updateButtons( map.sidedefs );
-  for(const line of map.linedefs)if(line.special===48)map.sidedefs[line.right].xoff++;
+  // P_PlayerThink performs view/special/use/weapon work before P_RunThinkers.
+  calcHeight(player,time.levelTime);
+  if(pState){playerInSpecialSector(player,pState,map,time.levelTime);player.mo.health=pState.health;}
+  handleUseInput(input.use,player,doomAngle,map,pState);
+  tickWeapons();
 
   // Tick down powers and bonusCount
   if ( pState ) {
@@ -96,22 +85,24 @@ export function playerTickSystem( world: World ): void {
     if ( pState.bonusCount > 0 ) pState.bonusCount --;
     if ( pState.damageCount > 0 ) pState.damageCount --;
 
-    // Tick player mobj state machine (pain, death, etc.)
-    tickPlayerMobjState( pState );
+    if(!pState.powers.invisibility)player.mo.flags &= ~MF_SHADOW;
 
   }
 
-  // Check for damaging floors
-  if ( pState ) {
-
-    playerInSpecialSector( player, pState, map, time.levelTime );
-    player.mo.health = pState.health;
-
-  }
-
-  calcHeight( player, time.levelTime );
+  runThinkers();
+  updateButtons(map.sidedefs);
+  for(const line of map.linedefs)if(line.special===48)map.sidedefs[line.right].xoff++;
   time.levelTime += 1;
   syncPlayerPositionSystem( world );
+}
+
+// The player's physical actor now occupies its normal slot in P_RunThinkers.
+export function playerMobjTickSystem(world:World):void {
+  const reference=world.get(DoomWorld),state=world.get(PlayerStatus);
+  if(!reference?.player || !reference.map)return;
+  xyMovement(reference.player.mo,reference.map);
+  zMovement(reference.player.mo,reference.player);
+  if(state)tickPlayerMobjState(state);
 }
 
 export function syncPlayerPositionSystem( world: World ): void {

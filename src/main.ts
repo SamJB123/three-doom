@@ -1,3 +1,6 @@
+import {migrateLegacyMapActors} from './game/LegacySave';
+import {setPlayerThinkerCallback,setMobjLevelTimeSource} from './game/Mobj';
+import {playerMobjTickSystem} from './ecs/systems';
 import {HudMessages} from './hud/HudMessages';
 import { WadGraphics } from './menu/WadGraphics';
 import { WebGPURenderer, PerspectiveCamera, Scene, Clock } from 'three/webgpu';
@@ -76,6 +79,13 @@ async function main(): Promise<void> {
   await renderer.init();
   const scene=new Scene(), camera=new PerspectiveCamera(90,container.clientWidth/container.clientHeight,0.1,500);
   const world=createWorld(Time,Input,DoomWorld,Camera,PlayerStatus);
+  setMobjLevelTimeSource(()=>world.get(Time)!.levelTime);
+  setPlayerThinkerCallback(()=>{
+    playerMobjTickSystem(world);
+    const state=world.get(PlayerStatus)!;
+    if(state.playerState!=='PST_DEAD')checkPickups(world,level.sprites,level.player.mo.x,level.player.mo.y,level.player.mo.z);
+    level.player.mo.health=state.health;
+  });
   world.set(Camera,{camera}); world.spawn(IsPlayer,Position);
   const touch=TouchControls.isTouchDevice();
   const controls=touch ? new TouchControls(world) : new FPSControls(renderer.domElement,world);
@@ -135,7 +145,7 @@ async function main(): Promise<void> {
   function saveGame(slot: number): void {
     if(!session.started||session.phase!=='level')throw new Error('Start a level before saving.');
     const time=world.get(Time)!;
-    const save:SaveGame={format:'three-doom',version:1,wad:wadHash,
+    const save:SaveGame={format:'three-doom',version:2,wad:wadHash,
       label:`E${gameRules.episode}M${gameRules.map} · ${Math.floor(time.levelTime/35)}s`,savedAt:new Date().toISOString(),
       episode:gameRules.episode,map:gameRules.map,skill:gameRules.skill,tic:time.levelTime,
       world:archiveWorld(level.map,level.player),player:structuredClone(world.get(PlayerStatus)!),weapons:weapons.archive(),
@@ -148,7 +158,12 @@ async function main(): Promise<void> {
     const lumps=getMapLumps(wad,`E${save.episode}M${save.map}`);
     if(save.world.sectors.length!==lumps.SECTORS.size/26 || save.world.lines.length!==lumps.LINEDEFS.size/14 || save.world.sides.length!==lumps.SIDEDEFS.size/30)throw new Error('Saved map dimensions do not match this WAD.');
     loadLevel(save.episode,save.map,save.skill);
+    // Saves from before player-thinker integration ran the player first.
+    const playerIndex=save.world.actors.findIndex(actor=>actor.type==='MT_PLAYER');
+    if(!save.world.thinkers.some(record=>record.kind==='mobj' && record.data===playerIndex))
+      save.world.thinkers.unshift({kind:'mobj',data:playerIndex});
     restoreWorld(level.map,level.player,save.world);
+    if(save.version===1)migrateLegacyMapActors(save.sprites,level.things);
     world.set(PlayerStatus,structuredClone(save.player));weapons.restore(save.weapons);
     restoreStaticSprites(save.sprites,level.sprites);automap.restore(save.automap);
     Object.assign(level,save.stats);
@@ -214,13 +229,12 @@ async function main(): Promise<void> {
       if(session.presenting){finishPresentation=menu.tickPresentation() || finishPresentation;return;}
       if(!session.running || exitRequested!==null) return;
       time.delta=1/35;
-      playerTickSystem(world);
+      playerTickSystem(world,()=>weapons.tick(world));
       const tp=consumeTeleport();
       if(tp) {const yaw=tp.angle*Math.PI/180-Math.PI/2;controls.setInitialYaw(yaw);world.set(Input,{yaw});}
-      weapons.tick(world); advanceEnemyTic();
+      advanceEnemyTic();
       const state=world.get(PlayerStatus)!; level.player.mo.health=state.health;
-      if(state.playerState!=='PST_DEAD') checkPickups(world,level.sprites,level.player.mo.x,level.player.mo.y,level.player.mo.z);
-      else deathTics++;
+      if(state.playerState==='PST_DEAD')deathTics++;
       if((time.levelTime & 3) === 0) automap.discover(level.map,level.player);
       messages.tick();
       updateSpriteAnimations(1/35);hud.update(world);

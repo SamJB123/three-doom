@@ -104,11 +104,20 @@ function giveAmmo( state: PlayerStatusState, ammo: AmmoType, clips: number ): bo
 
   if ( state.ammo[ ammo ] >= state.maxAmmo[ ammo ] ) return false;
 
+  const oldAmmo = state.ammo[ammo];
   state.ammo[ ammo ] = Math.min(
     state.maxAmmo[ ammo ],
     state.ammo[ ammo ] + CLIP_AMMO[ ammo ] * clips * (gameRules.skill === 1 || gameRules.skill === 5 ? 2 : 1)
   );
 
+  // P_GiveAmmo only raises a weapon when replenishing an empty ammo pool.
+  if (oldAmmo === 0) {
+    const ready = state.currentWeapon;
+    if (ammo === 'clip' && ready === 'fist') state.pendingWeapon = state.weapons.chaingun ? 'chaingun' : 'pistol';
+    if (ammo === 'shell' && (ready === 'fist' || ready === 'pistol') && state.weapons.shotgun) state.pendingWeapon = 'shotgun';
+    if (ammo === 'cell' && (ready === 'fist' || ready === 'pistol') && state.weapons.plasma) state.pendingWeapon = 'plasma';
+    if (ammo === 'misl' && ready === 'fist' && state.weapons.missile) state.pendingWeapon = 'missile';
+  }
   return true;
 
 }
@@ -188,7 +197,7 @@ function tryPickup( def: PickupDef, state: PlayerStatusState ): boolean {
 
     case 'key': {
 
-      if ( state.cards[ def.card! ] ) return false;
+      if (!state.cards[def.card!]) state.bonusCount = BONUSADD;
       state.cards[ def.card! ] = true;
       return true;
 
@@ -209,7 +218,9 @@ function tryPickup( def: PickupDef, state: PlayerStatusState ): boolean {
 
       if ( def.healthAmount ) {
 
-        state.health = Math.min( def.healthMax ?? 200, Math.max( state.health, def.healthAmount ) );
+        // P_GivePower(strength) uses P_GiveBody: never reduce surplus health.
+        state.health = def.power === 'strength' ? Math.max(state.health, 100) : def.healthAmount;
+        if (def.power === 'strength' && state.currentWeapon !== 'fist') state.pendingWeapon = 'fist';
 
       }
 
@@ -232,7 +243,7 @@ function tryPickup( def: PickupDef, state: PlayerStatusState ): boolean {
 }
 
 /**
- * Check for item pickups each frame.
+ * Check for item pickups each simulation tic.
  * playerX/playerY are fixed-point Doom coordinates.
  */
 export function checkPickups(
@@ -257,9 +268,10 @@ export function checkPickups(
     if (Math.abs(playerX-item.x)>=PICKUP_DIST || Math.abs(playerY-item.y)>=PICKUP_DIST) continue;
     const pickup = item.flags & MF_DROPPED
       ? {...def, ammoClips:def.type==='ammo' ? 0.5 : def.ammoClips, weaponAmmoClips:1} : def;
+    const notify = def.type !== 'key' || !state.cards[def.card!];
     if (tryPickup(pickup,state)) {
       pickupCallback?.(item.info.doomedNum);
-      messageCallback?.(PICKUP_MESSAGES[item.info.doomedNum]);
+      if (notify) messageCallback?.(PICKUP_MESSAGES[item.info.doomedNum]);
       state.bonusCount += BONUSADD;
       playSound(def.sound ?? 'itemup');
       removeMobj(item);
@@ -288,10 +300,11 @@ export function checkPickups(
     if ( Math.abs( playerX - tx ) >= PICKUP_DIST ) continue;
     if ( Math.abs( playerY - ty ) >= PICKUP_DIST ) continue;
 
+    const notify = def.type !== 'key' || !state.cards[def.card!];
     if ( tryPickup( def, state ) ) {
 
       pickupCallback?.(thingType);
-      messageCallback?.(PICKUP_MESSAGES[thingType]);
+      if (notify) messageCallback?.(PICKUP_MESSAGES[thingType]);
       state.bonusCount += BONUSADD;
       playSound( def.sound ?? 'itemup' );
       toRemove.push( mesh );

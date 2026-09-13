@@ -25,7 +25,7 @@ This records SHA-256 hashes of the IWAD and C/header sources. Commit small fixtu
 
 `TicClock` is the sole wall-time accumulator. `playerTickSystem` performs one simulation step; weapons, enemy counters, pickups and HUD updates run in that same outer tic. Menus/focus loss discard accumulated wall time and reset held controls. Rendering continues while paused.
 
-This removes frame batching differences from the prior two-clock loop. It does **not** yet establish original C ordering: thinker insertion order and lazy removal now have regression coverage; player/weapon ordering still needs comparison, some presentation RNG/state may need separating, and input remains browser-sampled rather than recorded ticcmds.
+This removes frame batching differences from the prior two-clock loop. It does **not** yet establish original C ordering: thinker insertion order and lazy removal now have regression coverage; player/weapon phase ordering has source-derived checks but still needs executed C traces, some presentation RNG/state may need separating, and input remains browser-sampled rather than recorded ticcmds.
 
 ## Definition of done per work item
 

@@ -35,3 +35,24 @@ test('bonuses and soul spheres collect at cap, while full-health medikits refuse
   const group=new Group();group.add(item(2012));checkPickups(world,group,0,0,0);assert.equal(seen.length,3);assert.equal(group.children.length,1);
   world.destroy();
 });
+test('berserk preserves surplus health and requests fists; keys collect silently when already owned',()=>{
+  const world=createWorld(PlayerStatus),state=world.get(PlayerStatus)!;
+  const seen:string[]=[];setPickupMessageCallback(text=>seen.push(text));
+  const collect=(type:number)=>{const group=new Group();group.add(item(type));checkPickups(world,group,0,0,0);assert.equal(group.children.length,0);};
+  state.health=175;collect(2023);assert.equal(state.health,175);assert.equal(state.pendingWeapon,'fist');
+  state.health=12;collect(2023);assert.equal(state.health,100);
+  state.bonusCount=80;collect(5);assert.equal(state.bonusCount,12);
+  const messages=seen.length;collect(5);assert.equal(seen.length,messages);assert.equal(state.bonusCount,18);
+  world.destroy();
+});
+test('empty ammo replenishment uses P_GiveAmmo weapon preferences without overriding deliberate selection',()=>{
+  for(const [type,ammo,weapon] of [[2007,'clip','chaingun'],[2008,'shell','shotgun'],[2047,'cell','plasma'],[2010,'misl','missile']] as const){
+    const world=createWorld(PlayerStatus),state=world.get(PlayerStatus)!;
+    state.currentWeapon='fist';state.weapons[weapon]=true;state.ammo[ammo]=0;
+    const collect=()=>{const group=new Group();group.add(item(type));checkPickups(world,group,0,0,0);};
+    collect();assert.equal(state.pendingWeapon,weapon);assert.equal(state.currentWeapon,'fist');
+    state.pendingWeapon=null;collect();assert.equal(state.pendingWeapon,null);
+    state.currentWeapon='chainsaw';state.ammo[ammo]=0;collect();assert.equal(state.pendingWeapon,null);
+    world.destroy();
+  }
+});

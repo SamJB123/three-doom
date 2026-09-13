@@ -1,8 +1,10 @@
 import { readFileSync } from 'node:fs';
 import assert from 'node:assert/strict';
+import {MOBJ_TYPES,MOBJ_STATES,DOOMEDNUM_TO_TYPE,MF_NOSECTOR} from '../src/game/MobjData';
 import * as w from '../src/wad/index.ts';
 const bytes = readFileSync(process.env.DOOM_WAD || 'public/doomu.wad');
 const wad = w.parseWAD(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength));
+const usedTypes=new Set<string>();
 const maps = wad.lumps.filter(l => /^E[1-4]M[1-9]$/.test(l.name));
 assert.equal(maps.length, 36, 'Expected all 36 Ultimate Doom maps');
 for (const { name } of maps) {
@@ -16,6 +18,10 @@ for (const { name } of maps) {
   const subsectors = w.parseSubsectors(wad, lumps.SSECTORS);
   const nodes = w.parseNodes(wad, lumps.NODES);
   const blockmap = w.parseBlockmap(wad, lumps.BLOCKMAP);
+  for(const thing of things){
+    if([1,2,3,4,11].includes(thing.type))continue;
+    const type=DOOMEDNUM_TO_TYPE[thing.type];assert(type,`${name}: unknown actor ${thing.type}`);usedTypes.add(type);
+  }
   assert(things.some(t => t.type === 1), `${name}: player start`);
   for (const l of lines) {
     assert(vertices[l.v1] && vertices[l.v2], `${name}: linedef vertices`);
@@ -36,4 +42,14 @@ for (const name of ['TITLEPIC', 'M_DOOM', 'M_NGAME', 'M_RDTHIS']) {
 const flats = w.parseFlats(wad, palette);
 const textures = w.parseTextures(wad, palette);
 const sprites = w.parseSprites(wad, palette);
+for(const type of usedTypes){
+  const info=MOBJ_TYPES[type];if(info.flags&MF_NOSECTOR)continue;
+  const visited=new Set<string>();let name=info.spawnState;
+  while(name!=='S_NULL' && !visited.has(name)){
+    visited.add(name);const state=MOBJ_STATES[name];assert(state,`${type}: missing state ${name}`);
+    const prefix=state.sprite+String.fromCharCode(65+state.frame);
+    assert(Object.keys(sprites).some(key=>key.startsWith(prefix)),`${type}: missing sprite ${prefix}`);
+    name=state.next;
+  }
+}
 console.log(`PASS: ${maps.length} maps, spatial references and menu patches; ${Object.keys(flats).length} flats, ${Object.keys(textures).length} textures, ${Object.keys(sprites).length} sprites.`);

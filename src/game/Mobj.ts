@@ -13,7 +13,7 @@ import type { DoomMapData, DoomPlayer } from '../physics/DoomMovement';
 import { findSectorAt, tryMove, checkPosition, movementCeilingLine } from '../physics/DoomMovement';
 import { addThinker, archivedThinker } from './Thinkers';
 import type { MobjInfo, MobjState } from './MobjData';
-import { MOBJ_STATES, MOBJ_TYPES, DOOMEDNUM_TO_TYPE, MF_AMBUSH, MF_SPAWNCEILING, MF_SHOOTABLE, MF_SOLID, MF_NOBLOOD, MF_CORPSE, MF_NOGRAVITY, MF_NOBLOCKMAP, MF_MISSILE, MF_NOCLIP, MF_SKULLFLY, MF_COUNTKILL, MF_FLOAT, MF_INFLOAT, MF_SPECIAL } from './MobjData';
+import { MOBJ_STATES, MOBJ_TYPES, DOOMEDNUM_TO_TYPE, MF_AMBUSH, MF_SPAWNCEILING, MF_SHOOTABLE, MF_SOLID, MF_NOBLOOD, MF_CORPSE, MF_NOGRAVITY, MF_NOBLOCKMAP, MF_MISSILE, MF_NOCLIP, MF_SKULLFLY, MF_COUNTKILL, MF_FLOAT, MF_INFLOAT, MF_SPECIAL, MF_NOSECTOR } from './MobjData';
 import { playSound, playSoundAt } from '../sound';
 import { gameRules, shouldSpawnThing } from './GameRules';
 import { P_Random } from './DoomRandom';
@@ -182,7 +182,7 @@ export function spawnMobj(
     reactionTime: gameRules.skill === 5 ? 0 : 8,
     moveDir: 8,     // DI_NODIR
     movecount: 0,
-    lastLook: 0,
+    lastLook: P_Random() % 4,
     mesh: null,
     removed: false,
   };
@@ -737,7 +737,14 @@ function approxDistance( dx: Fixed, dy: Fixed ): number {
 // Mobj thinker — runs every tic (35Hz)
 // ============================================================
 
+let mobjLevelTime:()=>number=()=>0;
+export function setMobjLevelTimeSource(source:()=>number):void {mobjLevelTime=source;}
+let playerThinker: ((mo:Mobj)=>void)|null=null;
+export function setPlayerThinkerCallback(callback:(mo:Mobj)=>void):void {playerThinker=callback;}
+
 function mobjThinker( mo: Mobj ): boolean {
+
+  if(mo.type==='MT_PLAYER'){if(mo.removed)return false;playerThinker?.(mo);return true;}
 
   if ( mo.removed ) return false;
 
@@ -761,15 +768,21 @@ function mobjThinker( mo: Mobj ): boolean {
 
   }
 
-  // P_NightmareRespawn: wait twelve seconds, then attempt every 32 tics.
-  if (gameRules.skill===5 && mo.health<=0 && mo.tics===-1 && mo.spawnPoint && mapData) {
-    mo.respawnTics=(mo.respawnTics ?? 0)+1;
-    if (mo.respawnTics>=12*35 && !(mo.respawnTics&31) && P_Random()<=4) {
-      const point=mo.spawnPoint;
-      const candidate={...mo,flags:mo.info.flags,radius:mo.info.radius,height:mo.info.height};
-      if (checkPosition(candidate,intToFixed(point.x),intToFixed(point.y),mapData)) {
-        const replacement=spawnMapThing(point); if(replacement) replacement.reactionTime=18;
-        removeMobj(mo); return false;
+  // P_MobjThinker: corpse delay uses movecount; attempts are gated by
+  // global leveltime, not the age of each corpse. Lost souls lack COUNTKILL.
+  if(gameRules.skill===5 && (mo.flags&MF_COUNTKILL) && mo.tics===-1 && mo.spawnPoint && mapData){
+    mo.movecount++;
+    if(mo.movecount>=12*35 && !(mobjLevelTime()&31) && P_Random()<=4){
+      const point=mo.spawnPoint,x=intToFixed(point.x),y=intToFixed(point.y);
+      if(checkPosition(mo,x,y,mapData)){
+        const floor=findSectorAt(point.x,point.y,mapData)?.floorHeight ?? 0;
+        const oldFog=spawnMobj(mo.x,mo.y,mo.floorz,'MT_TFOG');
+        const newFog=spawnMobj(x,y,intToFixed(floor),'MT_TFOG');
+        playSoundAt('telept',oldFog.x,oldFog.y,oldFog.z);playSoundAt('telept',newFog.x,newFog.y,newFog.z);
+        const replacement=spawnMobj(x,y,intToFixed(floor),mo.type);
+        replacement.spawnPoint={...point};replacement.angle=Math.trunc(point.angle/45)*Math.PI/4;
+        if(point.flags&8)replacement.flags|=MF_AMBUSH;
+        replacement.reactionTime=18;removeMobj(mo);return false;
       }
     }
   }
@@ -926,7 +939,7 @@ function resolveSpriteRotation(
 
 function createMobjSprite( mo: Mobj ): void {
 
-  if ( ! spriteGroup ) return;
+  if ( ! spriteGroup || mo.flags & MF_NOSECTOR || mo.state==='S_NULL' ) return;
 
   const st = mo.state ? MOBJ_STATES[ mo.state ] : null;
   if ( ! st ) return;
