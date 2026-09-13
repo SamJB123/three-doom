@@ -8,7 +8,7 @@ This checklist supplements [ROADMAP.md](ROADMAP.md). A checked automated route i
 |---|---|---|
 | REF-01 / LOOP-02 | Complete same-input hosted-C recordings with pinned provenance; explain first differences | All four 350-command prefixes pass; full recordings under investigation; DEMO1 first C difference at tic 463 |
 | PHYS-01 / ACTOR-01 / ACTOR-02 / COMBAT-01 / PLAYER-01 | Boundary scenarios and C comparisons for remaining collision, AI, aiming, weapon and player behavior | Regression coverage does not yet establish every action or rule |
-| SPEC-01 / SPEC-02 | Scenario coverage against every family in IWAD-SPECIALS.md, including retrigger, obstruction, key and actor restrictions | Inventory exists; scenario coverage incomplete |
+| SPEC-01 / SPEC-02 | Scenario coverage against every family in IWAD-SPECIALS.md, including retrigger, obstruction, key and actor restrictions | Door/lift/floor/crusher/stair lifecycle matrix passes; see SPECIAL-COVERAGE.md for remaining obstruction, topology and campaign scope |
 | SAVE-01 / MENU-02 | Save/restore during doors, lifts, crushing, projectiles, infighting, powers, death and secret progression; compare continued traces | Five active door/lift/crusher/stair/death scenarios match 160 continued tics each with combat, projectiles and powers; browser persistence passes; broader campaign saves pending |
 | UI-01 / UI-02 / UI-03 | HUD face/palette/automap, messages, all intermissions/finales, original title/credit/demo sequence | Connected presentation checks pass; title/credit/four-demo cycle browser check passes; HUD faces and authored palette/power lookup checked; BSP automap discovery/layout/marks checked; broader visual comparison pending |
 | RENDER-01 / AUDIO-01 | Reference views/listening at representative indoor, outdoor, sky, masked-wall, moving-sector and combat scenes | Scoped rendering/audio regressions pass; full comparison pending |
@@ -28,7 +28,7 @@ Automated lifecycle routing currently covers all 36 maps. **Every actual combat 
 
 | Environment | Required coverage | Evidence |
 |---|---|---|
-| Installed desktop Chrome, macOS | Start/help/options, pointer lock, pause/blur, lifecycle, saves, rendering, audio resume | Full 25-check suite passes with indexed lighting, including all 36 lifecycle routes, finales, saves, mobile controls and all-demo attract playback (3.9 minutes); combat playthroughs still pending |
+| Installed desktop Chrome, macOS | Start/help/options, pointer lock, pause/blur, lifecycle, saves, rendering, audio resume | Full 28-check suite passes with automap, WAD validation, death view and special sound updates, including all 36 lifecycle routes, finales, saves, mobile controls and all-demo attract playback (4.0 minutes); combat playthroughs still pending |
 | Chrome mobile viewport | Circular sprint/fire, tap Use, hold/drag/cancel weapon wheel, portrait/landscape layout, menu isolation | Existing mobile browser regressions pass; not physical Android evidence |
 | WebKit mobile viewport | Same mobile controls, rendering fallback, audio activation, storage and lifecycle | Mobile/palette checks and native/default plus forced-WebGL colormap comparisons pass in Playwright WebKit 26.6; synthetic touch events, not hardware delivery |
 | Physical iPhone/iPad Safari | Thumb reach, simultaneous touches, orientation/safe areas, audio interruptions, background/foreground, storage | Pending physical devices |

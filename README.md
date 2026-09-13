@@ -51,11 +51,15 @@ GitHub Actions runs the code checks on pushes and pull requests. WAD and browser
 
 - [Roadmap and source coverage](docs/ROADMAP.md): milestones, stable work IDs, and acceptance gates.
 - [Fidelity strategy](docs/FIDELITY.md): reference selection, deterministic comparison, and test boundaries.
+- [Special-family coverage](docs/SPECIAL-COVERAGE.md): tested movement cycles and remaining scenario scope.
+- [Release checks](docs/RELEASE-CHECKS.md): campaign, browser, device and performance gates.
 - [Progress log](docs/PROGRESS.md): changes, verification evidence, and next work.
 
 Before starting a slice, choose its work IDs and source functions. Add regression scenarios for behavior being changed. Update coverage and the progress log after validation. A system is not verified merely because an implementation exists.
 
 
-Current campaign controls: New Game selects any of the four episodes and a difficulty. Normal/secret exits load the next map in-process and carry inventory; completion screens animate statistics, episode maps and music before loading the next level. Options controls music and sound volume. Tab (or Map) opens the initial automap; +/− zoom, F toggles follow, arrows pan with follow off, M marks and C clears marks. Episode endings include original text/art and the timed bunny panorama. Screen wipes and the title demo cycle remain pending.
+Current campaign controls: New Game selects any of the four episodes and a difficulty. Normal/secret exits load the next map in-process and carry inventory; completion screens animate statistics, episode maps and music before loading the next level. Options controls music and sound volume. Tab (or Map) opens the automap; +/− zoom, F toggles follow, arrows pan with follow off, M marks and C clears marks. Episode endings include original text/art and the timed bunny panorama. Melt wipes accompany level transitions. Watch demos starts the original title/credit/four-demo cycle; any key or tap opens the menu and pauses playback.
+
+On mobile, use the circular sprint/fire areas with your thumbs. A short tap in the play area uses a door or switch. Hold the aiming side to open the owned-weapon wheel, drag to a weapon and release to select it. Opening a menu cancels held controls.
 
 Compatibility note: ordinary actor collision follows original Doom, so a flying monster can block walking underneath it. The port is not yet complete; see [the progress log](docs/PROGRESS.md) for verified behavior and known gaps.

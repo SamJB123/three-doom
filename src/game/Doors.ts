@@ -250,7 +250,8 @@ export function evVerticalDoor(
   const dsy = intToFixed( sector.soundY );
   const dsz = intToFixed( sector.floorHeight );
 
-  if ( line.special === 117 || line.special === 118 ) {
+  // EV_VerticalDoor selects sound before consuming a one-shot line.
+  if ( type === 'blazeRaise' || type === 'blazeOpen' ) {
 
     playSoundAt( 'bdopn', dsx, dsy, dsz, sector);
 

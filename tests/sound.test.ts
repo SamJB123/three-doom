@@ -89,3 +89,19 @@ test('near and distant teleports start destination audio before the next listene
   }
   stopAllSounds();resetThinkers();allMobjs.length=0;
 });
+
+test('one-shot fast manual doors retain the fast opening sound after consuming the trigger',async()=>{
+  const {evVerticalDoor,resetDoors}=await import('../src/game/Doors');
+  const {resetThinkers}=await import('../src/game/Thinkers');
+  const {dividedMap}=await import('./fixtures/maps');
+  const fake=context(),normal={} as AudioBuffer,fast={} as AudioBuffer;
+  initSoundManager(fake.ctx,{doropn:normal,bdopn:fast});updateListener({x:0,y:0,angle:0},1);
+  for(const special of [1,31,117,118]){
+    resetThinkers();resetDoors();stopAllSounds();const map=dividedMap();map.sectors[1].ceilingHeight=0;
+    const line={...map.linedefs[0],special};
+    evVerticalDoor(line,map.linedefs,map.sidedefs,map.sectors);
+    assert.equal(fake.sources.at(-1).buffer,special>=117?fast:normal,`door ${special}`);
+    assert.equal(line.special,[31,118].includes(special)?0:special);
+  }
+  stopAllSounds();resetThinkers();resetDoors();
+});

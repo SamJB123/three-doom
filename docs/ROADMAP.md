@@ -28,7 +28,7 @@ Status vocabulary: **missing**, **partial** (implemented but incomplete or not c
 | PHYS-01 | `p_map.c P_CheckPosition`, `P_TryMove`, `P_SlideMove` | partial: fixed blockmap slide traversal, signed splits, step support and dynamic thing order checked | Solid actors, blocking flags, steps/dropoffs, diagonal sliding; player/monster/projectile consistency |
 | PHYS-02 | `P_ChangeSector`, `P_ThingHeightClip`, `T_MovePlane` | partial | Lifts carry stationary occupants; doors reopen when blocked; crushers damage and handle corpses |
 | SPEC-01 | `P_CrossSpecialLine`, `P_UseSpecialLine`, `EV_VerticalDoor` | partial: projectile exclusions, monster manual-door restrictions and switch retrigger scenarios checked | Actual side-crossing only; use intersections sorted along ray; keys enforced; repeat/use direction semantics |
-| SPEC-02 | `p_floor.c`, `p_plats.c`, `p_ceilng.c`, `p_doors.c`, `p_lights.c`, `p_telept.c` | partial: missing trigger variants connected; four light thinkers C-checked | Table of every IWAD-used special and a scenario per special family; telefrags and teleport effects |
+| SPEC-02 | `p_floor.c`, `p_plats.c`, `p_ceilng.c`, `p_doors.c`, `p_lights.c`, `p_telept.c` | partial: door/lift/floor/crusher/stair lifecycle scenarios checked; four light thinkers C-checked | Table of every IWAD-used special and a scenario per special family; telefrags and teleport effects |
 | ACTOR-01 | `p_mobj.c P_SpawnMapThing`, `info.c`, `p_enemy.c` | partial: complete source metadata, map actors and Nightmare respawn checked | Skill/multiplayer filtering, spawn angle/ambush, timing, AI, pain/death/infighting/drop behavior |
 | ACTOR-02 | `P_NoiseAlert`, `A_Look`, `P_CheckSight` | partial: REJECT connected; original player-search slots and hearing checked | Weapon noise reaches valid sectors, respects sound-block flags; ambush/sight behavior matches C |
 | COMBAT-01 | `p_pspr.c`, `p_map.c` aiming/line attacks | partial: hit effects/RNG, weapon timing, chainsaw contact, ammo fallback and per-shot bullet slope checked | Correct melee range, autoaim, first-shot accuracy, spread, projectile wall impacts and BFG behavior |
@@ -42,6 +42,8 @@ Status vocabulary: **missing**, **partial** (implemented but incomplete or not c
 | AUDIO-01 | `s_sound.c`, MUS/GENMIDI | partial: attenuation C fixtures, channels, movement effects and teleport regression checked | Correct per-map music, volume controls, attenuation, lifecycle, browser resume, audio smoke |
 | FIXED-01 | `m_fixed.c`, `tables.c`, `m_random.c` | partial: arithmetic/angle C fixtures and source tables checked | Signed arithmetic, overflow/division and angle tables; separate gameplay/cosmetic RNG; C differential vectors |
 | NET-01 | `d_net.c`, `i_net.c`, ticcmd networking | missing | Separate multiplayer milestone after deterministic single-player simulation |
+
+Special-family evidence and remaining scope are tracked in [SPECIAL-COVERAGE.md](SPECIAL-COVERAGE.md).
 
 Release evidence and the explicit campaign/device matrix are tracked in [RELEASE-CHECKS.md](RELEASE-CHECKS.md).
 
