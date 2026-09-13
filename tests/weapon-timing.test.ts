@@ -46,7 +46,7 @@ test('A_Punch aims its spread ray and turns toward a hit target only',async()=>{
   restoreRandom({play:0,misc:0});
   world.set(Input,{attack:true});for(let i=0;i<5;i++)system.tick(world);
   assert.equal(shots,1);assert.equal(archiveRandom().play,3);
-  assert.equal(aim,Math.PI/2+(109-220)*(Math.PI*2/16384));
+  assert.equal(aim,(109-220)*(Math.PI*2/16384));
   assert.equal(player.mo.angle,pointToRadians(target.x-player.mo.x,target.y-player.mo.y));
   world.destroy();
   const miss=setup('fist'),before=miss.player.mo.angle;miss.system.setFireCallback(()=>null);

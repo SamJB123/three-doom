@@ -113,3 +113,5 @@ Restoring `A_Punch` spread, hit feedback and target-facing advances DEMO2 agreem
 Ordinary actor movement subdivision and corpse ledge friction advance DEMO2 agreement through 2270 tics. The complete 2347-command recording is now port-repeatable; the remaining first C difference is player angle at 2271. The earlier rebirth truncation is resolved for this demo.
 
 Checking damaging-floor contact against the centre sector floor extends DEMO3 agreement through tic 921. Tic 922 first differs in player angle during teleport recovery. The 1000-tic browser replay remains repeatable; this is not a passing 1000-tic C gate.
+
+Preserving actor angle and weapon/Use aim during teleport reaction time advances DEMO3 agreement through 993 tics. Tic 994 exposes the next partial-invisibility aim difference; the 1500-tic port replay passes repeatability but not C parity.

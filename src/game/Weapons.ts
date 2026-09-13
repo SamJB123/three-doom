@@ -271,7 +271,7 @@ export class WeaponSystem {
     this.levelTime=world.get(Time)?.levelTime??0;
 
     // Track player aim angle (convert Three.js yaw to Doom angle)
-    this.lastAngle = input.yaw + Math.PI / 2;
+    this.lastAngle = this.playerActor?.angle ?? input.yaw + Math.PI / 2;
 
     // Handle weapon select input
     const candidates = WEAPON_KEY_SLOTS[ input.weaponSelect ];

@@ -354,3 +354,9 @@ DEMO2 now completes all 2347 commands and its two port recordings agree across f
 **PLAYER-01 / PHYS-01 / LOOP-02.** `P_PlayerInSpecialSector` now compares player Z with the centre sector's actual floor, matching C. Collision support can remain on an adjoining higher step, and must not trigger damage from the lower hazardous floor before landing. A regression checks that boundary, landing, and the 32-tic damage cadence.
 
 DEMO3 now agrees through tic 921; the next difference at 922 is turning during teleport recovery. Typecheck, 125 unit tests and build pass. Its 1000-tic port replay and the complete DEMO4 replay pass repeatability/pause checks. C comparisons still correctly fail at the documented DEMO3 angle and DEMO4 sight/RNG differences. Next: freeze source player turning and weapon/use aim during teleport reaction time.
+
+## 2026-09-13 — teleport reaction-time turning and aim
+
+**PLAYER-01 / COMBAT-01 / LOOP-02.** `P_PlayerThink` now holds actor angle as well as thrust while teleport reaction time counts down. Weapon and Use aim follow the actor's angle rather than unaccepted input turns. A regression fires during recovery, checks frozen thrust/angle and verifies turning resumes afterward.
+
+DEMO3 agreement extends through tic 993. Its next first mismatch at 994 is `A_FaceTarget`'s partial-invisibility spread, which currently has twice the source angular scale; `P_SpawnMissile` also lacks its separate shadow-target randomization. Typecheck, 126 unit tests and build pass; the 1500-tic browser repeatability/pause check and mobile look-pitch integration check pass. Those two invisibility paths are the next slice.

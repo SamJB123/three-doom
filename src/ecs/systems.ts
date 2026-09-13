@@ -58,11 +58,11 @@ export function playerTickSystem( world: World, tickWeapons:()=>void=()=>{} ): v
 
   // Convert Three.js yaw → Doom angle
   const doomAngle = input.yaw + Math.PI / 2;
-  player.mo.angle = doomAngle;
 
   // Apply input thrust
   if (player.mo.reactionTime > 0) player.mo.reactionTime--;
   else {
+    player.mo.angle = doomAngle;
     movePlayer( player, input.forward, input.strafe, doomAngle );
     if(pState&&(input.forward||input.strafe)&&pState.mobjState.name==='S_PLAY')setPlayerMobjState(pState,'S_PLAY_RUN1',player.mo);
   }
@@ -70,7 +70,7 @@ export function playerTickSystem( world: World, tickWeapons:()=>void=()=>{} ): v
   // P_PlayerThink performs view/special/use/weapon work before P_RunThinkers.
   calcHeight(player,time.levelTime);
   if(pState){playerInSpecialSector(player,pState,map,time.levelTime);if(pState.playerState==='PST_LIVE')player.mo.health=pState.health;}
-  handleUseInput(input.use,player,doomAngle,map,pState);
+  handleUseInput(input.use,player,player.mo.angle,map,pState);
   tickWeapons();
 
   // Tick down powers and bonusCount

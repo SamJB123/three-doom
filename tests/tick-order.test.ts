@@ -50,3 +50,19 @@ test('P_MovePlayer starts walking before thinkers, and P_XYMovement stops the an
   assert.equal(player.mo.momx,0);assert.deepEqual(status.mobjState,{name:'S_PLAY',tics:-1});
   world.destroy();resetThinkers();allMobjs.length=0;
 });
+
+test('teleport reaction time freezes turning and thrust while weapons use the actor angle',async()=>{
+  const {WeaponSystem}=await import('../src/game/Weapons');
+  resetThinkers();allMobjs.length=0;const map=dividedMap(),player=createPlayer(50,0,0);
+  initMobjSystem({},new Group(),map);const world=createWorld(Time,Input,DoomWorld,PlayerStatus);
+  world.set(DoomWorld,{map,player});const weapon=new WeaponSystem();weapon.setup(world.get(PlayerStatus)!);
+  for(let i=0;i<20;i++)weapon.tick(world);
+  let shot:number|undefined;weapon.setFireCallback(angle=>{shot=angle;});
+  player.mo.angle=Math.PI/4;player.mo.reactionTime=5;
+  world.set(Input,{forward:1,yaw:-Math.PI/2,attack:true});
+  for(let i=0;i<5;i++)playerTickSystem(world,()=>weapon.tick(world));
+  assert.equal(player.mo.angle,Math.PI/4);assert.equal(shot,Math.PI/4);
+  assert.equal(player.mo.momx,0);assert.equal(player.mo.momy,0);assert.equal(player.mo.reactionTime,0);
+  world.set(Input,{forward:0,attack:false});playerTickSystem(world,()=>weapon.tick(world));
+  assert.equal(player.mo.angle,0);world.destroy();resetThinkers();allMobjs.length=0;
+});
