@@ -23,7 +23,7 @@ test('radius damage reaches the player once through sight tracing and excludes b
   const map=dividedMap();initMobjSystem({},new Group(),map);setAttackMap(map);
   const player=spawnMobj(40*F,0,0,'MT_PLAYER'),spot=spawnMobj(-40*F,0,0,'MT_ROCKET');
   const cyborg=spawnMobj(-40*F,0,0,'MT_CYBORG'),spider=spawnMobj(-40*F,0,0,'MT_SPIDER');
-  const seen:number[]=[];setPlayerDamageMobjCallback(damage=>seen.push(damage));
+  const seen:number[]=[];setPlayerDamageMobjCallback(damage=>{seen.push(damage);});
   radiusAttack(spot,null,128);assert.deepEqual(seen,[64]);assert.equal(cyborg.health,4000);assert.equal(spider.health,3000);
   map.sectors[1].ceilingHeight=0;radiusAttack(spot,null,128);assert.deepEqual(seen,[64]);
   assert.equal(player.health,100);resetThinkers();allMobjs.length=0;
@@ -67,5 +67,30 @@ test('P_DamageMobj player pain sets JUSTHIT only when the pain roll succeeds',as
     restoreRandom({play:seed,misc:0});playerPainCheck(state,actor);
     assert.equal(!!(actor.flags&MF_JUSTHIT),pain);assert.equal(state.mobjState.name,pain?'S_PLAY_PAIN':'S_PLAY');
   }
+  resetThinkers();allMobjs.length=0;
+});
+
+test('living player damage wakes and records a target, respecting immunity, death and target threshold',async()=>{
+  const {damageMobj}=await import('../src/game/Attack');
+  for(const mode of ['normal','immune','dead','threshold','self','vile']){
+    resetThinkers();allMobjs.length=0;initMobjSystem({},new Group(),dividedMap());
+    const actor=spawnMobj(40*F,0,0,'MT_PLAYER'),source=spawnMobj(-40*F,0,0,mode==='vile'?'MT_VILE':'MT_POSSESSED');
+    const state=createPlayerStatus();state.godMode=mode==='immune';actor.reactionTime=7;
+    if(mode==='threshold')actor.threshold=20;
+    setPlayerDamageMobjCallback((damage,_inflictor,source)=>damagePlayer(state,damage,0,actor,source));
+    damageMobj(actor,null,mode==='self'?actor:source,mode==='dead'?200:1);
+    assert.equal(actor.reactionTime,mode==='immune'||mode==='dead'?7:0,mode);
+    assert.equal(actor.target,mode==='normal'?source:null,mode);
+    assert.equal(actor.threshold,mode==='normal'?100:mode==='threshold'?20:0,mode);
+  }
+  resetThinkers();allMobjs.length=0;
+});
+
+test('a skipped player pain roll still synchronizes the wake state with the actor',async()=>{
+  const {restoreRandom}=await import('../src/game/DoomRandom');
+  resetThinkers();allMobjs.length=0;initMobjSystem({},new Group(),dividedMap());
+  const actor=spawnMobj(40*F,0,0,'MT_PLAYER'),source=spawnMobj(-40*F,0,0,'MT_POSSESSED'),state=createPlayerStatus();
+  restoreRandom({play:157,misc:0});damagePlayer(state,1,0,actor,source);
+  assert.equal(actor.state,'S_PLAY_RUN1');assert.equal(state.mobjState.name,actor.state);assert.equal(state.mobjState.tics,actor.tics);
   resetThinkers();allMobjs.length=0;
 });

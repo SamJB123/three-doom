@@ -1,3 +1,4 @@
+import {wakeAfterDamage} from './DamageResponse';
 import type {Mobj} from './Mobj';
 // Player damage and environmental hazards — ported from p_inter.c / p_spec.c.
 // Handles armor absorption, damage tint, damaging floors, and explosion damage to player.
@@ -8,7 +9,7 @@ import { findSectorAtFixed } from '../physics/DoomMovement';
 import { requestExit } from './UseAction';
 import { gameRules } from './GameRules';
 import { P_Random } from './DoomRandom';
-import { playerPainCheck, playerKilled } from './PlayerState';
+import { playerPainCheck, playerKilled, setPlayerMobjState } from './PlayerState';
 
 let deathCallback:((state:PlayerStatusState)=>void)|null=null;
 export function setPlayerDeathCallback(callback:(state:PlayerStatusState)=>void):void {deathCallback=callback;}
@@ -28,16 +29,17 @@ export function damagePlayer(
   state: PlayerStatusState,
   damage: number,
   sectorSpecial = 0,
-  actor?:Mobj
-): void {
+  actor?:Mobj,
+  source:Mobj|null=null
+): boolean {
 
-  if ( state.health <= 0 ) return;
+  if ( state.health <= 0 ) return false;
 
   if (gameRules.skill === 1) damage >>= 1;
 
   // P_DamageMobj's E1M8 hell-exit protection precedes armor and cheats.
   if (sectorSpecial === 11 && damage >= state.health) damage = state.health - 1;
-  if (damage < 1000 && (state.godMode || state.powers.invulnerability > 0)) return;
+  if (damage < 1000 && (state.godMode || state.powers.invulnerability > 0)) return false;
 
   // Armor absorbs damage: blue=1/3, mega/red=1/2
   if ( state.armorType > 0 ) {
@@ -80,12 +82,14 @@ export function damagePlayer(
     playerKilled( state, actor );
     state.health = 0;
     deathCallback?.(state);
-    return;
+    return true;
 
   }
 
   // Pain state check — player painchance is 255 (near-always)
   playerPainCheck( state, actor );
+  if(actor)wakeAfterDamage(actor,source,name=>setPlayerMobjState(state,name,actor));
+  return true;
 
 }
 

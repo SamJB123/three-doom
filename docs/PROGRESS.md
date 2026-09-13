@@ -290,3 +290,13 @@ Missing effects explained the three absent actors and twelve missing RNG draws a
 The complete 350-tic original C comparison now passes with zero captured player or actor differences. Scope remains the documented hosted-source field set, not whole-engine/DOS parity: target links, inventory, sectors and longer/cross-map command streams need C comparisons. Next: expand that trace coverage and continue remaining actor/player behavior, title demos, save/special scenarios and release gates. The full-port milestone remains open.
 
 Validation: 107 unit tests, typecheck and build pass. Installed-Chrome monster movement, death/Use-rebirth and 350-tic repeatability/pause checks pass (59.7 seconds). The separately executed original C comparison passes all 350 tics. No commercial assets or local trace artifacts are committed.
+
+## 2026-09-13 — broader trace fields and all-episode demo sampling
+
+**REF-01 / LOOP-02 / PLAYER-01.** Extended C comparison to actor targets, inventory/powers/counters, sector geometry/light/special state and sidedef offsets. Corrected the trace adapter's no-change weapon enum to original `wp_nochange` (10). All added world/inventory fields matched the existing DEMO1 run; the new target field exposed the player damage path returning before `P_DamageMobj`'s wake/target update.
+
+Player and monster damage now share that tail, preserving immunity, lethal-hit and target-threshold exclusions. Player state synchronization also handles random value 255 skipping pain before the wake transition. Regression scenarios cover those boundaries. Expanded DEMO1 matches all captured fields through 350 tics.
+
+All four episode demos now have 350-tic port-repeatability/pause checks. Trace polling/transfer was made cheaper and longer streams up to 4000 commands are supported. C comparisons deliberately remain failing for DEMO2 (projectile position, tic 103), DEMO3 (player fixed thrust, tic 168) and DEMO4 (sight/RNG, tic 1). Next: source projectile subdivision, exact command thrust and the missing REJECT connection, then extend the recordings.
+
+Validation: 109 unit tests, typecheck and build pass; four installed-Chrome demo checks pass (1.2 minutes). DEMO1's expanded C gate passes; the three newly exposed episode mismatches are recorded, not waived. Full campaign and presentation/release gates remain open.

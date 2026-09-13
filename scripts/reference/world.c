@@ -12,6 +12,7 @@
 #include "m_menu.h"
 #include "p_local.h"
 #include "r_main.h"
+#include "r_state.h"
 #include "s_sound.h"
 #include "w_wad.h"
 #include "v_video.h"
@@ -32,10 +33,18 @@ void I_StopSound(int h){} int I_SoundIsPlaying(int h){return 0;} void I_UpdateSo
 void I_InitMusic(void){} void I_ShutdownMusic(void){} void I_SetMusicVolume(int v){} void I_PauseSong(int h){} void I_ResumeSong(int h){}
 int I_RegisterSong(void* data){return 0;} void I_PlaySong(int h,int loop){} void I_StopSong(int h){} void I_UnRegisterSong(int h){}
 void I_InitNetwork(void){} void I_NetCmd(void){}
+int actorIndex(mobj_t* target){
+  thinker_t* t;int index=0;
+  for(t=thinkercap.next;t!=&thinkercap;t=t->next){
+    if(t->function.acp1!=(actionf_p1)P_MobjThinker)continue;
+    if((mobj_t*)t==target)return index;index++;
+  }
+  return -1;
+}
 int main(int argc,char** argv){
   int tic,limit,length,lump,i,offset;thinker_t* thinker;int first;byte* demo;char* files[2];FILE* out;
   if(argc!=5){fprintf(stderr,"usage: reference-world IWAD DEMO TICS OUTPUT\n");return 2;}
-  myargc=1;myargv=argv;files[0]=argv[1];files[1]=NULL;limit=atoi(argv[3]);if(limit<1||limit>350)return 2;out=fopen(argv[4],"w");if(!out)return 3;
+  myargc=1;myargv=argv;files[0]=argv[1];files[1]=NULL;limit=atoi(argv[3]);if(limit<1||limit>4000)return 2;out=fopen(argv[4],"w");if(!out)return 3;
   gamemode=retail;gamemission=doom;modifiedgame=false;consoleplayer=displayplayer=0;playeringame[0]=true;viewactive=true;
   Z_Init();V_Init();W_InitMultipleFiles(files);R_Init();P_Init();M_Init();S_Init(0,0);HU_Init();ST_Init();
   lump=W_GetNumForName(argv[2]);length=W_LumpLength(lump);demo=W_CacheLumpNum(lump,PU_STATIC);
@@ -53,9 +62,19 @@ int main(int argc,char** argv){
     first=1;
     for(thinker=thinkercap.next;thinker!=&thinkercap;thinker=thinker->next){
       mobj_t* a;if(thinker->function.acp1!=(actionf_p1)P_MobjThinker)continue;a=(mobj_t*)thinker;
-      fprintf(out,"%s[%d,%d,%d,%d,%d,%d,%d,%u,%d,%d,%d,%d]",first?"":",",a->type,a->x,a->y,a->z,a->momx,a->momy,a->momz,a->angle,a->health,(int)(a->state-states),a->tics,a->flags);first=0;
+      fprintf(out,"%s[%d,%d,%d,%d,%d,%d,%d,%u,%d,%d,%d,%d,%d]",first?"":",",a->type,a->x,a->y,a->z,a->momx,a->momy,a->momz,a->angle,a->health,(int)(a->state-states),a->tics,a->flags,actorIndex(a->target));first=0;
     }
-    fprintf(out,"]]\n");
+    fprintf(out,"],{\"sectors\":[");
+    for(i=0;i<numsectors;i++)fprintf(out,"%s[%g,%g,%d,%d]",i?",":"",sectors[i].floorheight/65536.0,sectors[i].ceilingheight/65536.0,sectors[i].lightlevel,sectors[i].special);
+    fprintf(out,"],\"sides\":[");
+    for(i=0;i<numsides;i++)fprintf(out,"%s[%g,%g]",i?",":"",sides[i].textureoffset/65536.0,sides[i].rowoffset/65536.0);
+    fprintf(out,"],\"inventory\":[%d,%d,%d,%d,%d,%d",p->armorpoints,p->armortype,p->pendingweapon,p->bonuscount,p->damagecount,p->playerstate);
+    for(i=0;i<NUMAMMO;i++)fprintf(out,",%d",p->ammo[i]);
+    for(i=0;i<NUMAMMO;i++)fprintf(out,",%d",p->maxammo[i]);
+    for(i=0;i<NUMWEAPONS;i++)fprintf(out,",%d",p->weaponowned[i]);
+    for(i=0;i<NUMCARDS;i++)fprintf(out,",%d",p->cards[i]);
+    for(i=0;i<NUMPOWERS;i++)fprintf(out,",%d",p->powers[i]);
+    fprintf(out,"]}]\n");
   }
   fclose(out);return 0;
 }

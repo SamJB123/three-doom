@@ -557,28 +557,37 @@ test('mobile taps use doors and holding the aiming side opens an owned-weapon wh
   await context.close();
 });
 
-test('original IWAD demo commands produce repeatable gameplay traces and pause with the menu',async({page})=>{
-  test.setTimeout(process.env.DOOM_TRACE_TICS?120000:45000);
-  await ready(page);
+for(const demoName of (process.env.DOOM_TRACE_DEMOS??'DEMO1').split(','))test(`original IWAD demo ${demoName} commands produce repeatable gameplay traces and pause with the menu`,async({page})=>{
   const limit=Number(process.env.DOOM_TRACE_TICS??70);
+  if(!Number.isInteger(limit)||limit<1||limit>4000)throw Error('DOOM_TRACE_TICS must be 1–4000');
+  test.setTimeout(Math.max(45000,limit/35*4000+30000));
+  await ready(page);
+  const replayTic=()=>page.evaluate(()=>(window as any).__doomInspect().replay?.tic??0);
   const run=async(pause:boolean)=>{
-    await page.evaluate(limit=>(window as any).__doomReplay('DEMO1',limit),limit);
+    const expected=await page.evaluate(({demoName,limit})=>{
+      (window as any).__doomReplay(demoName,limit);
+      return Math.min(limit,(window as any).__doomInspect().replay.length);
+    },{demoName,limit});
     if(pause){
-      await expect.poll(async()=>(await snapshot(page)).replay?.tic??0).toBeGreaterThan(5);
+      await expect.poll(replayTic).toBeGreaterThan(5);
       await page.keyboard.press('Escape');const stopped=await snapshot(page);await page.waitForTimeout(120);
       expect((await snapshot(page)).replay).toEqual(stopped.replay);
       await page.getByRole('button',{name:'Resume game',exact:true}).click();
     }
-    await expect.poll(async()=>(await snapshot(page)).replay?.tic??0,{timeout:20000}).toBe(limit);
+    await expect.poll(replayTic,{timeout:limit/35*2000+10000}).toBe(expected);
     await expect(page.getByRole('dialog',{name:'Doom menu'})).toBeVisible();
-    return (await snapshot(page)).replay.trace;
+    return page.evaluate(()=>JSON.stringify((window as any).__doomInspect().replay.trace));
   };
   const first=await run(false);
-  const {writeFileSync,mkdirSync}=await import('node:fs');mkdirSync('artifacts',{recursive:true});writeFileSync('artifacts/port-demo1-trace.json',JSON.stringify(first));
+  const {writeFileSync,mkdirSync}=await import('node:fs');mkdirSync('artifacts',{recursive:true});
+  writeFileSync(`artifacts/port-${demoName.toLowerCase()}-trace.json`,first);
   await page.evaluate(async()=>{
     const {TicClock}=await import('/src/game/TicClock.ts');const advance=TicClock.prototype.advance;let frame=0;
     TicClock.prototype.advance=function(delta:number,running:boolean,tick:()=>void){return advance.call(this,running&&delta>0?(frame++%3===0?3/35:1/140):delta,running,tick);};
   });
   const second=await run(true);
-  expect(first).toHaveLength(limit);expect(second).toEqual(first);
+  const {createHash}=await import('node:crypto');
+  const hash=(value:string)=>createHash('sha256').update(value).digest('hex');
+  if(hash(second)!==hash(first))writeFileSync(`artifacts/port-${demoName.toLowerCase()}-repeat.json`,second);
+  expect(hash(second)).toBe(hash(first));
 });

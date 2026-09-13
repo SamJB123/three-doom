@@ -1,3 +1,4 @@
+import {wakeAfterDamage} from './DamageResponse';
 import {spawnHitEffect} from './HitEffects';
 import {fineSin,fineCos,pointToRadians} from '../math/angles';
 // Hitscan attack, damage, and radius attack — ported from p_map.c / p_inter.c.
@@ -568,16 +569,15 @@ export function lineAttack(
 // Handles damage for both monsters and the player.
 // ============================================================
 
-const BASETHRESHOLD = 100;
 let killCallback: ((mo: Mobj) => void) | null = null;
 export function setKillCallback(cb: (mo: Mobj) => void): void { killCallback = cb; }
 
 // Player damage callback — set from main.ts
 // Called when the target mobj IS the player, so we can apply armor/HUD/death.
-let playerDamageMobjCallback: ( ( damage: number, inflictor: Mobj | null, source: Mobj | null ) => void ) | null = null;
+let playerDamageMobjCallback: ( ( damage: number, inflictor: Mobj | null, source: Mobj | null ) => boolean | void ) | null = null;
 
 export function setPlayerDamageMobjCallback(
-  cb: ( damage: number, inflictor: Mobj | null, source: Mobj | null ) => void
+  cb: ( damage: number, inflictor: Mobj | null, source: Mobj | null ) => boolean | void
 ): void {
 
   playerDamageMobjCallback = cb;
@@ -645,24 +645,7 @@ export function damageMobj(
 
   }
 
-  target.reactionTime = 0; // wake up immediately
-
-  // Infighting: switch target to attacker (with threshold check)
-  if ( ( ! target.threshold || target.type === 'MT_VILE' ) &&
-       source && source !== target && source.type !== 'MT_VILE' ) {
-
-    target.target = source;
-    target.threshold = BASETHRESHOLD;
-
-    // If in spawn (idle) state, switch to see state
-    if ( target.state === target.info.spawnState && target.info.seeState ) {
-
-      setMobjState( target, target.info.seeState );
-
-    }
-
-  }
-
+  wakeAfterDamage(target,source);
 }
 
 // ============================================================

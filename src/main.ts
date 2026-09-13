@@ -142,8 +142,8 @@ async function main(): Promise<void> {
   setSecretCallback(()=>level.secrets++);
   setPickupCallback(type=>{if(COUNTED_ITEMS.has(type)) level.items++;});
   setPlayerDeathCallback(state=>{weapons.drop(state);automap.active=false;});
-  setPlayerDamageMobjCallback(damage=>{
-    const state=world.get(PlayerStatus)!; damagePlayer(state,damage,level.map.sectors[level.player.mo.sectorIndex]?.special,level.player.mo);
+  setPlayerDamageMobjCallback((damage,_inflictor,source)=>{
+    const state=world.get(PlayerStatus)!; return damagePlayer(state,damage,level.map.sectors[level.player.mo.sectorIndex]?.special,level.player.mo,source);
   });
   clearRandom(); loadLevel(1,1,3);
 
@@ -236,7 +236,7 @@ async function main(): Promise<void> {
       const lump=getLump(wad,name);if(!lump)throw Error('Demo lump not found');
       const demo=readDemo(wad.buf.slice(lump.offset,lump.offset+lump.size));
       clearRandom();loadLevel(demo.episode,demo.map,demo.skill);
-      replay={demo,index:0,limit:Math.max(1,Math.min(350,Math.trunc(limit)||70)),trace:[]};menu.start();controls.setEnabled(false);
+      replay={demo,index:0,limit:Math.max(1,Math.min(4000,Math.trunc(limit)||70)),trace:[]};menu.start();controls.setEnabled(false);
     }});
     Object.defineProperty(window,'__doomInspect',{value:()=>({
       replay:replay?{tic:replay.index,length:replay.demo.commands.length,trace:replay.trace}:null,
