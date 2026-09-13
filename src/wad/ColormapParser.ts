@@ -10,7 +10,8 @@ export const COLORMAP_LEVELS = 32; // 0..31 light levels (32 and 33 are special)
 
 export function parseColormap( wad: WAD ): Uint8Array[] {
 
-  const lump = getLump( wad, 'COLORMAP' )!;
+  const lump = getLump( wad, 'COLORMAP' );
+  if(!lump||lump.size<34*256)throw Error('Missing or truncated COLORMAP');
   const tables: Uint8Array[] = [];
 
   for ( let i = 0; i < 34; i ++ ) {

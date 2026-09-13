@@ -3,7 +3,8 @@ import { getLump, readStr } from './WADParser';
 
 export function parsePalette( wad: WAD ): Palette {
 
-  const lump = getLump( wad, 'PLAYPAL' )!;
+  const lump = getLump( wad, 'PLAYPAL' );
+  if(!lump||lump.size<768)throw Error('Missing or truncated PLAYPAL');
   const palette = new Uint8Array( 256 * 3 );
 
   for ( let i = 0; i < 256 * 3; i ++ ) {
@@ -68,11 +69,15 @@ export function parsePatch( wad: WAD, lumpOffset: number ): PatchData {
   const view = wad.view;
   const buf = wad.buf;
 
+  const lump=wad.lumps.find(l=>l.filepos===lumpOffset&&l.size>0);
+  const end=lump?lumpOffset+lump.size:buf.length;
+  if(lumpOffset<0||lumpOffset+8>end)throw Error('Truncated patch header');
   const width = view.getInt16( lumpOffset, true );
   const height = view.getInt16( lumpOffset + 2, true );
   const leftOffset = view.getInt16( lumpOffset + 4, true );
   const topOffset = view.getInt16( lumpOffset + 6, true );
 
+  if(width<=0||height<=0||width*height>16777216||lumpOffset+8+width*4>end)throw Error('Invalid patch dimensions');
   const columnOfs: number[] = [];
 
   for ( let x = 0; x < width; x ++ ) {
@@ -86,13 +91,15 @@ export function parsePatch( wad: WAD, lumpOffset: number ): PatchData {
   for ( let x = 0; x < width; x ++ ) {
 
     let ofs = lumpOffset + columnOfs[ x ];
-    let safety = 0;
-
-    while ( safety ++ < 256 ) {
+    if(ofs<lumpOffset+8+width*4||ofs>=end)throw Error('Invalid patch column offset');
+    while ( true ) {
+      if(ofs>=end)throw Error('Unterminated patch column');
 
       const topdelta = buf[ ofs ];
       if ( topdelta === 0xFF ) break;
+      if(ofs+3>end)throw Error('Truncated patch post');
       const length = buf[ ofs + 1 ];
+      if(ofs+length+4>end)throw Error('Truncated patch post');
       ofs += 3; // skip unused padding byte
 
       for ( let j = 0; j < length; j ++ ) {
@@ -122,8 +129,10 @@ export function parseTextures( wad: WAD, palette: Palette ): Record<string, Text
   const view = wad.view;
 
   // Parse PNAMES
-  const pnamesLump = getLump( wad, 'PNAMES' )!;
+  const pnamesLump = getLump( wad, 'PNAMES' );
+  if(!pnamesLump||pnamesLump.size<4)throw Error('Missing or truncated PNAMES');
   const numPnames = view.getInt32( pnamesLump.offset, true );
+  if(numPnames<0||numPnames>(pnamesLump.size-4)/8)throw Error('Invalid PNAMES count');
   const pnames: string[] = [];
 
   for ( let i = 0; i < numPnames; i ++ ) {
@@ -165,7 +174,7 @@ export function parseTextures( wad: WAD, palette: Palette ): Record<string, Text
 
   for ( const pname of pnames ) {
 
-    if ( ! patchLumps[ pname ] && wad.lumpMap[ pname ] ) {
+    if ( wad.lumpMap[ pname ] ) {
 
       patchLumps[ pname ] = wad.lumpMap[ pname ];
 
@@ -181,16 +190,20 @@ export function parseTextures( wad: WAD, palette: Palette ): Record<string, Text
     if ( ! lump ) return;
 
     const base = lump.offset;
+    if(lump.size<4)throw Error(`Truncated ${lumpName}`);
     const numTex = view.getInt32( base, true );
+    if(numTex<0||numTex>(lump.size-4)/4)throw Error(`Invalid ${lumpName} count`);
 
     for ( let i = 0; i < numTex; i ++ ) {
 
       const texOff = base + view.getInt32( base + 4 + i * 4, true );
+      if(texOff<base+4+numTex*4||texOff+22>base+lump.size)throw Error(`Invalid ${lumpName} texture offset`);
       const name = readStr( buf, texOff, 8 );
       const width = view.getInt16( texOff + 12, true );
       const height = view.getInt16( texOff + 14, true );
       const patchCount = view.getInt16( texOff + 20, true );
 
+      if(width<=0||height<=0||width*height>16777216||patchCount<0||texOff+22+patchCount*10>base+lump.size)throw Error(`Invalid texture definition: ${name}`);
       const pixels = new Int16Array( width * height ).fill( - 1 );
 
       for ( let p = 0; p < patchCount; p ++ ) {
@@ -202,7 +215,7 @@ export function parseTextures( wad: WAD, palette: Palette ): Record<string, Text
 
         const patchName = pnames[ patchIdx ];
         const patchLump = patchLumps[ patchName ];
-        if ( ! patchLump ) continue;
+        if ( ! patchLump )throw Error(`Missing texture patch: ${patchName??patchIdx}`);
 
         const patch = parsePatch( wad, patchLump.filepos );
 

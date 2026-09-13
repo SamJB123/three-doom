@@ -1,11 +1,16 @@
 import type { WAD, LumpRef, Vertex, Linedef, Sidedef, Sector, Thing, Seg, Subsector, BspNode } from './types';
 import { readStr } from './WADParser';
 
+function records(wad:WAD,lump:LumpRef,size:number,name:string):number {
+  if(!Number.isInteger(lump.offset)||!Number.isInteger(lump.size)||lump.offset<0||lump.size<0||lump.size%size||lump.offset+lump.size>wad.buf.length)throw Error(`Invalid ${name} record bounds`);
+  return lump.size/size;
+}
+
 export function parseVertexes( wad: WAD, lump: LumpRef ): Vertex[] {
 
   const verts: Vertex[] = [];
   const view = wad.view;
-  const count = lump.size / 4;
+  const count = records(wad,lump,4,'VERTEXES');
 
   for ( let i = 0; i < count; i ++ ) {
 
@@ -25,7 +30,7 @@ export function parseLinedefs( wad: WAD, lump: LumpRef ): Linedef[] {
 
   const lines: Linedef[] = [];
   const view = wad.view;
-  const count = lump.size / 14;
+  const count = records(wad,lump,14,'LINEDEFS');
 
   for ( let i = 0; i < count; i ++ ) {
 
@@ -51,7 +56,7 @@ export function parseSidedefs( wad: WAD, lump: LumpRef ): Sidedef[] {
   const sides: Sidedef[] = [];
   const view = wad.view;
   const buf = wad.buf;
-  const count = lump.size / 30;
+  const count = records(wad,lump,30,'SIDEDEFS');
 
   for ( let i = 0; i < count; i ++ ) {
 
@@ -76,7 +81,7 @@ export function parseSectors( wad: WAD, lump: LumpRef ): Sector[] {
   const sectors: Sector[] = [];
   const view = wad.view;
   const buf = wad.buf;
-  const count = lump.size / 26;
+  const count = records(wad,lump,26,'SECTORS');
 
   for ( let i = 0; i < count; i ++ ) {
 
@@ -103,7 +108,7 @@ export function parseThings( wad: WAD, lump: LumpRef ): Thing[] {
 
   const things: Thing[] = [];
   const view = wad.view;
-  const count = lump.size / 10;
+  const count = records(wad,lump,10,'THINGS');
 
   for ( let i = 0; i < count; i ++ ) {
 
@@ -126,7 +131,7 @@ export function parseSegs( wad: WAD, lump: LumpRef ): Seg[] {
 
   const segs: Seg[] = [];
   const view = wad.view;
-  const count = lump.size / 12;
+  const count = records(wad,lump,12,'SEGS');
 
   for ( let i = 0; i < count; i ++ ) {
 
@@ -150,7 +155,7 @@ export function parseSubsectors( wad: WAD, lump: LumpRef ): Subsector[] {
 
   const subs: Subsector[] = [];
   const view = wad.view;
-  const count = lump.size / 4;
+  const count = records(wad,lump,4,'SUBSECTORS');
 
   for ( let i = 0; i < count; i ++ ) {
 
@@ -170,7 +175,7 @@ export function parseNodes( wad: WAD, lump: LumpRef ): BspNode[] {
 
   const nodes: BspNode[] = [];
   const view = wad.view;
-  const count = lump.size / 28;
+  const count = records(wad,lump,28,'NODES');
 
   for ( let i = 0; i < count; i ++ ) {
 

@@ -1,3 +1,4 @@
+import {validateMap} from '../src/wad/MapValidation';
 import { readFileSync } from 'node:fs';
 import assert from 'node:assert/strict';
 import {MOBJ_TYPES,MOBJ_STATES,DOOMEDNUM_TO_TYPE,MF_NOSECTOR} from '../src/game/MobjData';
@@ -18,6 +19,7 @@ for (const { name } of maps) {
   const subsectors = w.parseSubsectors(wad, lumps.SSECTORS);
   const nodes = w.parseNodes(wad, lumps.NODES);
   const blockmap = w.parseBlockmap(wad, lumps.BLOCKMAP);
+  validateMap({vertexes:vertices,linedefs:lines,sidedefs:sides,sectors,segs,subsectors,nodes,blockmap,reject:wad.buf.slice(lumps.REJECT.offset,lumps.REJECT.offset+lumps.REJECT.size)});
   for(const thing of things){
     if([1,2,3,4,11].includes(thing.type))continue;
     const type=DOOMEDNUM_TO_TYPE[thing.type];assert(type,`${name}: unknown actor ${thing.type}`);usedTypes.add(type);

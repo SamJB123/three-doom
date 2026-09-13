@@ -21,38 +21,34 @@ export function parseBlockmap( wad: WAD, lump: LumpRef ): Blockmap {
   const view = wad.view;
   const off = lump.offset;
 
+  const end=off+lump.size;
+  if(lump.size<8||lump.size%2||off<0||end>wad.buf.length)throw Error('Invalid BLOCKMAP header');
   const originX = view.getInt16( off, true );
   const originY = view.getInt16( off + 2, true );
   const columns = view.getUint16( off + 4, true );
   const rows = view.getUint16( off + 6, true );
 
   const numBlocks = columns * rows;
+  if(!columns||!rows||numBlocks>(lump.size-8)/2)throw Error('Invalid BLOCKMAP dimensions');
   const lists: number[][] = [];
+  const cached=new Map<number,number[]>();
 
   for ( let i = 0; i < numBlocks; i ++ ) {
 
     // Each offset is in 16-bit words from the start of the lump
     const blockOffset = view.getUint16( off + 8 + i * 2, true );
-    const linedefIndices: number[] = [];
-
-    // Read the blocklist at this offset (offsets are in uint16 words from lump start)
-    let pos = off + blockOffset * 2;
-
-    // Skip the 0x0000 header
-    const header = view.getUint16( pos, true );
-    pos += 2;
-
-    // Read linedef indices until 0xFFFF
-    let safety = 0;
-
-    while ( safety ++ < 10000 ) {
-
-      const val = view.getUint16( pos, true );
-      pos += 2;
-      if ( val === 0xFFFF ) break;
-      linedefIndices.push( val );
-
+    const existing=cached.get(blockOffset);if(existing){lists.push(existing);continue;}
+    const linedefIndices:number[]=[];
+    let pos=off+blockOffset*2;
+    if(pos<off+8+numBlocks*2||pos+2>end||view.getUint16(pos,true)!==0)throw Error('Invalid BLOCKMAP list offset/header');
+    pos+=2;
+    while(true){
+      if(pos+2>end)throw Error('Unterminated BLOCKMAP list');
+      const value=view.getUint16(pos,true);pos+=2;
+      if(value===0xffff)break;
+      linedefIndices.push(value);
     }
+    cached.set(blockOffset,linedefIndices);
 
     lists.push( linedefIndices );
 

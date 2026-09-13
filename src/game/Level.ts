@@ -1,3 +1,4 @@
+import {validateMap} from '../wad/MapValidation';
 import {linkThing} from '../physics/ThingLinks';
 import {P_Random} from './DoomRandom';
 import { Group, Mesh, MeshBasicMaterial } from 'three/webgpu';
@@ -59,6 +60,7 @@ export class Level {
       nodes:w.parseNodes(wad,lumps.NODES), blockmap:w.parseBlockmap(wad,lumps.BLOCKMAP),
       reject:wad.buf.slice(lumps.REJECT.offset,lumps.REJECT.offset+lumps.REJECT.size)
     };
+    validateMap(map);
     this.map=map;
     setFloorTextureHeights(Object.fromEntries(Object.entries(assets.textures).map(([name,texture])=>[name,texture.height])));
     this.things=w.parseThings(wad,lumps.THINGS).filter(t=>shouldSpawnThing(t,skill));

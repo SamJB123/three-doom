@@ -785,3 +785,21 @@ test('death view turns toward the killer and pauses with the menu',async({page})
   expect((await snapshot(page)).player.health).toBe(0);
   await page.keyboard.press('Escape');const paused=await snapshot(page);await page.waitForTimeout(100);expect(await snapshot(page)).toEqual(paused);
 });
+
+test('a malformed BSP reports a startup error instead of hanging map traversal',async({page})=>{
+  await page.route('**/doomu.wad',async route=>{
+    const response=await route.fetch(),bytes=await response.body();
+    const count=bytes.readInt32LE(4),directory=bytes.readInt32LE(8);let inMap=false;
+    for(let i=0;i<count;i++){
+      const entry=directory+i*16,name=bytes.subarray(entry+8,entry+16).toString().replaceAll('\0','');
+      if(name==='E1M1')inMap=true;
+      if(inMap&&name==='NODES'){
+        const offset=bytes.readInt32LE(entry),size=bytes.readInt32LE(entry+4),last=size/28-1;
+        bytes.writeUInt16LE(last,offset+last*28+24);break;
+      }
+    }
+    await route.fulfill({response,body:bytes});
+  });
+  await page.goto('/?inspect');
+  await expect(page.locator('#loading')).toHaveText('Unable to start Doom: Invalid map BSP cycle');
+});
