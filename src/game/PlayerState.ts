@@ -1,3 +1,5 @@
+import type {Mobj} from './Mobj';
+import {MOBJ_STATES,MF_SOLID,MF_SHOOTABLE,MF_FLOAT,MF_SKULLFLY,MF_NOGRAVITY,MF_CORPSE,MF_DROPOFF} from './MobjData';
 // Player mobj state machine — ported from info.c and p_user.c.
 // Drives pain sounds, death sequences, and state transitions.
 // States mirror the original S_PLAY_* states from info.c.
@@ -19,40 +21,7 @@ interface PlayerStateEntry {
   next: string;
 }
 
-const PLAYER_STATES: Record<string, PlayerStateEntry> = {
-
-  // --- Idle / running (infinite tic = stay here) ---
-  S_PLAY:      { tics: - 1, action: null, next: 'S_PLAY' },
-  S_PLAY_RUN1: { tics: 4,   action: null, next: 'S_PLAY_RUN2' },
-  S_PLAY_RUN2: { tics: 4,   action: null, next: 'S_PLAY_RUN3' },
-  S_PLAY_RUN3: { tics: 4,   action: null, next: 'S_PLAY_RUN4' },
-  S_PLAY_RUN4: { tics: 4,   action: null, next: 'S_PLAY_RUN1' },
-
-  // --- Pain ---
-  S_PLAY_PAIN:  { tics: 4, action: null,     next: 'S_PLAY_PAIN2' },
-  S_PLAY_PAIN2: { tics: 4, action: 'A_Pain', next: 'S_PLAY' },
-
-  // --- Death ---
-  S_PLAY_DIE1: { tics: 10, action: null,              next: 'S_PLAY_DIE2' },
-  S_PLAY_DIE2: { tics: 10, action: 'A_PlayerScream',  next: 'S_PLAY_DIE3' },
-  S_PLAY_DIE3: { tics: 10, action: 'A_Fall',          next: 'S_PLAY_DIE4' },
-  S_PLAY_DIE4: { tics: 10, action: null,              next: 'S_PLAY_DIE5' },
-  S_PLAY_DIE5: { tics: 10, action: null,              next: 'S_PLAY_DIE6' },
-  S_PLAY_DIE6: { tics: 10, action: null,              next: 'S_PLAY_DIE7' },
-  S_PLAY_DIE7: { tics: - 1, action: null,             next: 'S_PLAY_DIE7' },
-
-  // --- Gib death (overkill: health < -spawnhealth) ---
-  S_PLAY_XDIE1: { tics: 5, action: null,              next: 'S_PLAY_XDIE2' },
-  S_PLAY_XDIE2: { tics: 5, action: 'A_XScream',       next: 'S_PLAY_XDIE3' },
-  S_PLAY_XDIE3: { tics: 5, action: 'A_Fall',          next: 'S_PLAY_XDIE4' },
-  S_PLAY_XDIE4: { tics: 5, action: null,              next: 'S_PLAY_XDIE5' },
-  S_PLAY_XDIE5: { tics: 5, action: null,              next: 'S_PLAY_XDIE6' },
-  S_PLAY_XDIE6: { tics: 5, action: null,              next: 'S_PLAY_XDIE7' },
-  S_PLAY_XDIE7: { tics: 5, action: null,              next: 'S_PLAY_XDIE8' },
-  S_PLAY_XDIE8: { tics: 5, action: null,              next: 'S_PLAY_XDIE9' },
-  S_PLAY_XDIE9: { tics: - 1, action: null,            next: 'S_PLAY_XDIE9' },
-
-};
+const PLAYER_STATES = MOBJ_STATES;
 
 // Player mobjinfo constants (from info.c MT_PLAYER)
 const PLAYER_PAINCHANCE = 255; // always enters pain state when hit
@@ -61,7 +30,7 @@ const PLAYER_PAINCHANCE = 255; // always enters pain state when hit
 // Set player mobj state — mirrors P_SetMobjState for the player
 // ============================================================
 
-export function setPlayerMobjState( state: PlayerStatusState, stateName: string ): void {
+export function setPlayerMobjState( state: PlayerStatusState, stateName: string, actor?:Mobj ): void {
 
   let name: string | null = stateName;
 
@@ -76,9 +45,10 @@ export function setPlayerMobjState( state: PlayerStatusState, stateName: string 
     }
 
     state.mobjState = { name, tics: entry.tics };
+    if(actor){actor.state=name;actor.tics=entry.tics;}
 
     // Execute action
-    if ( entry.action ) execPlayerAction( state, entry.action );
+    if ( entry.action ) execPlayerAction( state, entry.action, actor );
 
     // If tics > 0 or -1 (infinite), stop and wait
     if ( entry.tics !== 0 ) return;
@@ -93,17 +63,18 @@ export function setPlayerMobjState( state: PlayerStatusState, stateName: string 
 // Tick the player mobj state — call once per tic
 // ============================================================
 
-export function tickPlayerMobjState( state: PlayerStatusState ): void {
+export function tickPlayerMobjState( state: PlayerStatusState, actor?:Mobj ): void {
 
   const ms = state.mobjState;
   if ( ms.tics === - 1 ) return; // infinite — no countdown
 
   ms.tics --;
+  if(actor)actor.tics=ms.tics;
 
   if ( ms.tics <= 0 ) {
 
     const entry = PLAYER_STATES[ ms.name ];
-    if ( entry ) setPlayerMobjState( state, entry.next );
+    if ( entry ) setPlayerMobjState( state, entry.next, actor );
 
   }
 
@@ -114,12 +85,12 @@ export function tickPlayerMobjState( state: PlayerStatusState ): void {
 // Mirrors the painchance check in P_DamageMobj
 // ============================================================
 
-export function playerPainCheck( state: PlayerStatusState ): void {
+export function playerPainCheck( state: PlayerStatusState, actor?:Mobj ): void {
 
   // Player painchance = 255 (always enter pain state)
   if ( ( P_Random() < PLAYER_PAINCHANCE ) ) {
 
-    setPlayerMobjState( state, 'S_PLAY_PAIN' );
+    setPlayerMobjState( state, 'S_PLAY_PAIN', actor );
 
   }
 
@@ -130,28 +101,31 @@ export function playerPainCheck( state: PlayerStatusState ): void {
 // Mirrors P_KillMobj for the player
 // ============================================================
 
-export function playerKilled( state: PlayerStatusState ): void {
+export function playerKilled( state: PlayerStatusState, actor?:Mobj ): void {
 
   state.playerState = 'PST_DEAD';
+  if(actor){actor.flags=(actor.flags&~(MF_SOLID|MF_SHOOTABLE|MF_FLOAT|MF_SKULLFLY|MF_NOGRAVITY))|MF_CORPSE|MF_DROPOFF;actor.height>>=2;}
 
   if ( state.health < - 100 ) {
 
     // Gib death (extreme overkill)
-    setPlayerMobjState( state, 'S_PLAY_XDIE1' );
+    setPlayerMobjState( state, 'S_PLAY_XDIE1', actor );
 
   } else {
 
-    setPlayerMobjState( state, 'S_PLAY_DIE1' );
+    setPlayerMobjState( state, 'S_PLAY_DIE1', actor );
 
   }
 
+  state.mobjState.tics=Math.max(1,state.mobjState.tics-(P_Random()&3));
+  if(actor)actor.tics=state.mobjState.tics;
 }
 
 // ============================================================
 // Action dispatch
 // ============================================================
 
-function execPlayerAction( state: PlayerStatusState, action: string ): void {
+function execPlayerAction( state: PlayerStatusState, action: string, actor?:Mobj ): void {
 
   switch ( action ) {
 
@@ -160,7 +134,7 @@ function execPlayerAction( state: PlayerStatusState, action: string ): void {
       break;
 
     case 'A_PlayerScream':
-      // TODO: if health < -50, play sfx_slop (gib sound) instead
+      // Ultimate Doom uses pldeth; the alternate scream is commercial-only.
       playSound( 'pldeth' );
       break;
 
@@ -169,8 +143,7 @@ function execPlayerAction( state: PlayerStatusState, action: string ): void {
       break;
 
     case 'A_Fall':
-      // In original: removes MF_SOLID from player mobj
-      // For us this means the player is no longer blocking
+      if(actor)actor.flags &= ~MF_SOLID;
       break;
 
   }

@@ -244,6 +244,11 @@ export class WeaponSystem {
 
   }
 
+  /** P_DropWeapon interrupts an attack immediately on death. */
+  drop(state:PlayerStatusState):void {
+    this.setPsprite(state,0,WEAPON_INFO[state.currentWeapon].downState);
+  }
+
   /** Run one tic of weapon logic — called at 35Hz */
   tick( world: World ): void {
 

@@ -32,7 +32,7 @@ Status vocabulary: **missing**, **partial** (implemented but incomplete or not c
 | ACTOR-01 | `p_mobj.c P_SpawnMapThing`, `info.c`, `p_enemy.c` | partial: complete source metadata, map actors and Nightmare respawn checked | Skill/multiplayer filtering, spawn angle/ambush, timing, AI, pain/death/infighting/drop behavior |
 | ACTOR-02 | `P_NoiseAlert`, `A_Look`, `P_CheckSight` | partial | Weapon noise reaches valid sectors, respects sound-block flags; ambush/sight behavior matches C |
 | COMBAT-01 | `p_pspr.c`, `p_map.c` aiming/line attacks | partial | Correct melee range, autoaim, first-shot accuracy, spread, projectile wall impacts and BFG behavior |
-| PLAYER-01 | `p_inter.c`, `p_user.c`, `p_pspr.c` | partial: berserk, key and ammo pickup selection checked | Damage/armor/powers, pickups, cheats, death/rebirth, skill modifiers and weapon selection match C |
+| PLAYER-01 | `p_inter.c`, `p_user.c`, `p_pspr.c` | partial: pickup, damage C fixtures, corpse and Use-rebirth checks pass | Damage/armor/powers, pickups, cheats, death/rebirth, skill modifiers and weapon selection match C |
 | BOSS-01 | `p_enemy.c A_BossDeath`, episode/map rules | connected; last-boss/living-player exit checks pass | E1M8/E2M8/E3M8/E4M6/E4M8 progression and surviving-boss checks |
 | UI-01 | `st_stuff.c`, `hu_stuff.c`, `am_map.c` | partial | HUD state/timing and messages; automap; palette/power effects |
 | UI-03 | `hu_stuff.c HU_Ticker/HU_Drawer`, `p_inter.c P_TouchSpecialThing`, `d_englsh.h GOT*` | connected; pickup families, timing, pause and options checks pass | Original health/armor/ammo/weapon/key/powerup messages, WAD HUD glyphs, timeout in simulation tics, message toggle; only successful pickups notify, including dropped items |

@@ -384,3 +384,25 @@ test('E1M1 armor pedestal scrolling walls share source tic phase through pause a
   await expect.poll(async()=>(await page.evaluate(()=>(window as any).__scrollCheck)).tic).toBeGreaterThan(paused.tic);
   await check();await page.screenshot({path:'artifacts/e1m1-armor-scroll.png'});
 });
+
+test('death keeps the corpse until Use, then rebirth resets the level in process',async({page})=>{
+  await ready(page);await startGame(page);
+  await page.evaluate(async()=>{
+    const {allMobjs}=await import('/src/game/Mobj.ts');const {damageMobj}=await import('/src/game/Attack.ts');
+    damageMobj(allMobjs.find(m=>m.type==='MT_PLAYER')!,null,null,250);
+  });
+  await expect.poll(async()=>(await snapshot(page)).player.health).toBe(0);
+  await page.waitForTimeout(3300);
+  expect((await snapshot(page)).player.health).toBe(0);expect((await snapshot(page)).running).toBe(true);
+  await page.keyboard.press('Escape');const paused=await snapshot(page);
+  await page.waitForTimeout(150);expect((await snapshot(page)).tic).toBe(paused.tic);
+  await page.getByRole('button',{name:'Resume game',exact:true}).click();
+  await page.keyboard.down('KeyE');
+  await expect.poll(async()=>(await snapshot(page)).player.health).toBe(100);
+  await page.keyboard.up('KeyE');
+  expect((await snapshot(page)).player.ammo.clip).toBe(50);
+  expect((await snapshot(page)).running).toBe(true);
+  const x=(await snapshot(page)).player.y;await page.keyboard.down('KeyW');
+  await expect.poll(async()=>(await snapshot(page)).player.y).not.toBe(x);
+  await page.keyboard.up('KeyW');
+});

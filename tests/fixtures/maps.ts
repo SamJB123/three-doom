@@ -11,7 +11,7 @@ export function dividedMap(): DoomMapData {
     sidedefs:[0,1].map(sector => ({sector,xoff:0,yoff:0,upper:'-',middle:'SW1BRCOM',lower:'-'})),
     sectors:[sector(),sector()],
     segs:[{v1:0,v2:1,angle:0,linedef:0,side:0,offset:0},{v1:1,v2:0,angle:0,linedef:0,side:1,offset:0}],
-    subsectors:[{segCount:1,firstSeg:0},{segCount:1,firstSeg:1}],
+    subsectors:[{numSegs:1,firstSeg:0},{numSegs:1,firstSeg:1}],
     nodes:[{x:0,y:0,dx:0,dy:256,rightChild:0x8000,leftChild:0x8001,rightBBox:[128,-128,0,128],leftBBox:[128,-128,-128,0]}] as DoomMapData['nodes'],
     blockmap:{originX:-128,originY:-128,columns:2,rows:2,blockSize:128,lists:[[0],[0],[0],[0]]},
     mobjs:[]

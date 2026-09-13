@@ -35,6 +35,7 @@ export function playerTickSystem( world: World, tickWeapons:()=>void=()=>{} ): v
   if ( isDead ) {
 
     tickWeapons();
+    if(input.use)pState.playerState='PST_REBORN';
 
     // Sink view toward floor (P_DeathThink)
     if ( player.viewheight > 6 * FRACUNIT ) {
@@ -65,7 +66,7 @@ export function playerTickSystem( world: World, tickWeapons:()=>void=()=>{} ): v
 
   // P_PlayerThink performs view/special/use/weapon work before P_RunThinkers.
   calcHeight(player,time.levelTime);
-  if(pState){playerInSpecialSector(player,pState,map,time.levelTime);player.mo.health=pState.health;}
+  if(pState){playerInSpecialSector(player,pState,map,time.levelTime);if(pState.playerState==='PST_LIVE')player.mo.health=pState.health;}
   handleUseInput(input.use,player,doomAngle,map,pState);
   tickWeapons();
 
@@ -102,7 +103,7 @@ export function playerMobjTickSystem(world:World):void {
   if(!reference?.player || !reference.map)return;
   xyMovement(reference.player.mo,reference.map);
   zMovement(reference.player.mo,reference.player);
-  if(state)tickPlayerMobjState(state);
+  if(state)tickPlayerMobjState(state,reference.player.mo);
 }
 
 export function syncPlayerPositionSystem( world: World ): void {

@@ -1,0 +1,197 @@
+{
+  "function": "P_DamageMobj",
+  "sourceSha256": "72e9bbabe560ef548c2f2522494786347d5c831b0e1f0ecb5cb29d8d8e682356",
+  "scope": "Null source/inflictor; P_Random returns zero; pain/kill/tactile actions stubbed. Does not cover knockback, kill actions or infighting.",
+  "cases": [
+    {
+      "input": {
+        "health": 100,
+        "damage": 15,
+        "armor": 4,
+        "armorType": 1
+      },
+      "expected": {
+        "health": 89,
+        "actorHealth": 89,
+        "armor": 0,
+        "armorType": 0,
+        "damageCount": 11,
+        "killed": 0,
+        "pain": 1,
+        "randomDraws": 1
+      }
+    },
+    {
+      "input": {
+        "health": 100,
+        "damage": 30,
+        "armor": 100,
+        "armorType": 2
+      },
+      "expected": {
+        "health": 85,
+        "actorHealth": 85,
+        "armor": 85,
+        "armorType": 2,
+        "damageCount": 15,
+        "killed": 0,
+        "pain": 1,
+        "randomDraws": 1
+      }
+    },
+    {
+      "input": {
+        "health": 100,
+        "damage": 999,
+        "god": true
+      },
+      "expected": {
+        "health": 100,
+        "actorHealth": 100,
+        "armor": 0,
+        "armorType": 0,
+        "damageCount": 0,
+        "killed": 0,
+        "pain": 0,
+        "randomDraws": 0
+      }
+    },
+    {
+      "input": {
+        "health": 100,
+        "damage": 1000,
+        "god": true
+      },
+      "expected": {
+        "health": 0,
+        "actorHealth": -900,
+        "armor": 0,
+        "armorType": 0,
+        "damageCount": 100,
+        "killed": 1,
+        "pain": 0,
+        "randomDraws": 0
+      }
+    },
+    {
+      "input": {
+        "health": 100,
+        "damage": 999,
+        "invuln": true
+      },
+      "expected": {
+        "health": 100,
+        "actorHealth": 100,
+        "armor": 0,
+        "armorType": 0,
+        "damageCount": 0,
+        "killed": 0,
+        "pain": 0,
+        "randomDraws": 0
+      }
+    },
+    {
+      "input": {
+        "health": 100,
+        "damage": 10000,
+        "invuln": true
+      },
+      "expected": {
+        "health": 0,
+        "actorHealth": -9900,
+        "armor": 0,
+        "armorType": 0,
+        "damageCount": 100,
+        "killed": 1,
+        "pain": 0,
+        "randomDraws": 0
+      }
+    },
+    {
+      "input": {
+        "health": 10,
+        "damage": 20,
+        "sector": 11
+      },
+      "expected": {
+        "health": 1,
+        "actorHealth": 1,
+        "armor": 0,
+        "armorType": 0,
+        "damageCount": 9,
+        "killed": 0,
+        "pain": 1,
+        "randomDraws": 1
+      }
+    },
+    {
+      "input": {
+        "health": 10,
+        "damage": 20,
+        "sector": 11,
+        "armor": 100,
+        "armorType": 1
+      },
+      "expected": {
+        "health": 4,
+        "actorHealth": 4,
+        "armor": 97,
+        "armorType": 1,
+        "damageCount": 6,
+        "killed": 0,
+        "pain": 1,
+        "randomDraws": 1
+      }
+    },
+    {
+      "input": {
+        "health": 100,
+        "damage": 9,
+        "skill": 1
+      },
+      "expected": {
+        "health": 96,
+        "actorHealth": 96,
+        "armor": 0,
+        "armorType": 0,
+        "damageCount": 4,
+        "killed": 0,
+        "pain": 1,
+        "randomDraws": 1
+      }
+    },
+    {
+      "input": {
+        "health": 100,
+        "damage": 1,
+        "skill": 1
+      },
+      "expected": {
+        "health": 100,
+        "actorHealth": 100,
+        "armor": 0,
+        "armorType": 0,
+        "damageCount": 0,
+        "killed": 0,
+        "pain": 1,
+        "randomDraws": 1
+      }
+    },
+    {
+      "input": {
+        "health": 100,
+        "damage": 250
+      },
+      "expected": {
+        "health": 0,
+        "actorHealth": -150,
+        "armor": 0,
+        "armorType": 0,
+        "damageCount": 100,
+        "killed": 1,
+        "pain": 0,
+        "randomDraws": 0
+      }
+    }
+  ]
+}

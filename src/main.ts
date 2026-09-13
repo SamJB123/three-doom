@@ -17,8 +17,8 @@ import { dirtySectors, clearDirtySectors } from './game/Thinkers';
 import { consumeTeleport } from './game/Teleport';
 import { allMobjs, spawnPlayerMissile, setCameraPosition } from './game/Mobj';
 import { MF_COUNTKILL } from './game/MobjData';
-import { aimLineAttack, lineAttack, setPlayerDamageMobjCallback, setPlayerDamageCallback, setKillCallback } from './game/Attack';
-import { damagePlayer, radiusAttackPlayer, setSecretCallback } from './game/PlayerDamage';
+import { aimLineAttack, lineAttack, setPlayerDamageMobjCallback, setKillCallback } from './game/Attack';
+import { damagePlayer, setPlayerDeathCallback, setSecretCallback } from './game/PlayerDamage';
 import { P_NoiseAlert, advanceEnemyTic } from './game/EnemyAI';
 import { checkPickups, setPickupMessageCallback, setPickupCallback, COUNTED_ITEMS } from './game/Pickups';
 import { WeaponSystem } from './game/Weapons';
@@ -84,7 +84,7 @@ async function main(): Promise<void> {
     playerMobjTickSystem(world);
     const state=world.get(PlayerStatus)!;
     if(state.playerState!=='PST_DEAD')checkPickups(world,level.sprites,level.player.mo.x,level.player.mo.y,level.player.mo.z);
-    level.player.mo.health=state.health;
+    if(state.playerState==='PST_LIVE')level.player.mo.health=state.health;
   });
   world.set(Camera,{camera}); world.spawn(IsPlayer,Position);
   const touch=TouchControls.isTouchDevice();
@@ -96,7 +96,6 @@ async function main(): Promise<void> {
   let level: Level;
   let exitRequested: boolean | null=null;
   let destination: number | null=null;
-  let deathTics=0;
 
   function loadLevel(episode: number, number: number, skill: Skill, carry?: PlayerStatusState): void {
     controls.setEnabled(false);
@@ -110,7 +109,7 @@ async function main(): Promise<void> {
     state.bonusCount=state.damageCount=0; state.playerState='PST_LIVE'; state.mobjState={name:'S_PLAY',tics:-1};
     world.set(PlayerStatus,state); world.set(DoomWorld,{player:level.player,map:level.map});
     world.set(Time,{delta:0,elapsed:0,levelTime:0});
-    level.player.mo.health=state.health;
+    if(state.playerState==='PST_LIVE')level.player.mo.health=state.health;
     controls.setInitialYaw(level.startYaw); controls.setEnabled(false);
     setSectorChangeCallback(sectorChangeHandler(level.map,()=>world.get(Time)!.levelTime));
     weapons=new WeaponSystem(); weapons.setup(world.get(PlayerStatus)!);
@@ -123,7 +122,7 @@ async function main(): Promise<void> {
     weapons.setMissileCallback((angle,type)=>spawnPlayerMissile(level.player,angle,type));
     syncPlayerPositionSystem(world); cameraSystem(world);
     ticks.advance(0,false,()=>{}); clock.getDelta();
-    exitRequested=null; destination=null; deathTics=0;
+    exitRequested=null; destination=null;
     hud.update(world);
   }
 
@@ -134,11 +133,9 @@ async function main(): Promise<void> {
   setKillCallback(mo=>{if(mo.flags&MF_COUNTKILL) level.kills++;});
   setSecretCallback(()=>level.secrets++);
   setPickupCallback(type=>{if(COUNTED_ITEMS.has(type)) level.items++;});
+  setPlayerDeathCallback(state=>{weapons.drop(state);automap.active=false;});
   setPlayerDamageMobjCallback(damage=>{
-    const state=world.get(PlayerStatus)!; damagePlayer(state,damage); level.player.mo.health=state.health;
-  });
-  setPlayerDamageCallback((spot,source,damage)=>{
-    const state=world.get(PlayerStatus)!; radiusAttackPlayer(level.player,state,spot,source,damage); level.player.mo.health=state.health;
+    const state=world.get(PlayerStatus)!; damagePlayer(state,damage,level.map.sectors[level.player.mo.sectorIndex]?.special,level.player.mo);
   });
   clearRandom(); loadLevel(1,1,3);
 
@@ -221,20 +218,21 @@ async function main(): Promise<void> {
   }
   loading.style.display='none';
   renderer.setAnimationLoop(()=>{
-    const dt=clock.getDelta(), time=world.get(Time)!;
+    const dt=clock.getDelta();
+    let time=world.get(Time)!;
     time.delta=0; time.elapsed=time.levelTime/35;
     controls.update();
     let finishPresentation=false;
     ticks.advance(dt,session.running || session.presenting,()=>{
       if(session.presenting){finishPresentation=menu.tickPresentation() || finishPresentation;return;}
-      if(!session.running || exitRequested!==null) return;
+      if(!session.running || exitRequested!==null || world.get(PlayerStatus)!.playerState==='PST_REBORN') return;
       time.delta=1/35;
       playerTickSystem(world,()=>weapons.tick(world));
       const tp=consumeTeleport();
       if(tp) {const yaw=tp.angle*Math.PI/180-Math.PI/2;controls.setInitialYaw(yaw);world.set(Input,{yaw});}
       advanceEnemyTic();
-      const state=world.get(PlayerStatus)!; level.player.mo.health=state.health;
-      if(state.playerState==='PST_DEAD')deathTics++;
+      const state=world.get(PlayerStatus)!; if(state.playerState==='PST_LIVE')level.player.mo.health=state.health;
+      if(state.playerState==='PST_DEAD')automap.active=false;
       if((time.levelTime & 3) === 0) automap.discover(level.map,level.player);
       messages.tick();
       updateSpriteAnimations(1/35);hud.update(world);
@@ -246,7 +244,8 @@ async function main(): Promise<void> {
       menu.complete({didSecret:world.get(PlayerStatus)!.didSecret,episode:gameRules.episode,map:gameRules.map,next:destination,kills:level.kills,totalKills:level.totalKills,
         items:level.items,totalItems:level.things.filter(t=>COUNTED_ITEMS.has(t.type)).length,secrets:level.secrets,totalSecrets:level.totalSecrets,time:Math.floor(time.levelTime/35)});
     }
-    if(deathTics>=105) {loadLevel(gameRules.episode,gameRules.map,gameRules.skill);session.open();menu.refresh();}
+    if(world.get(PlayerStatus)!.playerState==='PST_REBORN'){loadLevel(gameRules.episode,gameRules.map,gameRules.skill);menu.start();}
+    time=world.get(Time)!;
     if(session.presenting && audio.state==='running')playMusic(menu.presentationMusic);
     cameraSystem(world);
     updateListener(camera.position.x,camera.position.y,camera.position.z,-Math.sin(camera.rotation.y),-Math.cos(camera.rotation.y));

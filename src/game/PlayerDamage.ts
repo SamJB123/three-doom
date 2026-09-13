@@ -1,15 +1,17 @@
+import type {Mobj} from './Mobj';
 // Player damage and environmental hazards — ported from p_inter.c / p_spec.c.
 // Handles armor absorption, damage tint, damaging floors, and explosion damage to player.
 
 import type { PlayerStatusState } from '../ecs/traits';
 import type { DoomPlayer, DoomMapData } from '../physics/DoomMovement';
 import { findSectorAtFixed } from '../physics/DoomMovement';
-import type { Mobj } from './Mobj';
 import { requestExit } from './UseAction';
 import { gameRules } from './GameRules';
 import { P_Random } from './DoomRandom';
-import { FRACBITS } from '../math/fixed';
 import { playerPainCheck, playerKilled } from './PlayerState';
+
+let deathCallback:((state:PlayerStatusState)=>void)|null=null;
+export function setPlayerDeathCallback(callback:(state:PlayerStatusState)=>void):void {deathCallback=callback;}
 
 let secretCallback: (() => void) | null = null;
 export function setSecretCallback(cb: () => void): void { secretCallback=cb; }
@@ -24,18 +26,18 @@ export function setSecretCallback(cb: () => void): void { secretCallback=cb; }
  */
 export function damagePlayer(
   state: PlayerStatusState,
-  damage: number
+  damage: number,
+  sectorSpecial = 0,
+  actor?:Mobj
 ): void {
 
   if ( state.health <= 0 ) return;
 
   if (gameRules.skill === 1) damage >>= 1;
 
-  // God mode blocks all damage
-  if ( state.godMode ) return;
-
-  // Invulnerability blocks all damage (except type-11 exit sectors)
-  if ( state.powers.invulnerability > 0 ) return;
+  // P_DamageMobj's E1M8 hell-exit protection precedes armor and cheats.
+  if (sectorSpecial === 11 && damage >= state.health) damage = state.health - 1;
+  if (damage < 1000 && (state.godMode || state.powers.invulnerability > 0)) return;
 
   // Armor absorbs damage: blue=1/3, mega/red=1/2
   if ( state.armorType > 0 ) {
@@ -66,6 +68,7 @@ export function damagePlayer(
   }
 
   state.health -= damage;
+  if(actor)actor.health=state.health;
 
   // Damage red tint — applied before death check (matches original)
   state.damageCount += damage;
@@ -74,13 +77,15 @@ export function damagePlayer(
   if ( state.health <= 0 ) {
 
     // Player dies — transition to death state
-    playerKilled( state );
+    playerKilled( state, actor );
+    state.health = 0;
+    deathCallback?.(state);
     return;
 
   }
 
   // Pain state check — player painchance is 255 (near-always)
-  if ( damage > 0 ) playerPainCheck( state );
+  playerPainCheck( state, actor );
 
 }
 
@@ -115,7 +120,7 @@ export function playerInSpecialSector(
 
         if ( ! ( levelTime & 0x1F ) ) {
 
-          damagePlayer( state, 10 );
+          damagePlayer( state, 10, sector.special, player.mo );
 
         }
 
@@ -129,7 +134,7 @@ export function playerInSpecialSector(
 
         if ( ! ( levelTime & 0x1F ) ) {
 
-          damagePlayer( state, 5 );
+          damagePlayer( state, 5, sector.special, player.mo );
 
         }
 
@@ -145,7 +150,7 @@ export function playerInSpecialSector(
 
         if ( ! ( levelTime & 0x1F ) ) {
 
-          damagePlayer( state, 20 );
+          damagePlayer( state, 20, sector.special, player.mo );
 
         }
 
@@ -165,7 +170,7 @@ export function playerInSpecialSector(
       // EXIT SUPER DAMAGE — 20 damage, ignores godmode, forces exit at ≤10 HP
       if ( ! ( levelTime & 0x1F ) ) {
 
-        damagePlayer( state, 20 );
+        damagePlayer( state, 20, sector.special, player.mo );
 
       }
 
@@ -178,31 +183,5 @@ export function playerInSpecialSector(
       break;
 
   }
-
-}
-
-// ============================================================
-// Explosion damage to player — called from P_RadiusAttack
-// ============================================================
-
-export function radiusAttackPlayer(
-  player: DoomPlayer,
-  state: PlayerStatusState,
-  spot: Mobj,
-  _source: Mobj | null,
-  damage: number
-): void {
-
-  // Chebyshev distance from explosion center to player
-  const dx = Math.abs( player.mo.x - spot.x );
-  const dy = Math.abs( player.mo.y - spot.y );
-  let dist = ( ( dx > dy ? dx : dy ) >> FRACBITS ) - ( player.mo.radius >> FRACBITS );
-  if ( dist < 0 ) dist = 0;
-
-  // Out of range?
-  if ( dist >= damage ) return;
-
-  // Apply damage with distance falloff
-  damagePlayer( state, damage - dist );
 
 }

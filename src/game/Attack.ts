@@ -708,6 +708,8 @@ export function radiusAttack(
 
     if ( mo.removed ) continue;
     if ( ! ( mo.flags & MF_SHOOTABLE ) ) continue;
+    // PIT_RadiusAttack: these bosses are immune to splash, not direct hits.
+    if (mo.type === 'MT_CYBORG' || mo.type === 'MT_SPIDER') continue;
 
     // Chebyshev distance (max of abs X/Y deltas)
     const dx = Math.abs( mo.x - spot.x );
@@ -729,29 +731,7 @@ export function radiusAttack(
 
   }
 
-  // Also damage the player if in range
-  if ( playerDamageCallback ) {
-
-    playerDamageCallback( spot, source, damage );
-
-  }
-
 }
-
-// ============================================================
-// Player damage callback — set from main.ts
-// ============================================================
-
-let playerDamageCallback: ( ( spot: Mobj, source: Mobj | null, damage: number ) => void ) | null = null;
-
-export function setPlayerDamageCallback(
-  cb: ( spot: Mobj, source: Mobj | null, damage: number ) => void
-): void {
-
-  playerDamageCallback = cb;
-
-}
-
 
 // p_pspr.c A_BFGSpray: trace forty rays from the shooter, not the projectile.
 // Each acquired target takes the sum of fifteen independent 1..8 rolls.
