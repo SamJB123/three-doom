@@ -420,9 +420,6 @@ function xyMovementStep( mo: Mobj ): void {
 
   // tryMove already updated position and may have teleported through a crossing.
 
-  // Update floor/ceiling from new sector
-  updateFloorCeiling( mo );
-
   if (mo.flags & (MF_MISSILE | MF_SKULLFLY)) return; // no friction
 
   // Don't apply friction if airborne
@@ -750,9 +747,8 @@ function mobjThinker( mo: Mobj ): boolean {
 
   if ( mo.removed ) return false;
 
-  // Always refresh floor/ceiling from sector — platforms/elevators may have
-  // changed the sector height underneath this mobj since last tic.
-  updateFloorCeiling( mo );
+  // P_TryMove / P_ThingHeightClip maintain bounds over the whole actor radius.
+  // A centre-sector lookup here would discard support from adjoining steps.
 
   // XY movement (momentum + friction)
   if ( mo.momx !== 0 || mo.momy !== 0 || ( mo.flags & MF_SKULLFLY ) !== 0 ) {

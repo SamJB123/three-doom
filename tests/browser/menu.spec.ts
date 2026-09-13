@@ -558,6 +558,7 @@ test('mobile taps use doors and holding the aiming side opens an owned-weapon wh
 });
 
 test('original IWAD demo commands produce repeatable gameplay traces and pause with the menu',async({page})=>{
+  test.setTimeout(process.env.DOOM_TRACE_TICS?120000:45000);
   await ready(page);
   const limit=Number(process.env.DOOM_TRACE_TICS??70);
   const run=async(pause:boolean)=>{
@@ -573,11 +574,11 @@ test('original IWAD demo commands produce repeatable gameplay traces and pause w
     return (await snapshot(page)).replay.trace;
   };
   const first=await run(false);
+  const {writeFileSync,mkdirSync}=await import('node:fs');mkdirSync('artifacts',{recursive:true});writeFileSync('artifacts/port-demo1-trace.json',JSON.stringify(first));
   await page.evaluate(async()=>{
     const {TicClock}=await import('/src/game/TicClock.ts');const advance=TicClock.prototype.advance;let frame=0;
     TicClock.prototype.advance=function(delta:number,running:boolean,tick:()=>void){return advance.call(this,running&&delta>0?(frame++%3===0?3/35:1/140):delta,running,tick);};
   });
   const second=await run(true);
   expect(first).toHaveLength(limit);expect(second).toEqual(first);
-  const {writeFileSync,mkdirSync}=await import('node:fs');mkdirSync('artifacts',{recursive:true});writeFileSync('artifacts/port-demo1-trace.json',JSON.stringify(first));
 });

@@ -1,3 +1,4 @@
+import {slideProjection} from './SlideProjection';
 import {fineSin,fineCos} from '../math/angles';
 import {finesine} from '../math/AngleTables';
 // Ported from: linuxdoom-1.10/p_map.c, p_mobj.c, p_user.c
@@ -400,16 +401,16 @@ export function slideMove(
 ): void {
 
   // P_SlideMove: trace the three leading corners, move up to the first wall,
-  // then project the remaining momentum along it. Float projection is a
-  // renderer-independent approximation of Doom's fine-angle table projection.
-  for (let attempt=0; attempt<3; attempt++) {
+  // then project the remaining momentum using P_HitSlideLine.
+  for (let attempt=0; attempt<2; attempt++) {
     const leadX=mo.x+(mo.momx>0 ? mo.radius : -mo.radius), trailX=mo.x-(mo.momx>0 ? mo.radius : -mo.radius);
     const leadY=mo.y+(mo.momy>0 ? mo.radius : -mo.radius), trailY=mo.y-(mo.momy>0 ? mo.radius : -mo.radius);
-    let best=1, hit: Linedef | null=null;
+    let best=FRACUNIT+1, hit: Linedef | null=null;
     for (const [x,y] of [[leadX,leadY],[trailX,leadY],[leadX,trailY]]) {
       for (const line of map.linedefs) {
         const a=map.vertexes[line.v1], b=map.vertexes[line.v2];
-        let blocking=line.left<0 || !!(line.flags&1);
+        if(line.left<0&&pointOnLineSide(mo.x,mo.y,a,b))continue;
+        let blocking=line.left<0;
         if (!blocking) {
           const opening=lineOpening(line,map.sidedefs,map.sectors);
           blocking=opening.openRange<mo.height || opening.openTop-mo.z<mo.height || opening.openBottom-mo.z>MAXSTEP;
@@ -418,21 +419,23 @@ export function slideMove(
         const ax=a.x*FRACUNIT, ay=a.y*FRACUNIT, dx=(b.x-a.x)*FRACUNIT, dy=(b.y-a.y)*FRACUNIT;
         const den=mo.momx*dy-mo.momy*dx;
         if (!den) continue;
-        const t=((ax-x)*dy-(ay-y)*dx)/den, u=((ax-x)*mo.momy-(ay-y)*mo.momx)/den;
-        if (t>=0 && t<best && u>=0 && u<=1) { best=t; hit=line; }
+        const u=((ax-x)*mo.momy-(ay-y)*mo.momx)/den;
+        const divisor=(fixedMul(dy>>8,mo.momx)-fixedMul(dx>>8,mo.momy))|0;
+        const numerator=(fixedMul((ax-x)>>8,dy)+fixedMul((y-ay)>>8,dx))|0;
+        const frac=divisor?fixedDiv(numerator,divisor):0;
+        if (frac>=0 && frac<=FRACUNIT && frac<best && u>=0 && u<=1) { best=frac; hit=line; }
       }
     }
     if (!hit) break;
-    const approach=Math.max(0,best-1/32);
-    if (approach && !tryMove(mo,mo.x+Math.trunc(mo.momx*approach),mo.y+Math.trunc(mo.momy*approach),map)) break;
+    const approach=best-0x800;
+    if (approach>0 && !tryMove(mo,mo.x+fixedMul(mo.momx,approach),mo.y+fixedMul(mo.momy,approach),map)) break;
+    const remaining=FRACUNIT-best;
+    if(remaining<=0)return;
     const a=map.vertexes[hit.v1], b=map.vertexes[hit.v2], dx=b.x-a.x, dy=b.y-a.y;
-    const projection=(mo.momx*dx+mo.momy*dy)*(1-best)/(dx*dx+dy*dy);
-    mo.momx=Math.trunc(dx*projection); mo.momy=Math.trunc(dy*projection);
+    [mo.momx,mo.momy]=slideProjection(fixedMul(mo.momx,remaining),fixedMul(mo.momy,remaining),intToFixed(dx),intToFixed(dy),pointOnLineSide(mo.x,mo.y,a,b));
     if (tryMove(mo,mo.x+mo.momx,mo.y+mo.momy,map)) return;
   }
-  if (mo.momy && tryMove(mo,mo.x,mo.y+mo.momy,map)) { mo.momx=0; return; }
-  if (mo.momx && tryMove(mo,mo.x+mo.momx,mo.y,map)) { mo.momy=0; return; }
-  mo.momx=mo.momy=0;
+  if(!tryMove(mo,mo.x,mo.y+mo.momy,map))tryMove(mo,mo.x+mo.momx,mo.y,map);
 
 }
 
@@ -462,11 +465,10 @@ export function xyMovement(
     let ptryx: Fixed;
     let ptryy: Fixed;
 
-    if ( xmove > ( MAXMOVE >> 1 ) || xmove < - ( MAXMOVE >> 1 ) ||
-         ymove > ( MAXMOVE >> 1 ) || ymove < - ( MAXMOVE >> 1 ) ) {
+    if ( xmove > ( MAXMOVE >> 1 ) || ymove > ( MAXMOVE >> 1 ) ) {
 
-      ptryx = mo.x + ( xmove >> 1 );
-      ptryy = mo.y + ( ymove >> 1 );
+      ptryx = mo.x + Math.trunc( xmove / 2 );
+      ptryy = mo.y + Math.trunc( ymove / 2 );
       xmove >>= 1;
       ymove >>= 1;
 
