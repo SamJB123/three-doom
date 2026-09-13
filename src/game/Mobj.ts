@@ -67,6 +67,7 @@ export interface Mobj {
 
   // AI fields (used by enemies)
   target: Mobj | null;    // what this mobj is targeting / who damaged it
+  lastAttacker?: Mobj | null; // player_t.attacker, independent of AI target
   tracer: Mobj | null;    // homing missile target / archvile fire
   threshold: number;
   reactionTime: number;
@@ -1085,11 +1086,11 @@ function updateMobjSprite( mo: Mobj ): void {
 
 }
 
-export type SavedMobj = Omit<Mobj, 'mesh' | 'info' | 'target' | 'tracer'> & {target: number; tracer: number};
+export type SavedMobj = Omit<Mobj, 'mesh' | 'info' | 'target' | 'tracer' | 'lastAttacker'> & {target: number; tracer: number; lastAttacker?:number};
 export function archiveMobjs(): SavedMobj[] {
   return allMobjs.map(mo=>{
-    const {mesh,info,target,tracer,...state}=mo;
-    return structuredClone({...state,target:target ? allMobjs.indexOf(target) : -1,tracer:tracer ? allMobjs.indexOf(tracer) : -1});
+    const {mesh,info,target,tracer,lastAttacker,...state}=mo;
+    return structuredClone({...state,lastAttacker:lastAttacker?allMobjs.indexOf(lastAttacker):-1,target:target ? allMobjs.indexOf(target) : -1,tracer:tracer ? allMobjs.indexOf(tracer) : -1});
   });
 }
 export function restoreMobjThinker(mo: Mobj): void {
@@ -1100,13 +1101,14 @@ export function restoreMobjs(saved: SavedMobj[], player: Mobj): void {
   for(const state of saved) {
     const mo=state.type==='MT_PLAYER' ? player : spawnMobj(state.x,state.y,state.z,state.type);
     if(mo===player)allMobjs.push(mo);
-    const {target,tracer,...scalar}=state;
-    Object.assign(mo,scalar,{info:MOBJ_TYPES[state.type],target:null,tracer:null});
+    const {target,tracer,lastAttacker,...scalar}=state;
+    Object.assign(mo,scalar,{info:MOBJ_TYPES[state.type],target:null,tracer:null,lastAttacker:null});
     if(state.blockOrder===undefined)delete mo.blockOrder;
     if(mo!==player)updateMobjSprite(mo);
   }
   if(mapData)restoreThingLinks(mapData);
   saved.forEach((state,i)=>{
+    allMobjs[i].lastAttacker=allMobjs[state.lastAttacker??-1]??null;
     allMobjs[i].target=allMobjs[state.target] ?? null;
     allMobjs[i].tracer=allMobjs[state.tracer] ?? null;
   });

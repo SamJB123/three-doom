@@ -17,7 +17,7 @@ test('world save round-trip preserves actors, targets, RNG, lights, moving floor
   resetThinkers();resetMobjs();resetFloors();clearRandom();
   const map=dividedMap();initMobjSystem({},new Group(),map);initEnemyAI();
   const player=createPlayer(100,0,0);allMobjs.push(player.mo);setPlayerMobj(player.mo);
-  const monster=spawnMobj(-100*F,0,0,'MT_TROOP');monster.target=player.mo;monster.tracer=player.mo;
+  const monster=spawnMobj(-100*F,0,0,'MT_TROOP');monster.target=player.mo;monster.tracer=player.mo;player.mo.lastAttacker=monster;
   map.sectors[0].tag=7;map.sectors[0].special=1;map.sectors[1].lightLevel=80;
   spawnLightSpecials(map.sectors,map.linedefs,map.sidedefs);
   evDoFloor('raiseFloor24',7,map.linedefs,map.sidedefs,map.sectors);

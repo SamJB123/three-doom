@@ -679,3 +679,24 @@ test('title attract cycle plays all four IWAD demos, pauses, and yields to a new
   await expect(page.locator('#attract-view')).toBeHidden();
   expect(errors).toEqual([]);
 });
+
+test('rendered HUD uses god/dead faces and resets after returning to a new game',async({page})=>{
+  await ready(page);await startGame(page);
+  await page.evaluate(async()=>{
+    const {WeaponSystem}=await import('/src/game/Weapons.ts');const {PlayerStatus}=await import('/src/ecs/traits.ts');
+    const tick=WeaponSystem.prototype.tick;
+    WeaponSystem.prototype.tick=function(world){tick.call(this,world);world.get(PlayerStatus).godMode=true;};
+  });
+  await expect.poll(async()=>(await snapshot(page)).face).toBe(40);
+  await page.keyboard.press('Escape');
+  const paused=await snapshot(page);await page.waitForTimeout(150);expect(await snapshot(page)).toEqual(paused);
+  await page.getByRole('button',{name:'Resume game',exact:true}).click();
+  await page.evaluate(async()=>{
+    const {WeaponSystem}=await import('/src/game/Weapons.ts');const {PlayerStatus}=await import('/src/ecs/traits.ts');
+    const tick=WeaponSystem.prototype.tick;
+    WeaponSystem.prototype.tick=function(world){tick.call(this,world);world.get(PlayerStatus).health=0;};
+  });
+  await expect.poll(async()=>(await snapshot(page)).face).toBe(41);
+  await page.reload();await expect(page.locator('#loading')).toBeHidden();await startGame(page);
+  await expect.poll(async()=>(await snapshot(page)).face).toBeLessThan(3);
+});

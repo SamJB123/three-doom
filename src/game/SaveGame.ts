@@ -30,6 +30,7 @@ export function decodeSave(text:string,wad:string): SaveGame {
   if(w.actors.length>100000 || w.actors.filter(m=>m.type==='MT_PLAYER').length!==1)invalid();
   if(w.thingLinkSequence!==undefined&&!integer(w.thingLinkSequence,0,Number.MAX_SAFE_INTEGER))invalid();
   for(const actor of w.actors) {
+    if(actor.lastAttacker!==undefined&&!integer(actor.lastAttacker,-1,w.actors.length-1))invalid();
     if(actor.blockOrder!==undefined&&!integer(actor.blockOrder,0,w.thingLinkSequence??Number.MAX_SAFE_INTEGER))invalid();
     if(!MOBJ_TYPES[actor.type] || (actor.state!==null && !MOBJ_STATES[actor.state]))invalid();
     for(const key of ['x','y','z','momx','momy','momz','radius','height','floorz','ceilingz','angle','health','tics','flags'] as const)if(!Number.isFinite(actor[key]))invalid();

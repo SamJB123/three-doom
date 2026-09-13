@@ -156,7 +156,7 @@ async function main(): Promise<void> {
     updateListener(level.player.mo,gameRules.map);
     ticks.advance(0,false,()=>{}); clock.getDelta();
     exitRequested=null; destination=null;
-    hud.update(world);
+    hud.reset(world.get(PlayerStatus)!);hud.update(world);
   }
 
   setCrossSpecialCallback((idx,side,mo)=>{
@@ -203,7 +203,7 @@ async function main(): Promise<void> {
     syncPlayerPositionSystem(world);cameraSystem(world);
     level.map.sectors.forEach((_,i)=>dirtySectors.add(i));
     session.started=true;session.phase='level';session.menu='main';
-    hud.update(world);
+    hud.reset(world.get(PlayerStatus)!);hud.update(world);
   }
   function captureScreen():HTMLCanvasElement {
     const screen=document.createElement('canvas');screen.width=320;screen.height=200;
@@ -269,6 +269,7 @@ async function main(): Promise<void> {
     Object.defineProperty(window,'__doomInspect',{value:()=>({
       replay:replay?{tic:replay.index,length:replay.demo.commands.length,stopped:replay.stopped??null,trace:replay.trace}:null,
       attract:{active:session.attracting,stage:attract.name,remaining:attract.remaining,command:replay?.attract?replay.index:null},
+      face:hud.faceIndex,
       wipe:wipe.inspect(),audio:audio.state,music:musicName,presentation:menu.inspectPresentation(), started:session.started,running:session.running, phase:session.phase,
       episode:gameRules.episode,map:gameRules.map,skill:gameRules.skill,tic:world.get(Time)!.levelTime,
       player:{x:level.player.mo.x,y:level.player.mo.y,z:level.player.mo.z,health:world.get(PlayerStatus)!.health,ammo:{...world.get(PlayerStatus)!.ammo}},

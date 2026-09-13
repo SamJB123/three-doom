@@ -70,6 +70,7 @@ export function damagePlayer(
 
   }
 
+  if(actor)actor.lastAttacker=source;
   state.health -= damage;
   if(actor)actor.health=state.health;
 
