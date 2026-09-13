@@ -316,3 +316,11 @@ Validation: 119 unit tests, typecheck and production build pass. All four 350-ti
 **ACTOR-02 / LOOP-02.** `P_DivlineSide` in the supplied original C tests `x == node->y` in its horizontal branch. Preserving that quirk fixes DEMO4's premature enemy wake at tic 158 and extends agreement through tic 216. A direct boundary regression distinguishes it from the geometrically conventional Y test. Raised-floor and explosion-occlusion fixtures now sit one unit off that boundary so they continue to isolate their intended behavior.
 
 The next divergence, tic 217, is a shotgun pellet hitting an actor whose centre lies outside the traversed blockmap cells. The current hitscan path scans all actors; replacing it with source cell ordering is the next work item. This is a source-compatibility finding, not evidence of full sight or demo parity. Typecheck, 120 unit tests and build pass; all 22 installed-Chrome browser checks pass (4.2 minutes), including all four replay comparisons, campaign routing, saves and mobile controls. All 36 maps pass WAD smoke verification.
+
+## 2026-09-13 — all four 350-tic C comparisons pass
+
+**COMBAT-01 / PHYS-01 / LOOP-02.** Hitscan and autoaim now use the shared fixed `P_PathTraverse` walk, collecting each cell's lines followed by actors in `P_BlockThingsIterator` link order. Stable fraction ordering retains cell/list order for ties. Impact coordinates also use the source boundary-nudged ray. Removed the duplicate floating traversal and global actor scan. A regression verifies that an actor whose radius overlaps the ray but whose centre occupies an unvisited cell is skipped, while an actor in a visited cell is eligible.
+
+This resolves DEMO4's shotgun divergence at tic 217. All four original-world comparisons now pass all captured fields through 350 tics. This is 1400 compared tics across four maps, not complete recordings or campaign parity. The next gate is longer/full recordings; three-angle bullet autoaim, blockmap dummy-header semantics and uncaptured state remain explicit follow-ups.
+
+Validation: typecheck, 121 unit tests and build pass; four refreshed 350-tic browser repeatability/pause checks pass (1.2 minutes), and `npm run verify:world -- 350` passes for all four demos. The immediately preceding full 22-check browser suite passed; this traversal-only change was checked with the four gameplay replays.

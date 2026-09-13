@@ -1,3 +1,5 @@
+import {traceLines,divlineSide,interceptVector,type DivLine} from '../physics/LineTrace';
+import {thingsInBounds} from '../physics/ThingLinks';
 import {wakeAfterDamage} from './DamageResponse';
 import {spawnHitEffect} from './HitEffects';
 import {fineSin,fineCos,pointToRadians} from '../math/angles';
@@ -30,9 +32,6 @@ import { P_CheckSight } from './Sight';
 const MISSILERANGE = ( 32 * 64 ) * FRACUNIT; // 2048 map units
 const MELEERANGE = 64 * FRACUNIT;
 const MAXRADIUS = 32 * FRACUNIT;
-const MAPBLOCKSIZE = 128;
-const MAPBLOCKSHIFT = 7;
-const MAXINTERCEPTS = 128;
 
 // ============================================================
 // Init — register A_Explode callback
@@ -71,64 +70,6 @@ interface Intercept {
 }
 
 // ============================================================
-// DivLine — ray or line segment for intersection math
-// ============================================================
-
-interface DivLine {
-  x: Fixed;
-  y: Fixed;
-  dx: Fixed;
-  dy: Fixed;
-}
-
-// ============================================================
-// Point-on-divline side test (fixed-point)
-// Returns 0 (front) or 1 (back)
-// ============================================================
-
-function pointOnDivlineSide( x: Fixed, y: Fixed, line: DivLine ): 0 | 1 {
-
-  if ( line.dx === 0 ) {
-
-    if ( x <= line.x ) return line.dy > 0 ? 1 : 0;
-    return line.dy < 0 ? 1 : 0;
-
-  }
-
-  if ( line.dy === 0 ) {
-
-    if ( y <= line.y ) return line.dx < 0 ? 1 : 0;
-    return line.dx > 0 ? 1 : 0;
-
-  }
-
-  const dx = x - line.x;
-  const dy = y - line.y;
-
-  // Overflow-safe cross product using right shifts
-  const left = fixedMul( line.dy >> 8, dx >> 8 );
-  const right = fixedMul( dy >> 8, line.dx >> 8 );
-
-  return right < left ? 0 : 1;
-
-}
-
-// ============================================================
-// Intercept vector — parametric intersection of two divlines
-// Returns fixed-point fraction along v2 where v1 crosses it
-// ============================================================
-
-function interceptVector( v2: DivLine, v1: DivLine ): Fixed {
-
-  const den = fixedMul( v1.dy >> 8, v2.dx ) - fixedMul( v1.dx >> 8, v2.dy );
-  if ( den === 0 ) return 0;
-
-  const num = fixedMul( ( v1.x - v2.x ) >> 8, v1.dy ) + fixedMul( ( v2.y - v1.y ) >> 8, v1.dx );
-  return fixedDiv( num, den );
-
-}
-
-// ============================================================
 // Line opening — vertical gap through a two-sided linedef
 // ============================================================
 
@@ -151,272 +92,31 @@ function lineOpening( lineIdx: number, map: DoomMapData ): { openTop: Fixed; ope
 // Per-traversal linedef stamp to avoid processing a line twice
 // ============================================================
 
-let traverseValidCount = 0;
-let lineTraverseStamp: Int32Array | null = null;
-
-function ensureTraverseStamp( numLinedefs: number ): void {
-
-  if ( ! lineTraverseStamp || lineTraverseStamp.length < numLinedefs ) {
-
-    lineTraverseStamp = new Int32Array( numLinedefs );
-
-  }
-
-}
-
-// ============================================================
-// P_PathTraverse — DDA blockmap grid walk collecting intercepts
-// Ported from p_map.c P_PathTraverse
-// ============================================================
-
+/** P_PathTraverse: collect lines then linked things in each visited cell. */
 function pathTraverse(
-  x1: Fixed, y1: Fixed,
-  x2: Fixed, y2: Fixed,
-  map: DoomMapData,
-  addLines: boolean,
-  addThings: boolean,
-  traverser: ( intercept: Intercept ) => boolean
-): void {
-
-  const { blockmap, linedefs, vertexes } = map;
-
-  const trace: DivLine = { x: x1, y: y1, dx: x2 - x1, dy: y2 - y1 };
-
-  ensureTraverseStamp( linedefs.length );
-  traverseValidCount ++;
-  const vc = traverseValidCount;
-
-  const intercepts: Intercept[] = [];
-
-  // --- Collect line intercepts in blockmap cells ---
-
-  // Convert to map units for blockmap grid
-  let mx1 = x1 >> FRACBITS;
-  let my1 = y1 >> FRACBITS;
-  const mx2 = x2 >> FRACBITS;
-  const my2 = y2 >> FRACBITS;
-
-  // Nudge start position off block boundaries (original Doom does this)
-  if ( ( ( mx1 - blockmap.originX ) & ( MAPBLOCKSIZE - 1 ) ) === 0 ) mx1 += 1;
-  if ( ( ( my1 - blockmap.originY ) & ( MAPBLOCKSIZE - 1 ) ) === 0 ) my1 += 1;
-
-  const tx1 = Math.floor( ( mx1 - blockmap.originX ) / MAPBLOCKSIZE );
-  const ty1 = Math.floor( ( my1 - blockmap.originY ) / MAPBLOCKSIZE );
-  const tx2 = Math.floor( ( mx2 - blockmap.originX ) / MAPBLOCKSIZE );
-  const ty2 = Math.floor( ( my2 - blockmap.originY ) / MAPBLOCKSIZE );
-
-  let mapX = tx1;
-  let mapY = ty1;
-
-  // DDA step setup
-  let mapXStep: number, mapYStep: number;
-  let xIntercept: number, yIntercept: number;
-  let xStep: number, yStep: number;
-
-  const adx = Math.abs( mx2 - mx1 );
-  const ady = Math.abs( my2 - my1 );
-
-  // X step
-  if ( tx2 > tx1 ) {
-
-    mapXStep = 1;
-    const partial = MAPBLOCKSIZE - ( ( mx1 - blockmap.originX ) % MAPBLOCKSIZE );
-    yStep = ady === 0 ? 0 : ( my2 - my1 ) * MAPBLOCKSIZE / adx;
-    yIntercept = ( my1 - blockmap.originY ) + partial * ( my2 - my1 ) / adx;
-
-  } else if ( tx2 < tx1 ) {
-
-    mapXStep = - 1;
-    const partial = ( mx1 - blockmap.originX ) % MAPBLOCKSIZE;
-    yStep = ady === 0 ? 0 : ( my2 - my1 ) * MAPBLOCKSIZE / adx;
-    yIntercept = ( my1 - blockmap.originY ) + partial * ( my2 - my1 ) / adx;
-
-  } else {
-
-    mapXStep = 0;
-    yStep = 256 * MAPBLOCKSIZE;
-    yIntercept = 0x7FFFFFFF;
-
-  }
-
-  // Y step
-  if ( ty2 > ty1 ) {
-
-    mapYStep = 1;
-    const partial = MAPBLOCKSIZE - ( ( my1 - blockmap.originY ) % MAPBLOCKSIZE );
-    xStep = adx === 0 ? 0 : ( mx2 - mx1 ) * MAPBLOCKSIZE / ady;
-    xIntercept = ( mx1 - blockmap.originX ) + partial * ( mx2 - mx1 ) / ady;
-
-  } else if ( ty2 < ty1 ) {
-
-    mapYStep = - 1;
-    const partial = ( my1 - blockmap.originY ) % MAPBLOCKSIZE;
-    xStep = adx === 0 ? 0 : ( mx2 - mx1 ) * MAPBLOCKSIZE / ady;
-    xIntercept = ( mx1 - blockmap.originX ) + partial * ( mx2 - mx1 ) / ady;
-
-  } else {
-
-    mapYStep = 0;
-    xStep = 256 * MAPBLOCKSIZE;
-    xIntercept = 0x7FFFFFFF;
-
-  }
-
-  // Walk the grid
-  for ( let count = 0; count < 64; count ++ ) {
-
-    // Process lines in current block
-    if ( addLines &&
-         mapX >= 0 && mapX < blockmap.columns &&
-         mapY >= 0 && mapY < blockmap.rows ) {
-
-      const blockIdx = mapY * blockmap.columns + mapX;
-      const list = blockmap.lists[ blockIdx ];
-
-      for ( const ldIdx of list ) {
-
-        if ( lineTraverseStamp![ ldIdx ] === vc ) continue;
-        lineTraverseStamp![ ldIdx ] = vc;
-
-        const ld = linedefs[ ldIdx ];
-        const v1 = vertexes[ ld.v1 ];
-        const v2 = vertexes[ ld.v2 ];
-
-        const lv1x = intToFixed( v1.x );
-        const lv1y = intToFixed( v1.y );
-        const lv2x = intToFixed( v2.x );
-        const lv2y = intToFixed( v2.y );
-
-        // Check if trace crosses this line
-        const s1 = pointOnDivlineSide( lv1x, lv1y, trace );
-        const s2 = pointOnDivlineSide( lv2x, lv2y, trace );
-        if ( s1 === s2 ) continue;
-
-        const lineDiv: DivLine = {
-          x: lv1x, y: lv1y,
-          dx: lv2x - lv1x, dy: lv2y - lv1y
-        };
-
-        const frac = interceptVector( trace, lineDiv );
-        if ( frac < 0 ) continue;
-
-        if ( intercepts.length < MAXINTERCEPTS ) {
-
-          intercepts.push( { frac, isLine: true, lineIdx: ldIdx, thing: null } );
-
-        }
-
-      }
-
+  x1:Fixed,y1:Fixed,x2:Fixed,y2:Fixed,map:DoomMapData,
+  addLines:boolean,addThings:boolean,
+  traverser:(intercept:Intercept,trace:DivLine)=>boolean
+):void {
+  const intercepts:Intercept[]=[];
+  const {trace}=traceLines(x1,y1,x2,y2,map,(x,y,ray,lines)=>{
+    if(addLines)for(const line of lines)intercepts.push({...line,isLine:true,thing:null});
+    if(!addThings)return;
+    const bx=(map.blockmap.originX+x*128)*FRACUNIT;
+    const by=(map.blockmap.originY+y*128)*FRACUNIT;
+    for(const mo of thingsInBounds(map,bx,by,bx,by)){
+      const positive=(ray.dx^ray.dy)>0;
+      const ax=mo.x-mo.radius,ay=mo.y+(positive?mo.radius:-mo.radius);
+      const bx=mo.x+mo.radius,by=mo.y+(positive?-mo.radius:mo.radius);
+      if(divlineSide(ax,ay,ray)===divlineSide(bx,by,ray))continue;
+      const frac=interceptVector(ray,{x:ax,y:ay,dx:bx-ax,dy:by-ay});
+      if(frac>=0&&frac<=FRACUNIT)intercepts.push({frac,isLine:false,lineIdx:-1,thing:mo});
     }
-
-    // Check if done
-    if ( mapX === tx2 && mapY === ty2 ) break;
-
-    // Step to next block (DDA)
-    const yCheck = Math.floor( yIntercept / MAPBLOCKSIZE );
-    const xCheck = Math.floor( xIntercept / MAPBLOCKSIZE );
-
-    if ( yCheck === mapY ) {
-
-      yIntercept += yStep;
-      mapX += mapXStep;
-
-    } else if ( xCheck === mapX ) {
-
-      xIntercept += xStep;
-      mapY += mapYStep;
-
-    } else {
-
-      // Both boundaries crossed — step whichever is closer
-      // (shouldn't normally happen, but handle gracefully)
-      yIntercept += yStep;
-      mapX += mapXStep;
-
-    }
-
-  }
-
-  // --- Collect thing intercepts ---
-  if ( addThings ) {
-
-    for ( const mo of allMobjs ) {
-
-      if ( mo.removed ) continue;
-      if ( ! ( mo.flags & MF_SHOOTABLE ) ) continue;
-      if ( mo.health <= 0 ) continue;
-
-      // Bounding box test against the trace
-      let ax: Fixed, ay: Fixed, bx: Fixed, by: Fixed;
-
-      if ( ( trace.dx ^ trace.dy ) > 0 ) {
-
-        ax = mo.x - mo.radius;
-        ay = mo.y + mo.radius;
-        bx = mo.x + mo.radius;
-        by = mo.y - mo.radius;
-
-      } else {
-
-        ax = mo.x - mo.radius;
-        ay = mo.y - mo.radius;
-        bx = mo.x + mo.radius;
-        by = mo.y + mo.radius;
-
-      }
-
-      const s1 = pointOnDivlineSide( ax, ay, trace );
-      const s2 = pointOnDivlineSide( bx, by, trace );
-      if ( s1 === s2 ) continue;
-
-      const thingDiv: DivLine = { x: ax, y: ay, dx: bx - ax, dy: by - ay };
-      const frac = interceptVector( trace, thingDiv );
-      if ( frac < 0 ) continue;
-
-      if ( intercepts.length < MAXINTERCEPTS ) {
-
-        intercepts.push( { frac, isLine: false, lineIdx: - 1, thing: mo } );
-
-      }
-
-    }
-
-  }
-
-  // --- Sort intercepts by distance and process ---
-  // Use selection sort (like original Doom) — n is typically small
-  const pending = intercepts.slice();
-
-  while ( pending.length > 0 ) {
-
-    let bestIdx = 0;
-    let bestFrac = pending[ 0 ].frac;
-
-    for ( let i = 1; i < pending.length; i ++ ) {
-
-      if ( pending[ i ].frac < bestFrac ) {
-
-        bestFrac = pending[ i ].frac;
-        bestIdx = i;
-
-      }
-
-    }
-
-    if ( bestFrac > FRACUNIT ) break; // beyond range
-
-    const ic = pending.splice( bestIdx, 1 )[ 0 ];
-    if ( ! traverser( ic ) ) return; // traverser says stop
-
-  }
-
+  });
+  // Stable sorting preserves cell/list order when fractions are equal.
+  intercepts.sort((a,b)=>a.frac-b.frac);
+  for(const intercept of intercepts)if(!traverser(intercept,trace))break;
 }
-
-// ============================================================
-// P_LineAttack — fire a hitscan ray from (x, y, z) at angle/slope
-// Ported from p_map.c P_LineAttack using P_PathTraverse
-// ============================================================
 
 /** P_AimLineAttack / PTR_AimTraverse: narrow vertical sight through openings. */
 export function aimLineAttack(source: Mobj, angle: number, range: Fixed): {slope: Fixed; target: Mobj | null} {
@@ -475,9 +175,10 @@ export function lineAttack(
 
   // Shoot from source eye height (center + 8 units for player-like height)
   const shootZ = sourceZ;
+  let shotTrace:DivLine={x:sourceX,y:sourceY,dx:x2-sourceX,dy:y2-sourceY};
   const impact=(frac:number,offset:number,blood:boolean)=>{
     const closer=frac-fixedDiv(offset*FRACUNIT,range);
-    const x=sourceX+fixedMul(x2-sourceX,closer),y=sourceY+fixedMul(y2-sourceY,closer);
+    const x=shotTrace.x+fixedMul(shotTrace.dx,closer),y=shotTrace.y+fixedMul(shotTrace.dy,closer);
     const z=shootZ+fixedMul(slope,fixedMul(closer,range));
     return {x,y,z,blood};
   };
@@ -492,7 +193,8 @@ export function lineAttack(
 
   pathTraverse( sourceX, sourceY, x2, y2, attackMap, true, true,
 
-    ( intercept: Intercept ): boolean => {
+    ( intercept: Intercept, trace: DivLine ): boolean => {
+      shotTrace=trace;
 
       if ( intercept.isLine ) {
 
@@ -535,7 +237,7 @@ export function lineAttack(
 
       // --- Thing intercept ---
       const thing = intercept.thing;
-      if ( ! thing || thing === sourceMobj ) return true; // skip self
+      if ( ! thing || thing === sourceMobj || !(thing.flags & MF_SHOOTABLE) ) return true; // skip self
 
       // Check vertical hit: does the slope pass through this thing's body?
       const dist = Math.max( FRACUNIT, fixedMul( range, intercept.frac ) );

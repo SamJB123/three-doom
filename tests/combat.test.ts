@@ -177,3 +177,14 @@ test('manual weapon selection accepts owned empty weapons and explicit wheel slo
     assert.equal(state.currentWeapon,weapon);world.destroy();
   }
 });
+
+test('P_PathTraverse only aims at things linked into cells crossed by the ray',()=>{
+  resetThinkers();allMobjs.length=0;
+  const map=dividedMap();initMobjSystem({},new Group(),map);setAttackMap(map);
+  const source=spawnMobj(F,-80*F,0,'MT_PLAYER');
+  spawnMobj(-F,0,0,'MT_TROOP'); // Radius overlaps ray; centre is in the unvisited cell.
+  assert.equal(aimLineAttack(source,Math.PI/2,160*F).target,null);
+  const visible=spawnMobj(10*F,40*F,0,'MT_TROOP');
+  assert.equal(aimLineAttack(source,Math.PI/2,160*F).target,visible);
+  resetThinkers();allMobjs.length=0;
+});

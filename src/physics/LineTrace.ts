@@ -21,7 +21,7 @@ export function interceptVector(trace:DivLine,line:DivLine):number {
   return fixedDiv((fixedMul((line.x-trace.x)>>8,line.dy)+fixedMul((trace.y-line.y)>>8,line.dx))|0,den);
 }
 /** P_PathTraverse / PIT_AddLineIntercepts: source fixed DDA, boundary nudge and stable intercept order. */
-export function traceLines(x1:number,y1:number,x2:number,y2:number,map:DoomMapData) {
+export function traceLines(x1:number,y1:number,x2:number,y2:number,map:DoomMapData,visitBlock?:(x:number,y:number,trace:DivLine,lines:{lineIdx:number;frac:number}[])=>void) {
   const block=map.blockmap,orgX=block.originX*F,orgY=block.originY*F;
   if(((x1-orgX)&(128*F-1))===0)x1+=F;
   if(((y1-orgY)&(128*F-1))===0)y1+=F;
@@ -36,6 +36,7 @@ export function traceLines(x1:number,y1:number,x2:number,y2:number,map:DoomMapDa
   let yi=((y1>>7)+fixedMul(partialX,ystep))|0,xi=((x1>>7)+fixedMul(partialY,xstep))|0;
   const seen=new Set<number>(),intercepts:{lineIdx:number;frac:number}[]=[];
   for(let count=0;count<64;count++){
+    const first=intercepts.length;
     if(mx>=0&&my>=0&&mx<block.columns&&my<block.rows)for(const lineIdx of block.lists[my*block.columns+mx]){
       if(seen.has(lineIdx))continue;seen.add(lineIdx);
       const line=map.linedefs[lineIdx],a=map.vertexes[line.v1],b=map.vertexes[line.v2];
@@ -47,6 +48,7 @@ export function traceLines(x1:number,y1:number,x2:number,y2:number,map:DoomMapDa
       const frac=interceptVector(trace,div);
       if(frac>=0&&frac<=F)intercepts.push({lineIdx,frac});
     }
+    visitBlock?.(mx,my,trace,intercepts.slice(first));
     if(mx===endX&&my===endY)break;
     if((yi>>16)===my){yi=(yi+ystep)|0;mx+=sx;}
     else if((xi>>16)===mx){xi=(xi+xstep)|0;my+=sy;}
