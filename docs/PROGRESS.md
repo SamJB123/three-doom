@@ -348,3 +348,9 @@ Validation: typecheck, 122 unit tests and build pass. The 700-tic DEMO2 repeatab
 **PHYS-01 / COMBAT-01 / LOOP-02.** Ordinary actors now share `P_XYMovement`'s clamped, signed subdivision with missiles, applying friction once after all steps. A blocked second half preserves the first half's movement. Corpse momentum is retained when collision support straddles a ledge above the centre sector's floor. Tests cover positive/negative split asymmetry at a wall, once-per-tic friction and corpse ledge sliding.
 
 DEMO2 now completes all 2347 commands and its two port recordings agree across frame schedules and pause. Original C agrees through 2270 tics; the next first mismatch is player angle at 2271. The earlier knocked-back corpse divergence at 1336 is resolved. Typecheck, 124 unit tests and build pass; full DEMO2 browser repeatability passes. Next: centre-sector floor contact for DEMO3 environmental damage, then remaining first trace failures.
+
+## 2026-09-13 — damaging-floor centre contact
+
+**PLAYER-01 / PHYS-01 / LOOP-02.** `P_PlayerInSpecialSector` now compares player Z with the centre sector's actual floor, matching C. Collision support can remain on an adjoining higher step, and must not trigger damage from the lower hazardous floor before landing. A regression checks that boundary, landing, and the 32-tic damage cadence.
+
+DEMO3 now agrees through tic 921; the next difference at 922 is turning during teleport recovery. Typecheck, 125 unit tests and build pass. Its 1000-tic port replay and the complete DEMO4 replay pass repeatability/pause checks. C comparisons still correctly fail at the documented DEMO3 angle and DEMO4 sight/RNG differences. Next: freeze source player turning and weapon/use aim during teleport reaction time.

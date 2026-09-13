@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {Group} from 'three/webgpu';
 import {createPlayerStatus} from '../src/ecs/traits';
-import {damagePlayer} from '../src/game/PlayerDamage';
+import {damagePlayer,playerInSpecialSector} from '../src/game/PlayerDamage';
 import {gameRules} from '../src/game/GameRules';
 import {allMobjs,initMobjSystem,spawnMobj} from '../src/game/Mobj';
 import {radiusAttack,setAttackMap,setPlayerDamageMobjCallback} from '../src/game/Attack';
@@ -93,4 +93,15 @@ test('a skipped player pain roll still synchronizes the wake state with the acto
   restoreRandom({play:157,misc:0});damagePlayer(state,1,0,actor,source);
   assert.equal(actor.state,'S_PLAY_RUN1');assert.equal(state.mobjState.name,actor.state);assert.equal(state.mobjState.tics,actor.tics);
   resetThinkers();allMobjs.length=0;
+});
+
+test('P_PlayerInSpecialSector requires contact with the centre sector floor',async()=>{
+  const {createPlayer}=await import('../src/physics/DoomMovement');
+  const map=dividedMap();map.sectors[0].floorHeight=8;map.sectors[1].special=16;
+  const player=createPlayer(-1,0,0),state=createPlayerStatus();gameRules.skill=3;
+  player.mo.z=player.mo.floorz=8*F;
+  playerInSpecialSector(player,state,map,416);assert.equal(state.health,100);
+  player.mo.z=player.mo.floorz=0;
+  playerInSpecialSector(player,state,map,417);assert.equal(state.health,100);
+  playerInSpecialSector(player,state,map,416);assert.equal(state.health,80);
 });

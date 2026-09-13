@@ -111,3 +111,5 @@ Mobile touch-handler/menu assertions pass in installed Chrome and Playwright Web
 Restoring `A_Punch` spread, hit feedback and target-facing advances DEMO2 agreement through 1335 tics; the explicit 700-tic gate passes. The next captured mismatch at 1336 is ordinary corpse XY movement. Browser control synchronization preserves vertical look while applying the weapon turn.
 
 Ordinary actor movement subdivision and corpse ledge friction advance DEMO2 agreement through 2270 tics. The complete 2347-command recording is now port-repeatable; the remaining first C difference is player angle at 2271. The earlier rebirth truncation is resolved for this demo.
+
+Checking damaging-floor contact against the centre sector floor extends DEMO3 agreement through tic 921. Tic 922 first differs in player angle during teleport recovery. The 1000-tic browser replay remains repeatable; this is not a passing 1000-tic C gate.

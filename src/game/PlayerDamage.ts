@@ -1,3 +1,4 @@
+import {intToFixed} from '../math/fixed';
 import {wakeAfterDamage} from './DamageResponse';
 import type {Mobj} from './Mobj';
 // Player damage and environmental hazards — ported from p_inter.c / p_spec.c.
@@ -110,8 +111,9 @@ export function playerInSpecialSector(
   const sector = findSectorAtFixed( player.mo.x, player.mo.y, map );
   if ( ! sector ) return;
 
-  // Player must be on the floor to take sector damage
-  if ( player.mo.z !== player.mo.floorz ) return;
+  // P_PlayerInSpecialSector checks the centre sector, not collision support
+  // retained from an adjoining higher floor while straddling a step.
+  if ( player.mo.z !== intToFixed(sector.floorHeight) ) return;
 
   const sType = sector.special;
   if ( sType === 0 ) return;
