@@ -500,3 +500,59 @@ test('sky covers steep views and sky ceilings/boundaries occlude distant rooms',
   expect(results.ceiling).toEqual([0,255,0,255]);expect(results.boundary).toEqual([0,255,0,255]);
   expect(results.foreground).toEqual([255,0,0,255]);
 });
+
+test('mobile taps use doors and holding the aiming side opens an owned-weapon wheel',async({browser})=>{
+  const context=await browser.newContext({baseURL:'http://127.0.0.1:3010',viewport:{width:390,height:844},hasTouch:true,isMobile:true});
+  const page=await context.newPage();await ready(page);
+  await page.evaluate(async()=>{
+    const {TouchControls}=await import('/src/renderer/TouchControls.ts');const update=TouchControls.prototype.update;
+    TouchControls.prototype.update=function(){update.call(this);(window as any).__touch=this;};
+  });
+  await startGame(page);
+  const door=await page.evaluate(async()=>{
+    const {getMobjMapData,allMobjs}=await import('/src/game/Mobj.ts');const {PlayerStatus}=await import('/src/ecs/traits.ts');
+    const map=getMobjMapData()!,line=map.linedefs.find(line=>line.special===1&&line.left>=0&&map.sectors[map.sidedefs[line.left].sector].ceilingHeight===map.sectors[map.sidedefs[line.left].sector].floorHeight)!;
+    const a=map.vertexes[line.v1],b=map.vertexes[line.v2],dx=b.x-a.x,dy=b.y-a.y,length=Math.hypot(dx,dy),front=map.sidedefs[line.right].sector;
+    const player=allMobjs.find(m=>m.type==='MT_PLAYER')!;player.x=((a.x+b.x)/2+dy/length*24)*65536;player.y=((a.y+b.y)/2-dx/length*24)*65536;
+    player.z=player.floorz=map.sectors[front].floorHeight*65536;player.ceilingz=map.sectors[front].ceilingHeight*65536;player.sectorIndex=front;player.momx=player.momy=player.momz=0;
+    (window as any).__touch.setInitialYaw(Math.atan2(dx,-dy)-Math.PI/2);
+    const state=(window as any).__touch.world.get(PlayerStatus);state.godMode=true;
+    return {sector:map.sidedefs[line.left].sector,height:map.sectors[map.sidedefs[line.left].sector].ceilingHeight};
+  });
+  const gesture=async(type:string,x=285,y=430)=>{
+    await page.evaluate(({type,x,y})=>{
+      const target=document.getElementById('touch-input-zone')!,touch=new Touch({identifier:81,target,clientX:x,clientY:y});
+      target.dispatchEvent(new TouchEvent(type,{touches:type==='touchend'||type==='touchcancel'?[]:[touch],changedTouches:[touch],bubbles:true}));
+    },{type,x,y});
+  };
+  await gesture('touchstart');await gesture('touchend');
+  await expect.poll(async()=>(await snapshot(page)).sectors[door.sector][1]).toBeGreaterThan(door.height);
+  await gesture('touchstart');await expect(page.locator('#weapon-wheel')).toBeVisible();
+  await expect(page.locator('#weapon-wheel button')).toHaveCount(2);
+  expect(await page.locator('#weapon-wheel [data-weapon="shotgun"]').count()).toBe(0);
+  const aiming=await snapshot(page);const fist=await page.locator('#weapon-wheel [data-weapon="fist"]').boundingBox();
+  await gesture('touchmove',fist!.x+fist!.width/2,fist!.y+fist!.height/2);
+  expect((await snapshot(page)).input.yaw).toBe(aiming.input.yaw);expect((await snapshot(page)).input.attack).toBe(false);
+  await page.screenshot({path:'artifacts/mobile-weapon-wheel.png'});
+  await gesture('touchend',fist!.x+fist!.width/2,fist!.y+fist!.height/2);await expect(page.locator('#weapon-wheel')).toBeHidden();
+  await expect.poll(async()=>page.evaluate(async()=>{
+    const {PlayerStatus}=await import('/src/ecs/traits.ts');return (window as any).__touch.world.get(PlayerStatus).currentWeapon;
+  })).toBe('fist');
+  // Moving the aiming thumb cancels the hold; cancellation cannot become Use.
+  await gesture('touchstart');await gesture('touchmove',320,430);await page.waitForTimeout(500);await expect(page.locator('#weapon-wheel')).toBeHidden();await gesture('touchcancel',320,430);
+  await gesture('touchstart');await expect(page.locator('#weapon-wheel')).toBeVisible();await gesture('touchcancel');await expect(page.locator('#weapon-wheel')).toBeHidden();
+  await page.evaluate(async()=>{
+    const {PlayerStatus}=await import('/src/ecs/traits.ts');const state=(window as any).__touch.world.get(PlayerStatus);
+    for(const weapon of Object.keys(state.weapons))state.weapons[weapon]=weapon!=='supershotgun';
+  });
+  await gesture('touchstart');await expect(page.locator('#weapon-wheel')).toBeVisible();
+  await expect(page.locator('#weapon-wheel button')).toHaveCount(8);
+  const boxes=await page.locator('#weapon-wheel button').evaluateAll(items=>items.map(item=>{const r=item.getBoundingClientRect();return {x:r.x,y:r.y,w:r.width,h:r.height};}));
+  for(let i=0;i<boxes.length;i++)for(let j=i+1;j<boxes.length;j++){
+    const a=boxes[i],b=boxes[j];expect(a.x+a.w<=b.x||b.x+b.w<=a.x||a.y+a.h<=b.y||b.y+b.h<=a.y).toBe(true);
+  }
+  await page.screenshot({path:'artifacts/mobile-weapon-wheel-full.png'});
+  await page.getByRole('button',{name:'Open menu',exact:true}).tap();await expect(page.locator('#weapon-wheel')).toBeHidden();
+  expect((await snapshot(page)).input.use).toBe(false);expect((await snapshot(page)).input.attack).toBe(false);
+  await context.close();
+});

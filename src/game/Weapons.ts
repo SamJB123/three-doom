@@ -48,6 +48,8 @@ export const WEAPON_INFO: Record<WeaponSlot, WeaponInfo> = {
 // Weapon slot mapping: 1 = fist/chainsaw, 2-7 = pistol through BFG (original Doom)
 const WEAPON_KEY_SLOTS: Record<number, WeaponSlot[]> = {
   1: [ 'fist', 'chainsaw' ],
+  8: [ 'chainsaw' ], // explicit touch-wheel choices
+  9: [ 'supershotgun' ],
   2: [ 'pistol' ],
   3: [ 'shotgun', 'supershotgun' ],
   4: [ 'chaingun' ],
@@ -268,14 +270,10 @@ export class WeaponSystem {
 
         if ( state.weapons[ w ] && w !== state.currentWeapon ) {
 
-          // Check if weapon has ammo (or doesn't need any)
-          const info = WEAPON_INFO[ w ];
-          if ( ! info.ammo || state.ammo[ info.ammo ] > 0 ) {
-
-            state.pendingWeapon = w;
-            break;
-
-          }
+          // P_PlayerThink allows selecting an owned empty weapon. Ammo is
+          // checked when firing, not when requesting a manual weapon change.
+          state.pendingWeapon = w;
+          break;
 
         }
 

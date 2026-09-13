@@ -167,3 +167,13 @@ test('floating chase adjusts height at tall steps but cannot float through walls
   assert.equal(P_Move(skull,map),false);assert.equal(skull.z,4*F);
   resetThinkers();allMobjs.length=0;
 });
+
+test('manual weapon selection accepts owned empty weapons and explicit wheel slots',()=>{
+  for(const [slot,weapon] of [[3,'shotgun'],[8,'chainsaw'],[9,'supershotgun']] as const){
+    const world=createWorld(Input,PlayerStatus),state=world.get(PlayerStatus)!;
+    const weapons=new WeaponSystem();weapons.setup(state);state.weapons[weapon]=true;state.ammo.shell=0;
+    world.set(Input,{weaponSelect:slot});weapons.tick(world);world.set(Input,{weaponSelect:-1});
+    for(let i=0;i<80;i++)weapons.tick(world);
+    assert.equal(state.currentWeapon,weapon);world.destroy();
+  }
+});

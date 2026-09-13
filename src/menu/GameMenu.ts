@@ -183,7 +183,7 @@ export class GameMenu {
     } else if ( session.menu === 'help' ) {
       const help = document.createElement( 'p' );
       help.className = 'menu-help';
-      help.textContent = 'Move: WASD / arrows · Look: mouse · Fire: click / Ctrl · Use: E / F · Run: Shift · Weapons: 1–7 · Menu: Escape · Automap: Tab. Touch: drag left to move (start in the left circle to sprint), right to look (start in the right circle to fire); door button to use.';
+      help.textContent = 'Move: WASD / arrows · Look: mouse · Fire: click / Ctrl · Use: E / F · Run: Shift · Weapons: 1–7 · Menu: Escape · Automap: Tab. Touch: drag left to move (start in the left circle to sprint), right to look (start in the right circle to fire); tap to use doors/switches; hold the right side, drag and release to choose a weapon.';
       this.panel.append( help );
       this.button( 'Back', () => { session.back(); this.changed(); } );
     } else if ( session.menu === 'restart' || session.menu === 'end' ) {

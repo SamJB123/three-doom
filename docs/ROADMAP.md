@@ -19,7 +19,7 @@ Status vocabulary: **missing**, **partial** (implemented but incomplete or not c
 | BUILD-01 | Installation / project tooling | verified locally | npm clean install, typecheck, unit tests, build, WAD parser smoke |
 | BUILD-02 | Browser-only OPL dependency / package hygiene | verified npm install and upstream PCM subset | Browser subset replaces native/Git chain; clean npm install and four MUS/GENMIDI PCM fixtures pass |
 | REF-01 | `doomdef.h`, `g_game.c`, reference provenance | partial | Pin C revision/tree hashes, IWAD hash, target game/version; resolve differences from Ultimate Doom executable |
-| MENU-01 | `m_menu.c`: `M_Responder`, `M_Drawer`; `d_main.c` title | verified browser foundation | WAD-backed title; start, pause, resume, help, restart/end confirmations; desktop/touch; no input leakage |
+| MENU-01 | `m_menu.c`: `M_Responder`, `M_Drawer`; `d_main.c` title | verified browser foundation; circular touch actions, tap-use and weapon wheel checked | WAD-backed title; start, pause, resume, help, restart/end confirmations; desktop/touch; no input leakage |
 | MENU-02 | `M_Episode`, `M_ChooseSkill`, options, save/load menus | partial: episode/skill, volume and six save/load slots connected | Real episode/skill selection with gameplay effects; working options and save/load flows |
 | LOOP-01 | `p_tick.c P_Ticker`, `g_game.c G_Ticker` | verified scheduler | One 35 Hz clock; no tics in menus; frame-rate invariant tick count; no pause catch-up |
 | LOOP-02 | `P_RunThinkers`, `P_PlayerThink`, ticcmd ordering | partial: player/weapon phases and THINGS thinker order checked | Match C action ordering, RNG consumption, input quantization and deterministic state traces |

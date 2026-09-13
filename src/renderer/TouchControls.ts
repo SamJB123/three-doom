@@ -4,7 +4,8 @@
 // Buttons: fire, use, weapon prev/next, run toggle
 
 import type { World } from 'koota';
-import { Input } from '../ecs/traits';
+import {WeaponWheel} from './WeaponWheel';
+import { Input, PlayerStatus, Time } from '../ecs/traits';
 
 // Layout constants (percentage of viewport)
 const STICK_RADIUS = 50;      // pixels — outer ring radius
@@ -28,6 +29,12 @@ export class TouchControls {
 
   private container: HTMLDivElement;
   private enabled = false;
+  private wheel:WeaponWheel;
+  private holdTimer:ReturnType<typeof setTimeout>|null=null;
+  private touchStarted=new Map<number,{time:number;x:number;y:number;moved:boolean;action:boolean}>();
+  private tapUsePending=false;
+  private submittedTic:number|null=null;
+  private wheelTouch:number|null=null;
 
   // Stick state
   private leftStick: StickState = { id: null, originX: 0, originY: 0, currentX: 0, currentY: 0, active: false };
@@ -79,6 +86,7 @@ export class TouchControls {
     `;
     document.body.appendChild( this.container );
 
+    this.wheel=new WeaponWheel(this.container,slot=>{this.weaponSelectPending=slot;this.submittedTic=null;});
     this.createSticks();
     this.createButtons();
     this.createHints();
@@ -89,6 +97,7 @@ export class TouchControls {
 
   setEnabled( enabled: boolean ): void {
     this.enabled = enabled;
+    this.cancelHold();this.wheel.close();this.wheelTouch=null;this.touchStarted.clear();this.tapUsePending=false;this.submittedTic=null;
     this.container.style.display = enabled ? '' : 'none';
     this.leftStick.active = this.rightStick.active = false;
     this.leftStick.id = this.rightStick.id = null;
@@ -281,6 +290,8 @@ export class TouchControls {
 
   }
 
+  private cancelHold():void {if(this.holdTimer!==null)clearTimeout(this.holdTimer);this.holdTimer=null;}
+
   private onTouchStart( e: TouchEvent ): void {
 
     e.preventDefault();
@@ -292,6 +303,8 @@ export class TouchControls {
     for ( let i = 0; i < e.changedTouches.length; i ++ ) {
 
       const t = e.changedTouches[ i ];
+      if(!this.enabled||this.wheel.visible||(t.clientX-bounds.left<w/2?this.leftStick.active:this.rightStick.active))continue;
+      this.touchStarted.set(t.identifier,{time:performance.now(),x:t.clientX,y:t.clientY,moved:false,action:this.inActionCircle(this.leftHint,t.clientX,t.clientY)||this.inActionCircle(this.rightHint,t.clientX,t.clientY)});
 
       if ( t.clientX - bounds.left < w / 2 ) {
 
@@ -323,6 +336,14 @@ export class TouchControls {
           this.rightStick.currentY = t.clientY;
           this.rightStick.active = true;
           this.fireDown = this.inActionCircle(this.rightHint,t.clientX,t.clientY);
+          if(!this.fireDown){
+            this.cancelHold();
+            this.holdTimer=setTimeout(()=>{
+              this.holdTimer=null;const gesture=this.touchStarted.get(t.identifier),state=this.world.get(PlayerStatus);
+              if(!this.enabled||!gesture||gesture.moved||!state||this.rightStick.id!==t.identifier)return;
+              gesture.action=true;this.wheelTouch=t.identifier;this.wheel.open(t.clientX,t.clientY,state);this.hideStick(this.rightRing,this.rightKnob);
+            },450);
+          }
           this.showStick( this.rightRing, this.rightKnob, t.clientX, t.clientY, 0, 0 );
 
         }
@@ -340,6 +361,10 @@ export class TouchControls {
     for ( let i = 0; i < e.changedTouches.length; i ++ ) {
 
       const t = e.changedTouches[ i ];
+
+      const gesture=this.touchStarted.get(t.identifier);
+      if(gesture&&Math.hypot(t.clientX-gesture.x,t.clientY-gesture.y)>STICK_DEAD){gesture.moved=true;if(t.identifier===this.rightStick.id)this.cancelHold();}
+      if(this.wheel.visible&&t.identifier===this.wheelTouch){this.wheel.move(t.clientX,t.clientY);continue;}
 
       if ( this.leftStick.active && t.identifier === this.leftStick.id ) {
 
@@ -378,6 +403,13 @@ export class TouchControls {
     for ( let i = 0; i < e.changedTouches.length; i ++ ) {
 
       const t = e.changedTouches[ i ];
+      const gesture=this.touchStarted.get(t.identifier);this.touchStarted.delete(t.identifier);
+      if(t.identifier===this.rightStick.id)this.cancelHold();
+      if(t.identifier===this.wheelTouch){
+        if(e.type==='touchend')this.wheel.finish();else this.wheel.close();this.wheelTouch=null;
+      }else if(e.type==='touchend'&&gesture&&!gesture.action&&!gesture.moved&&performance.now()-gesture.time<250&&Math.hypot(t.clientX-gesture.x,t.clientY-gesture.y)<=STICK_DEAD){
+        this.tapUsePending=true;this.submittedTic=null;
+      }
 
       if ( this.leftStick.active && t.identifier === this.leftStick.id ) {
 
@@ -462,9 +494,11 @@ export class TouchControls {
 
     }
 
-    // Weapon select
-    const weaponSelect = this.weaponSelectPending;
-    this.weaponSelectPending = - 1;
+    // Keep discrete commands until at least one simulation tic has consumed them.
+    const tic=this.world.get(Time)?.levelTime??0;
+    if(this.submittedTic!==null&&tic!==this.submittedTic){this.tapUsePending=false;this.weaponSelectPending=-1;this.submittedTic=null;}
+    const weaponSelect=this.weaponSelectPending;
+    if((this.tapUsePending||weaponSelect!==-1)&&this.submittedTic===null)this.submittedTic=tic;
 
     this.world.set( Input, {
       forward,
@@ -474,7 +508,7 @@ export class TouchControls {
       pitch: this.pitch,
       jump: false,
       run: this.runActive,
-      use: this.useDown,
+      use: this.useDown || this.tapUsePending,
       attack: this.fireDown,
       weaponSelect
     } );
@@ -483,7 +517,7 @@ export class TouchControls {
 
   dispose(): void {
 
-    this.container.remove();
+    this.cancelHold();this.container.remove();
 
   }
 
