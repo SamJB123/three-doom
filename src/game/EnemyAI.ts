@@ -1,4 +1,4 @@
-import {fineSin,fineCos,pointToRadians} from '../math/angles';
+import {fineSin,fineCos,pointToRadians,radiansToAngle,angleToRadians} from '../math/angles';
 // Enemy AI system — ported from p_enemy.c.
 // Handles monster behavior: idle scanning, chase pursuit, attack actions,
 // movement direction calculation, and sound propagation.
@@ -12,7 +12,7 @@ import { allMobjs, spawnMobj, spawnMissile as P_SpawnMissile, setMobjState, remo
 import { MF_SHOOTABLE, MF_SOLID, MF_AMBUSH, MF_JUSTHIT, MF_JUSTATTACKED, MF_SKULLFLY,
   MF_SHADOW, MF_FLOAT, MF_INFLOAT, MF_CORPSE, MF_MISSILE, MF_NOGRAVITY, MF_COUNTKILL } from './MobjData';
 import { P_CheckSight } from './Sight';
-import { lineAttack, damageMobj, radiusAttack } from './Attack';
+import { aimLineAttack, lineAttack, damageMobj, radiusAttack } from './Attack';
 import { P_Random } from './DoomRandom';
 import { gameRules } from './GameRules';
 import { evDoFloor } from './Floors';
@@ -369,7 +369,7 @@ export function A_Look( mo: Mobj, map: DoomMapData ): void {
 
   if ( mo.info.seeSound ) {
 
-    playSoundAt( mo.info.seeSound, mo.x, mo.y, mo.z );
+    playMonsterVoice(mo,mo.info.seeSound);
 
   }
 
@@ -411,7 +411,10 @@ export function A_Chase( mo: Mobj, map: DoomMapData ): void {
   // Turn toward movement direction
   if ( mo.moveDir < 8 ) {
 
-    mo.angle = dirAngles[ mo.moveDir ];
+    let angle=(radiansToAngle(mo.angle)&0xe0000000)>>>0;
+    const delta=(angle-(mo.moveDir<<29))|0;
+    if(delta>0)angle-=0x20000000;else if(delta<0)angle+=0x20000000;
+    mo.angle=angleToRadians(angle);
 
   }
 
@@ -421,6 +424,7 @@ export function A_Chase( mo: Mobj, map: DoomMapData ): void {
     if ( playerMobj && playerMobj.health > 0 && P_CheckSight( mo, playerMobj, map ) ) {
 
       mo.target = playerMobj;
+      return;
 
     } else {
 
@@ -435,7 +439,7 @@ export function A_Chase( mo: Mobj, map: DoomMapData ): void {
   if ( ( mo.flags & MF_JUSTATTACKED ) !== 0 ) {
 
     mo.flags &= ~MF_JUSTATTACKED;
-    P_NewChaseDir( mo );
+    if(gameRules.skill!==5)P_NewChaseDir( mo );
     return;
 
   }
@@ -452,7 +456,7 @@ export function A_Chase( mo: Mobj, map: DoomMapData ): void {
   // Missile attack check
   if ( mo.info.missileState ) {
 
-    if ( mo.movecount <= 0 && P_CheckMissileRange( mo, map ) ) {
+    if ( (gameRules.skill===5 || mo.movecount===0) && P_CheckMissileRange( mo, map ) ) {
 
       setMobjState( mo, mo.info.missileState );
       mo.flags |= MF_JUSTATTACKED;
@@ -498,6 +502,7 @@ export function A_PosAttack( mo: Mobj ): void {
 
   if ( ! mo.target ) return;
   A_FaceTarget( mo );
+  const slope=aimLineAttack(mo,mo.angle,MISSILERANGE).slope;
 
   playSoundAt( 'pistol', mo.x, mo.y, mo.z );
 
@@ -505,8 +510,8 @@ export function A_PosAttack( mo: Mobj ): void {
   const damage = ( ( P_Random() % 5 ) + 1 ) * 3;
 
   lineAttack(
-    mo.x, mo.y, mo.z + 32 * FRACUNIT,
-    angle, 0, MISSILERANGE, damage, mo
+    mo.x, mo.y, mo.z + (mo.height>>1) + 8 * FRACUNIT,
+    angle, slope, MISSILERANGE, damage, mo
   );
 
 }
@@ -517,6 +522,7 @@ export function A_SPosAttack( mo: Mobj ): void {
 
   playSoundAt( 'shotgn', mo.x, mo.y, mo.z );
   A_FaceTarget( mo );
+  const slope=aimLineAttack(mo,mo.angle,MISSILERANGE).slope;
 
   for ( let i = 0; i < 3; i ++ ) {
 
@@ -524,8 +530,8 @@ export function A_SPosAttack( mo: Mobj ): void {
     const damage = ( ( P_Random() % 5 ) + 1 ) * 3;
 
     lineAttack(
-      mo.x, mo.y, mo.z + 32 * FRACUNIT,
-      angle, 0, MISSILERANGE, damage, mo
+      mo.x, mo.y, mo.z + (mo.height>>1) + 8 * FRACUNIT,
+      angle, slope, MISSILERANGE, damage, mo
     );
 
   }
@@ -538,13 +544,14 @@ export function A_CPosAttack( mo: Mobj ): void {
 
   playSoundAt( 'shotgn', mo.x, mo.y, mo.z );
   A_FaceTarget( mo );
+  const slope=aimLineAttack(mo,mo.angle,MISSILERANGE).slope;
 
   const angle = mo.angle + ( P_Random() - P_Random() ) * ( Math.PI / 2048 );
   const damage = ( ( P_Random() % 5 ) + 1 ) * 3;
 
   lineAttack(
-    mo.x, mo.y, mo.z + 32 * FRACUNIT,
-    angle, 0, MISSILERANGE, damage, mo
+    mo.x, mo.y, mo.z + (mo.height>>1) + 8 * FRACUNIT,
+    angle, slope, MISSILERANGE, damage, mo
   );
 
 }
@@ -1044,9 +1051,19 @@ export function A_PainDie( mo: Mobj ): void {
 // Death / pain actions
 // ============================================================
 
+// A_Look/A_Scream voice variants consume gameplay RNG even without audio.
+function playMonsterVoice(mo:Mobj,name:string):void {
+  if(/^posit[123]$/.test(name))name='posit'+(P_Random()%3+1);
+  else if(/^bgsit[12]$/.test(name))name='bgsit'+(P_Random()%2+1);
+  else if(/^podth[123]$/.test(name))name='podth'+(P_Random()%3+1);
+  else if(/^bgdth[12]$/.test(name))name='bgdth'+(P_Random()%2+1);
+  if(mo.type==='MT_CYBORG'||mo.type==='MT_SPIDER')playSound(name);
+  else playSoundAt(name,mo.x,mo.y,mo.z);
+}
+
 export function A_Scream( mo: Mobj ): void {
 
-  if ( mo.info.deathSound ) playSoundAt( mo.info.deathSound, mo.x, mo.y, mo.z );
+  if ( mo.info.deathSound ) playMonsterVoice(mo,mo.info.deathSound);
 
 }
 
