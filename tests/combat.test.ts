@@ -47,7 +47,7 @@ test('fist/chainsaw attacks supply melee ranges rather than bullet range', () =>
     const world=createWorld(Input,PlayerStatus), state=world.get(PlayerStatus)!;
     state.currentWeapon=weapon; state.weapons[weapon]=true;
     const weapons=new WeaponSystem(), ranges:number[]=[];
-    weapons.setFireCallback((_a,_s,_d,r)=>ranges.push(r)); weapons.setup(state);
+    weapons.setFireCallback((_a,_s,_d,r)=>{ranges.push(r);}); weapons.setup(state);
     world.set(Input,{attack:true});
     for (let i=0;i<100;i++) weapons.tick(world);
     assert(ranges.length>0); assert(ranges.every(r=>r===range*F)); world.destroy();

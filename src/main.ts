@@ -124,7 +124,7 @@ async function main(): Promise<void> {
     weapons.setAimCallback((angle,range)=>aimLineAttack(level.player.mo,angle,range).slope);
     weapons.setFireCallback((angle,slope,damage,range)=>{
       const mo=level.player.mo;
-      lineAttack(mo.x,mo.y,mo.z+(mo.height>>1)+8*FRACUNIT,angle,slope,range,damage,mo);
+      return lineAttack(mo.x,mo.y,mo.z+(mo.height>>1)+8*FRACUNIT,angle,slope,range,damage,mo);
     });
     weapons.setMissileCallback((angle,type)=>spawnPlayerMissile(level.player,angle,type));
     syncPlayerPositionSystem(world); cameraSystem(world);
@@ -267,6 +267,13 @@ async function main(): Promise<void> {
       }
       time.delta=1/35;
       playerTickSystem(world,()=>weapons.tick(world));
+      // A_Punch can turn the player during weapon actions. Preserve that turn
+      // in the browser controls as well as the next recorded tic command.
+      const aimInput=world.get(Input)!;
+      if(level.player.mo.angle!==aimInput.yaw+Math.PI/2){
+        const yaw=level.player.mo.angle-Math.PI/2;
+        controls.setInitialYaw(yaw,aimInput.pitch);world.set(Input,{yaw});
+      }
       const tp=consumeTeleport();
       if(tp) {const yaw=tp.angle*Math.PI/180-Math.PI/2;controls.setInitialYaw(yaw);world.set(Input,{yaw});}
       advanceEnemyTic();

@@ -560,6 +560,24 @@ test('mobile taps use doors and holding the aiming side opens an owned-weapon wh
   await context.close();
 });
 
+test('a weapon turn reaches mobile look controls without resetting pitch',async({browser})=>{
+  const context=await browser.newContext({baseURL:'http://127.0.0.1:3010',viewport:{width:390,height:844},hasTouch:true,isMobile:true});
+  const page=await context.newPage();await ready(page);
+  await page.evaluate(async()=>{
+    const {TouchControls}=await import('/src/renderer/TouchControls.ts');const update=TouchControls.prototype.update;
+    TouchControls.prototype.update=function(){update.call(this);(window as any).__touch=this;};
+    const {WeaponSystem}=await import('/src/game/Weapons.ts');const {DoomWorld}=await import('/src/ecs/traits.ts');
+    const tick=WeaponSystem.prototype.tick;
+    WeaponSystem.prototype.tick=function(world){tick.call(this,world);if((window as any).__turnOnce){world.get(DoomWorld).player.mo.angle+=0.25;(window as any).__turnOnce=false;}};
+  });
+  await startGame(page);
+  await page.evaluate(()=>{(window as any).__touch.setInitialYaw(0.1,0.3);(window as any).__turnOnce=true;});
+  await page.waitForFunction(()=>!(window as any).__turnOnce);
+  await page.waitForTimeout(100);
+  const input=(await snapshot(page)).input;expect(input.yaw).toBeCloseTo(0.35);expect(input.pitch).toBeCloseTo(0.3);
+  await context.close();
+});
+
 test('developer replay retains its trace at a rebirth boundary and can restart',async({page})=>{
   await ready(page);
   await page.evaluate(async()=>{

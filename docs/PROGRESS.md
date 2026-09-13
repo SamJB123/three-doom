@@ -334,3 +334,11 @@ Fixed the diagnostic lifecycle: rebirth/exit pauses replay and preserves its tra
 WebKit initially failed because the test harness constructed `Touch` objects, which that engine rejects. Replaced that harness-only construction with portable synthetic touch events. The same three checks now pass in Chrome and WebKit: menu pause/input clearing, circular action areas and top-right layout, and tap Use/hold-drag-cancel weapon selection. Added `PLAYWRIGHT_BROWSER=webkit` and optional local server reuse to the test configuration. Physical-device coverage is still pending, explicitly listed with all 36 combat playthroughs in RELEASE-CHECKS.md.
 
 Typecheck, 121 unit tests and production build pass. Chrome and WebKit each pass the three mobile checks; the two replay/normal-rebirth lifecycle checks pass. Longer C gates correctly remain failing at the boundaries above. All four refreshed 350-tic repeatability/pause checks and the retained-trace/restart check pass (five checks, 1.3 minutes). Next: source melee behavior and the other first longer-trace differences, then further presentation, special/save scenarios and campaign/device gates.
+
+## 2026-09-13 — original fist spread and target-facing
+
+**COMBAT-01 / PLAYER-01.** `A_Punch` now consumes the original two spread draws, aims along that spread ray, plays its hit sound only after a hit, and turns toward the struck actor using the source angle function. `P_LineAttack` returns its hit target so weapon actions can apply that behavior. Browser look controls preserve the resulting turn without resetting pitch; source-driven recorded commands use the updated actor angle next tic.
+
+DEMO2 now passes the explicit 700-tic C gate. Its extended trace agrees through tic 1335, then first differs in a dead imp's XY position at 1336. Inspection finds ordinary actor knockback still skips `P_XYMovement` subdivision, unlike the already-corrected projectile branch; that is next. The full recording still reaches rebirth and is not a full-demo pass.
+
+Validation: typecheck, 122 unit tests and build pass. The 700-tic DEMO2 repeatability/pause check, mobile tap/wheel check and dedicated weapon-turn/preserved-pitch browser check pass. Regressions cover punch RNG, matching aim/fire rays, hit-facing and unchanged facing after a miss. Broader completion gates remain open.

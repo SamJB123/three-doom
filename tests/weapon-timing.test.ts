@@ -5,7 +5,7 @@ import {Input,PlayerStatus,DoomWorld} from '../src/ecs/traits';
 import {createPlayer} from '../src/physics/DoomMovement';
 import {WeaponSystem} from '../src/game/Weapons';
 import {dividedMap} from './fixtures/maps';
-function setup(weapon:'pistol'|'shotgun'|'missile'='pistol'){
+function setup(weapon:'pistol'|'shotgun'|'missile'|'fist'='pistol'){
   const world=createWorld(Input,PlayerStatus,DoomWorld),state=world.get(PlayerStatus)!,player=createPlayer(40,0,0);
   world.set(DoomWorld,{player,map:dividedMap()});state.currentWeapon=weapon;state.weapons[weapon]=true;state.ammo.shell=8;state.ammo.misl=10;
   const system=new WeaponSystem();system.setup(state);for(let i=0;i<20;i++)system.tick(world);
@@ -31,7 +31,25 @@ test('A_ReFire preserves held rocket cadence and release does not produce delaye
 test('P_BulletSlope samples once at 1024 units before shotgun pellets mutate targets',()=>{
   const {world,system}=setup('shotgun');let aims=0;const slopes:number[]=[];
   system.setAimCallback((_angle,range)=>{assert.equal(range,1024*65536);return ++aims*1234;});
-  system.setFireCallback((_angle,slope)=>slopes.push(slope));
+  system.setFireCallback((_angle,slope)=>{slopes.push(slope);});
   world.set(Input,{attack:true});for(let i=0;i<4;i++)system.tick(world);
   assert.equal(aims,1);assert.deepEqual(slopes,Array(7).fill(1234));world.destroy();
+});
+
+test('A_Punch aims its spread ray and turns toward a hit target only',async()=>{
+  const {archiveRandom,restoreRandom}=await import('../src/game/DoomRandom');
+  const {pointToRadians}=await import('../src/math/angles');
+  const {world,system,player}=setup('fist');const target=createPlayer(60,30,0).mo;
+  let aim=0,shots=0;
+  system.setAimCallback((angle,range)=>{aim=angle;assert.equal(range,64*65536);return 123;});
+  system.setFireCallback((angle,slope,_damage,range)=>{shots++;assert.equal(angle,aim);assert.equal(slope,123);assert.equal(range,64*65536);return target;});
+  restoreRandom({play:0,misc:0});
+  world.set(Input,{attack:true});for(let i=0;i<5;i++)system.tick(world);
+  assert.equal(shots,1);assert.equal(archiveRandom().play,3);
+  assert.equal(aim,Math.PI/2+(109-220)*(Math.PI*2/16384));
+  assert.equal(player.mo.angle,pointToRadians(target.x-player.mo.x,target.y-player.mo.y));
+  world.destroy();
+  const miss=setup('fist'),before=miss.player.mo.angle;miss.system.setFireCallback(()=>null);
+  miss.world.set(Input,{attack:true});for(let i=0;i<5;i++)miss.system.tick(miss.world);
+  assert.equal(miss.player.mo.angle,before);miss.world.destroy();
 });

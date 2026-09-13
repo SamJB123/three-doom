@@ -1,3 +1,4 @@
+import {pointToRadians} from '../math/angles';
 import {setPlayerMobjState} from './PlayerState';
 import type {Mobj} from './Mobj';
 import {finesine} from '../math/AngleTables';
@@ -200,7 +201,7 @@ interface PSpriteDef {
 // ============================================================
 
 /** Callback for weapon fire — receives angle (radians), slope (fixed), damage */
-export type FireCallback = ( angle: number, slope: Fixed, damage: number, range: Fixed ) => void;
+export type FireCallback = ( angle: number, slope: Fixed, damage: number, range: Fixed ) => Mobj | null | void;
 
 /** Callback for projectile weapon fire — receives angle (radians) and mobj type name */
 export type MissileCallback = ( angle: number, typeName: string ) => void;
@@ -576,9 +577,9 @@ export class WeaponSystem {
   // --- Hitscan / projectile actions ---
   // Ported from p_pspr.c — hitscans now call lineAttack via fireCallback
 
-  private fireHitscan( angle: number, damage: number, range = 2048 * FRACUNIT, slope = this.aimCallback?.(this.lastAngle, range) ?? 0 ): void {
+  private fireHitscan( angle: number, damage: number, range = 2048 * FRACUNIT, slope = this.aimCallback?.(this.lastAngle, range) ?? 0 ): Mobj | null {
 
-    if ( this.fireCallback ) this.fireCallback( angle, slope, damage, range );
+    return this.fireCallback?.( angle, slope, damage, range ) ?? null;
 
   }
 
@@ -690,8 +691,13 @@ export class WeaponSystem {
     // Berserk does 10x damage
     let damage = ( P_Random() % 10 + 1 ) * 2;
     if ( state.powers.strength ) damage *= 10;
-    playSound( 'punch' );
-    this.fireHitscan( this.lastAngle, damage, 64 * FRACUNIT );
+    const angle=this.lastAngle+(P_Random()-P_Random())*(Math.PI*2/16384);
+    const slope=this.aimCallback?.(angle,64*FRACUNIT)??0;
+    const target=this.fireHitscan(angle,damage,64*FRACUNIT,slope);
+    if(target){
+      playSound('punch');
+      if(this.playerActor)this.playerActor.angle=pointToRadians(target.x-this.playerActor.x,target.y-this.playerActor.y);
+    }
 
   }
 

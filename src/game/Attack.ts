@@ -163,10 +163,11 @@ export function lineAttack(
   range: Fixed,
   damage: number,
   sourceMobj: Mobj | null
-): void {
+): Mobj | null {
 
-  if ( ! attackMap ) return;
+  if ( ! attackMap ) return null;
 
+  let hitTarget:Mobj|null=null;
   const cosA = fineCos(angle);
   const sinA = fineSin(angle);
 
@@ -248,6 +249,7 @@ export function lineAttack(
       const thingBottomSlope = fixedDiv( thing.z - shootZ, dist );
       if ( thingBottomSlope > slope ) return true; // bullet goes under
 
+      hitTarget=thing;
       // PTR_ShootTraverse spawns the effect before damage consumes RNG.
       const hit=impact(intercept.frac,10,!(thing.flags&MF_NOBLOOD));
       spawnHitEffect(hit.x,hit.y,hit.z,damage,hit.blood,range===64*FRACUNIT);
@@ -264,6 +266,7 @@ export function lineAttack(
 
   );
 
+  return hitTarget;
 }
 
 // ============================================================
