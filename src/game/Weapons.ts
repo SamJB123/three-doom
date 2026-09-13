@@ -4,7 +4,7 @@ import {finesine} from '../math/AngleTables';
 
 import type { World } from 'koota';
 import type { WeaponSlot, AmmoType, PlayerStatusState } from '../ecs/traits';
-import { PlayerStatus, Input, Time } from '../ecs/traits';
+import { PlayerStatus, Input, DoomWorld, Time } from '../ecs/traits';
 import { playSound } from '../sound';
 import type { Fixed } from '../math/fixed';
 import { FRACUNIT, fixedMul, floatToFixed } from '../math/fixed';
@@ -204,6 +204,8 @@ export type FireCallback = ( angle: number, slope: Fixed, damage: number, range:
 export type MissileCallback = ( angle: number, typeName: string ) => void;
 
 export class WeaponSystem {
+  private bob:Fixed=0;
+  private levelTime=0;
 
   psprites: [ PSpriteDef, PSpriteDef ] = [
     { state: null, tics: 0, sx: FRACUNIT, sy: WEAPONTOP },   // ps_weapon
@@ -257,6 +259,9 @@ export class WeaponSystem {
     const state = world.get( PlayerStatus );
     const input = world.get( Input );
     if ( ! state || ! input ) return;
+
+    this.bob=world.get(DoomWorld)?.player?.bob??0;
+    this.levelTime=world.get(Time)?.levelTime??0;
 
     // Track player aim angle (convert Three.js yaw to Doom angle)
     this.lastAngle = input.yaw + Math.PI / 2;
@@ -498,7 +503,7 @@ export class WeaponSystem {
 
     }
 
-    // Weapon bob is applied externally by applyBob()
+    this.applyBob(this.bob,this.levelTime);
 
   }
 
@@ -690,7 +695,6 @@ export class WeaponSystem {
     // angle = (128 * leveltime) & FINEMASK;  (FINEMASK = 8191, FINEANGLES = 8192)
     // psp->sx = FRACUNIT + FixedMul(bob, finecosine[angle]);
     // psp->sy = WEAPONTOP + FixedMul(bob, finesine[angle & (FINEANGLES/2-1)]);
-    // Our bob is already in pixel units (0..16), not fixed-point.
     // Wrap angle like original: (128 * leveltime) & FINEMASK (8191)
     const fine = ( 128 * levelTime ) & 8191;
     const halfFine = fine & 4095;

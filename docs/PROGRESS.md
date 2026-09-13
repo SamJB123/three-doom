@@ -250,3 +250,13 @@ Validation: 94 unit tests, typecheck and build pass; installed-Chrome actor/auto
 `P_PlayerThink` permits selecting an owned empty weapon; removed the old ammo restriction on manual selection. Explicit touch slots select chainsaw/super-shotgun without relying on number-key toggling. A gameplay regression reproduces the empty-weapon defect and verifies completed weapon changes. Holding only schedules gesture presentation; simulation and weapon changes still run through TicClock.
 
 Validation: 95 unit tests, typecheck and build pass. Four Chrome browser checks cover touch pause, save persistence, circular action zones and the new tap/wheel path. The latter opens an actual E1M1 door with a tap, switches to fist, excludes unowned weapons, checks aim/fire isolation, cancels on drag/touchcancel/menu and checks all eight labels for overlap. It passed again after the final wheel layout adjustment. Screenshot inspected. Physical-device comfort and broader roadmap completion remain open; next engineering work is deterministic reference input/traces and remaining gameplay behavior.
+
+## 2026-09-13 — original demo input and repeatable gameplay traces
+
+**REF-01 / LOOP-02 / UI-02.** Added strict version-109 single-player demo decoding and signed command-to-input conversion. Five executed `G_ReadDemoTiccmd` C cases verify signed movement, signed short turns, button bytes and end-marker handling. Unsupported multiplayer/command-line rules and pause/save command bytes fail explicitly. This is input-format evidence, not original-engine playback parity.
+
+Development inspector `__doomReplay(name, limit)` now feeds WAD demo commands through the actual TicClock/player/weapon/actor loop and records bounded per-tic gameplay traces (up to 350 tics). Menus freeze playback; ordinary input is disabled. Two runs of the first 70 DEMO1 tics compare player, actor, sector, sidedef, gameplay RNG and weapon state, including a pause and a deliberately different render-frame/tic batching schedule.
+
+The first comparison exposed render-frame mutation of weapon bob coordinates. Moved bob calculation into `A_WeaponReady` during weapon ticks, including muzzle-flash coordinate propagation. The complete recorded traces now match. Original C world traces and title/credit/demo cycling remain open; this developer replay path does not mark UI-02 complete.
+
+Validation: 98 unit tests, typecheck and build pass. Save/load, mobile tap/wheel and demo browser checks pass; the demo comparison passes again with altered frame batching. Next: build a headless original-source world oracle to identify the first actual gameplay divergence, then resolve remaining fidelity and campaign gates.

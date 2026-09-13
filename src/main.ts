@@ -1,3 +1,5 @@
+import {readDemo,demoInput,type Demo} from './game/Demo';
+import {archiveRandom} from './game/DoomRandom';
 import {ScreenWipe} from './menu/ScreenWipe';
 import {migrateLegacyMapActors} from './game/LegacySave';
 import {setPlayerThinkerCallback,setMobjLevelTimeSource} from './game/Mobj';
@@ -97,11 +99,12 @@ async function main(): Promise<void> {
   automap.button.setAttribute('aria-label','Map');
   automap.button.replaceChildren(new WadGraphics(wad,palette).label('Map'));
   let level: Level;
+  let replay:{demo:Demo;index:number;limit:number;trace:unknown[]}|null=null;
   let exitRequested: boolean | null=null;
   let destination: number | null=null;
 
   function loadLevel(episode: number, number: number, skill: Skill, carry?: PlayerStatusState): void {
-    controls.setEnabled(false);
+    replay=null;controls.setEnabled(false);
     stopAllSounds();
     level?.dispose(); automap.reset(); messages.reset();
     level=new Level(wad,assets,episode,number,skill);
@@ -195,7 +198,7 @@ async function main(): Promise<void> {
     messages:enabled=>{messages.state.enabled=enabled;},
     save:saveGame,load:loadGame,slotLabel:slot=>slots.label(slot),
     changed:()=>{
-      controls.setEnabled(session.running&&!wipe.active); ticks.advance(0,false,()=>{}); clock.getDelta();
+      controls.setEnabled(session.running&&!wipe.active&&!replay); ticks.advance(0,false,()=>{}); clock.getDelta();
       if(session.running || session.presenting) {
         if(session.running)renderer.domElement.focus();
         void audio.resume().then(()=>{if(session.running)playMusic(mapMusic(gameRules.episode,gameRules.map));else if(session.presenting)playMusic(menu.presentationMusic);}).catch(console.error);
@@ -228,7 +231,15 @@ async function main(): Promise<void> {
   const resize=()=>{camera.aspect=container.clientWidth/container.clientHeight;camera.updateProjectionMatrix();renderer.setSize(container.clientWidth,container.clientHeight);};
   window.addEventListener('resize',resize); screen.orientation?.addEventListener('change',resize);
   if(import.meta.env.DEV && new URLSearchParams(location.search).has('inspect')) {
+    Object.defineProperty(window,'__doomReplay',{value:(name:string,limit=70)=>{
+      if(wipe.active)throw Error('Wait for the screen transition before replaying');
+      const lump=getLump(wad,name);if(!lump)throw Error('Demo lump not found');
+      const demo=readDemo(wad.buf.slice(lump.offset,lump.offset+lump.size));
+      clearRandom();loadLevel(demo.episode,demo.map,demo.skill);
+      replay={demo,index:0,limit:Math.max(1,Math.min(350,Math.trunc(limit)||70)),trace:[]};menu.start();controls.setEnabled(false);
+    }});
     Object.defineProperty(window,'__doomInspect',{value:()=>({
+      replay:replay?{tic:replay.index,length:replay.demo.commands.length,trace:replay.trace}:null,
       wipe:wipe.inspect(),audio:audio.state,music:musicName,presentation:menu.inspectPresentation(), started:session.started,running:session.running, phase:session.phase,
       episode:gameRules.episode,map:gameRules.map,skill:gameRules.skill,tic:world.get(Time)!.levelTime,
       player:{x:level.player.mo.x,y:level.player.mo.y,z:level.player.mo.z,health:world.get(PlayerStatus)!.health,ammo:{...world.get(PlayerStatus)!.ammo}},
@@ -246,9 +257,14 @@ async function main(): Promise<void> {
     let finishPresentation=false;
     wipe.setPaused(!(session.running||session.presenting));
     ticks.advance(dt,session.running || session.presenting,()=>{
-      if(wipe.active){wipe.tick();if(!wipe.active)controls.setEnabled(session.running);return;}
+      if(wipe.active){wipe.tick();if(!wipe.active)controls.setEnabled(session.running&&!replay);return;}
       if(session.presenting){finishPresentation=menu.tickPresentation() || finishPresentation;return;}
       if(!session.running || exitRequested!==null || world.get(PlayerStatus)!.playerState==='PST_REBORN') return;
+      if(replay){
+        const command=replay.demo.commands[replay.index];
+        if(!command||replay.index>=replay.limit){menu.open();return;}
+        world.set(Input,demoInput(command,level.player.mo.angle));replay.index++;
+      }
       time.delta=1/35;
       playerTickSystem(world,()=>weapons.tick(world));
       const tp=consumeTeleport();
@@ -257,6 +273,12 @@ async function main(): Promise<void> {
       const state=world.get(PlayerStatus)!; if(state.playerState==='PST_LIVE')level.player.mo.health=state.health;
       if(state.playerState==='PST_DEAD')automap.active=false;
       if((time.levelTime & 3) === 0) automap.discover(level.map,level.player);
+      if(replay)replay.trace.push({
+        tic:time.levelTime,random:archiveRandom().play,player:structuredClone(world.get(PlayerStatus)!),weapons:weapons.archive(),
+        actors:allMobjs.map(m=>[m.type,m.x,m.y,m.z,m.momx,m.momy,m.momz,m.angle,m.health,m.state,m.tics,m.flags,m.target?allMobjs.indexOf(m.target):-1]),
+        sectors:level.map.sectors.map(s=>[s.floorHeight,s.ceilingHeight,s.lightLevel,s.special]),
+        sides:level.map.sidedefs.map(s=>[s.xoff,s.yoff,s.upper,s.middle,s.lower])
+      });
       messages.tick();
       updateSpriteAnimations(1/35);hud.update(world);
     });
@@ -273,7 +295,6 @@ async function main(): Promise<void> {
     if(session.presenting && audio.state==='running')playMusic(menu.presentationMusic);
     cameraSystem(world);
     updateListener(level.player.mo,gameRules.map);
-    weapons.applyBob(level.player.bob,time.levelTime);
     if(dirtySectors.size) {level.manager.rebuildDirtySectors(dirtySectors);updateSpriteFloorHeights(level.sprites);clearDirtySectors();}
     setCameraPosition(level.player.mo.x,level.player.mo.y);
     level.manager.updateAnimatedTextures(time.levelTime);updateSpriteBillboards(level.sprites,camera.rotation.y);

@@ -1,0 +1,82 @@
+{
+  "function": "G_ReadDemoTiccmd",
+  "sourceSha256": "bc8e2e0d76a70f8120174946641a82c46f0116a624f51c011b292e2ffcb78a29",
+  "scope": "Command byte decoding and end marker only; no original world simulation.",
+  "cases": [
+    {
+      "input": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "expected": [
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "input": [
+        50,
+        216,
+        255,
+        3
+      ],
+      "expected": [
+        50,
+        -40,
+        -256,
+        3,
+        0
+      ]
+    },
+    {
+      "input": [
+        231,
+        24,
+        128,
+        60
+      ],
+      "expected": [
+        -25,
+        24,
+        -32768,
+        60,
+        0
+      ]
+    },
+    {
+      "input": [
+        127,
+        129,
+        127,
+        1
+      ],
+      "expected": [
+        127,
+        -127,
+        32512,
+        1,
+        0
+      ]
+    },
+    {
+      "input": [
+        128,
+        0,
+        0,
+        0
+      ],
+      "expected": [
+        0,
+        0,
+        0,
+        0,
+        1
+      ]
+    }
+  ]
+}
