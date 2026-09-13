@@ -12,7 +12,9 @@ export default defineConfig({
     channel: browserName==='chromium'?process.env.PLAYWRIGHT_CHANNEL:undefined,
     viewport: { width: 960, height: 720 },
     launchOptions: browserName==='chromium'?{ args: ['--enable-unsafe-webgpu'] }:{},
-    trace: 'retain-on-failure',
+    // Long gameplay captures already retain paired JSON traces. Recording
+    // their large protocol responses again makes browser teardown expensive.
+    trace: Number(process.env.DOOM_TRACE_TICS??70)>350?'off':'retain-on-failure',
     screenshot: 'only-on-failure'
   },
   webServer: {

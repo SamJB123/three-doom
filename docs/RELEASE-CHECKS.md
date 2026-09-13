@@ -58,3 +58,5 @@ npm run verify:world -- 4000
 ```
 
 The speed option scales only the test clock input; simulation still advances in discrete tics. The second run uses a different frame schedule and includes pause. Developer playback retains a partial trace and reports failure if divergent gameplay reaches rebirth or a level exit before the recording ends. Such a failure must not be counted as a completed recording. Refresh captures after code changes before running the C gate.
+
+Long DEMO3 captures currently expose a test-worker shutdown stall after successful assertions. Shorter runs exit normally. Compression reduces protocol payload but has not fixed cleanup; resolve this before treating long replay commands as clean release gates.

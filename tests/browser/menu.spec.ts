@@ -619,7 +619,17 @@ for(const demoName of (process.env.DOOM_TRACE_DEMOS??'DEMO1').split(','))test(`o
     }
     await expect.poll(()=>page.evaluate(expected=>{const r=(window as any).__doomInspect().replay;return !!r&&(!!r.stopped||r.tic===expected);},expected),{timeout:limit/35*2000+10000}).toBe(true);
     await expect(page.getByRole('dialog',{name:'Doom menu'})).toBeVisible();
-    return page.evaluate(()=>{const r=(window as any).__doomInspect().replay;return {trace:JSON.stringify(r.trace),stopped:r.stopped};});
+    // Compress the immutable paused capture before crossing the browser
+    // protocol: full WAD demos otherwise transfer hundreds of MB per reply.
+    const packed=await page.evaluate(async()=>{
+      const r=(window as any).__doomInspect().replay;
+      const stream=new Blob([JSON.stringify(r.trace)]).stream().pipeThrough(new CompressionStream('gzip'));
+      const bytes=new Uint8Array(await new Response(stream).arrayBuffer());let binary='';
+      for(let i=0;i<bytes.length;i+=32768)binary+=String.fromCharCode(...bytes.subarray(i,i+32768));
+      return {data:btoa(binary),stopped:r.stopped};
+    });
+    const {gunzipSync}=await import('node:zlib');
+    return {trace:gunzipSync(Buffer.from(packed.data,'base64')).toString('utf8'),stopped:packed.stopped};
   };
   const first=await run(false);
   const {writeFileSync,mkdirSync}=await import('node:fs');mkdirSync('artifacts',{recursive:true});

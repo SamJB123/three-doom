@@ -334,7 +334,7 @@ export function A_FaceTarget( mo: Mobj ): void {
   // Add randomness if target has partial invisibility
   if ( ( mo.target.flags & MF_SHADOW ) !== 0 ) {
 
-    mo.angle += ( P_Random() - P_Random() ) * ( Math.PI / 512 );
+    mo.angle += ( P_Random() - P_Random() ) * ( Math.PI / 1024 );
 
   }
 
@@ -646,7 +646,6 @@ export function A_HeadAttack( mo: Mobj ): void {
 export function A_BruisAttack( mo: Mobj ): void {
 
   if ( ! mo.target ) return;
-  A_FaceTarget( mo );
 
   if ( P_CheckMeleeRange( mo ) ) {
 

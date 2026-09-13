@@ -57,3 +57,24 @@ test('P_LookForPlayers respects the initial lastlook stop before checking player
   A_Look(actor,map);assert.equal(actor.target,target);
   resetThinkers();allMobjs.length=0;
 });
+
+test('A_FaceTarget uses the source shift-21 shadow spread and exactly two draws',async()=>{
+  const {A_FaceTarget}=await import('../src/game/EnemyAI');const {MF_SHADOW}=await import('../src/game/MobjData');
+  const {pointToRadians,radiansToAngle}=await import('../src/math/angles');
+  const {actor,target}=setup();target.flags|=MF_SHADOW;restoreRandom({play:0,misc:0});
+  const base=radiansToAngle(pointToRadians(target.x-actor.x,target.y-actor.y));A_FaceTarget(actor);
+  assert.equal(radiansToAngle(actor.angle),(base+((8-109)<<21))>>>0);assert.equal(archiveRandom().play,2);
+  target.flags&=~MF_SHADOW;A_FaceTarget(actor);assert.equal(radiansToAngle(actor.angle),base);assert.equal(archiveRandom().play,2);
+  resetThinkers();allMobjs.length=0;
+});
+
+test('A_BruisAttack preserves the preceding facing state while its missile aims independently',async()=>{
+  const {A_BruisAttack}=await import('../src/game/EnemyAI');const {MF_SHADOW}=await import('../src/game/MobjData');
+  for(const shadow of [false,true]){
+    const {actor,target}=setup('MT_BRUISER');actor.angle=0.3;if(shadow)target.flags|=MF_SHADOW;
+    restoreRandom({play:0,misc:0});A_BruisAttack(actor);
+    assert.equal(actor.angle,0.3);assert.equal(archiveRandom().play,shadow?4:2);
+    const missile=allMobjs.find(m=>m.type==='MT_BRUISERSHOT')!;assert(missile.momx<0);
+  }
+  resetThinkers();allMobjs.length=0;
+});

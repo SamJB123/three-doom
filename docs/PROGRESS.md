@@ -359,4 +359,12 @@ DEMO3 now agrees through tic 921; the next difference at 922 is turning during t
 
 **PLAYER-01 / COMBAT-01 / LOOP-02.** `P_PlayerThink` now holds actor angle as well as thrust while teleport reaction time counts down. Weapon and Use aim follow the actor's angle rather than unaccepted input turns. A regression fires during recovery, checks frozen thrust/angle and verifies turning resumes afterward.
 
-DEMO3 agreement extends through tic 993. Its next first mismatch at 994 is `A_FaceTarget`'s partial-invisibility spread, which currently has twice the source angular scale; `P_SpawnMissile` also lacks its separate shadow-target randomization. Typecheck, 126 unit tests and build pass; the 1500-tic browser repeatability/pause check and mobile look-pitch integration check pass. Those two invisibility paths are the next slice.
+DEMO3 agreement extends through tic 993. Its next first mismatch at 994 is the Baron's final attack angle. Inspection additionally found `A_FaceTarget`'s partial-invisibility spread has twice the source angular scale, and `P_SpawnMissile` lacks its separate shadow-target randomization; these are independent source gaps, not yet a diagnosis of tic 994. Typecheck, 126 unit tests and build pass; the 1500-tic browser repeatability/pause check and mobile look-pitch integration check pass. Those two invisibility paths are the next slice.
+
+## 2026-09-13 — Baron attack facing and partial-invisibility aim
+
+**ACTOR-01 / COMBAT-01 / LOOP-02.** Removed an extra `A_FaceTarget` call from `A_BruisAttack`; original Baron/knight states face before the final launch action. That extra turn caused the DEMO3 tic-994 mismatch. Independently corrected `A_FaceTarget` shadow spread from twice the source scale to shift 21, and added `P_SpawnMissile`'s separate shift-20 shadow aim draws after spawning. Regressions cover facing preservation, independent missile aim and exact RNG counts with/without shadow targets.
+
+The complete 3863-command DEMO3 recording is port-repeatable; C now agrees through 2035 tics and first differs in blood height at 2036. The missing `P_BulletSlope` side probes are next. Typecheck, 129 unit tests and build pass. Long browser assertions pass, but the worker stalled after reporting success and required termination during cleanup; this is an unresolved runner/performance gate, not a clean shutdown pass. Shorter runs exit normally.
+
+Long captures now compress JSON before browser-protocol transfer and disable duplicate Playwright protocol tracing above 350 commands; raw gameplay JSON remains the comparison input. Compression preserved the paired trace hash, but did not resolve the long-run shutdown stall. Keep that limitation explicit while continuing source comparisons.

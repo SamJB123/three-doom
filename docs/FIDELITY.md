@@ -114,4 +114,6 @@ Ordinary actor movement subdivision and corpse ledge friction advance DEMO2 agre
 
 Checking damaging-floor contact against the centre sector floor extends DEMO3 agreement through tic 921. Tic 922 first differs in player angle during teleport recovery. The 1000-tic browser replay remains repeatable; this is not a passing 1000-tic C gate.
 
-Preserving actor angle and weapon/Use aim during teleport reaction time advances DEMO3 agreement through 993 tics. Tic 994 exposes the next partial-invisibility aim difference; the 1500-tic port replay passes repeatability but not C parity.
+Preserving actor angle and weapon/Use aim during teleport reaction time advances DEMO3 agreement through 993 tics. Tic 994 exposes an extra Baron facing action; the 1500-tic port replay passes repeatability but not C parity.
+
+Removing the extra final Baron facing action extends complete DEMO3 agreement through 2035 tics; blood height first differs at 2036. Shadow-facing and missile aim RNG have separate behavioral regressions. Full replay assertions pass, but a long-run worker cleanup stall remains unresolved and required stopping the completed worker. Compressed transport preserves the raw comparison input; it is not a cleanup fix.

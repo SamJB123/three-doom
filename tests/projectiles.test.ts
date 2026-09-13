@@ -121,3 +121,17 @@ test('P_XYMovement retains corpse momentum while straddling a lower floor',async
   runThinkers();assert.equal(actor.x,-3*F);assert.equal(actor.floorz,48*F);assert.equal(actor.momx,-8*F);
   resetThinkers();allMobjs.length=0;
 });
+
+test('P_SpawnMissile adds its separate shift-20 shadow aim draws after spawning',async()=>{
+  const {MF_SHADOW}=await import('../src/game/MobjData');const {restoreRandom,archiveRandom}=await import('../src/game/DoomRandom');
+  const {pointToRadians,radiansToAngle}=await import('../src/math/angles');
+  for(const shadow of [false,true]){
+    setup();const source=spawnMobj(60*F,0,0,'MT_TROOP'),target=spawnMobj(-60*F,0,0,'MT_PLAYER');
+    if(shadow)target.flags|=MF_SHADOW;restoreRandom({play:0,misc:0});
+    const missile=spawnMissile(source,target,'MT_TROOPSHOT')!;
+    const base=radiansToAngle(pointToRadians(target.x-source.x,target.y-source.y));
+    assert.equal(radiansToAngle(missile.angle),(base+(shadow?((109-220)<<20):0))>>>0);
+    assert.equal(archiveRandom().play,shadow?4:2);
+  }
+  resetThinkers();allMobjs.length=0;
+});

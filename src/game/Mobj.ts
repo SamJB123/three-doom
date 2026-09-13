@@ -16,7 +16,7 @@ import type { DoomMapData, DoomPlayer } from '../physics/DoomMovement';
 import { findSectorAt, tryMove, checkPosition, movementCeilingLine } from '../physics/DoomMovement';
 import { addThinker, archivedThinker } from './Thinkers';
 import type { MobjInfo, MobjState } from './MobjData';
-import { MOBJ_STATES, MOBJ_TYPES, DOOMEDNUM_TO_TYPE, MF_AMBUSH, MF_SPAWNCEILING, MF_SHOOTABLE, MF_SOLID, MF_NOBLOOD, MF_CORPSE, MF_NOGRAVITY, MF_NOBLOCKMAP, MF_MISSILE, MF_NOCLIP, MF_SKULLFLY, MF_COUNTKILL, MF_FLOAT, MF_INFLOAT, MF_SPECIAL, MF_NOSECTOR } from './MobjData';
+import { MOBJ_STATES, MOBJ_TYPES, DOOMEDNUM_TO_TYPE, MF_AMBUSH, MF_SPAWNCEILING, MF_SHOOTABLE, MF_SOLID, MF_NOBLOOD, MF_CORPSE, MF_NOGRAVITY, MF_NOBLOCKMAP, MF_MISSILE, MF_NOCLIP, MF_SKULLFLY, MF_COUNTKILL, MF_FLOAT, MF_INFLOAT, MF_SPECIAL, MF_NOSECTOR, MF_SHADOW } from './MobjData';
 import { playSound, playSoundAt } from '../sound';
 import { gameRules, shouldSpawnThing } from './GameRules';
 import { P_Random } from './DoomRandom';
@@ -672,6 +672,7 @@ export function spawnMissile( source: Mobj, dest: Mobj, typeName: string ): Mobj
   const dx = dest.x - source.x;
   const dy = dest.y - source.y;
   missile.angle = pointToRadians(dx,dy);
+  if(dest.flags&MF_SHADOW)missile.angle+=(P_Random()-P_Random())*(Math.PI/2048);
 
   // Set horizontal momentum from angle and speed
   const speed = gameRules.skill===5 && ['MT_TROOPSHOT','MT_HEADSHOT','MT_BRUISERSHOT'].includes(typeName) ? 20*FRACUNIT : missile.info.speed;
