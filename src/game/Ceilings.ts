@@ -1,3 +1,4 @@
+import {sectorTic} from './SectorHelpers';
 // Doom ceiling movement system — crushers and ceiling movers.
 // Ported from p_ceilng.c
 
@@ -89,10 +90,10 @@ function makeCeilingThinker( cm: CeilingMove, sectors: Sector[] ): () => boolean
         // Moving up
         const res = movePlane( sector, cm.speed, cm.topHeight, false, 1, 1 );
 
-        if ( Math.floor( sector.ceilingHeight ) % 8 === 0 &&
+        if ( !(sectorTic()&7) &&
              cm.type !== 'silentCrushAndRaise' ) {
 
-          playSoundAt( 'stnmov', sx, sy, sz );
+          playSoundAt( 'stnmov', sx, sy, sz, sector);
 
         }
 
@@ -105,7 +106,7 @@ function makeCeilingThinker( cm: CeilingMove, sectors: Sector[] ): () => boolean
               return false;
 
             case 'silentCrushAndRaise':
-              playSoundAt( 'pstop', sx, sy, sz );
+              playSoundAt( 'pstop', sx, sy, sz, sector);
               // fall through
             case 'fastCrushAndRaise':
             case 'crushAndRaise':
@@ -128,10 +129,10 @@ function makeCeilingThinker( cm: CeilingMove, sectors: Sector[] ): () => boolean
         // Moving down
         const res = movePlane( sector, cm.speed, cm.bottomHeight, cm.crush, 1, - 1 );
 
-        if ( Math.floor( sector.ceilingHeight ) % 8 === 0 &&
+        if ( !(sectorTic()&7) &&
              cm.type !== 'silentCrushAndRaise' ) {
 
-          playSoundAt( 'stnmov', sx, sy, sz );
+          playSoundAt( 'stnmov', sx, sy, sz, sector);
 
         }
 
@@ -140,7 +141,7 @@ function makeCeilingThinker( cm: CeilingMove, sectors: Sector[] ): () => boolean
           switch ( cm.type ) {
 
             case 'silentCrushAndRaise':
-              playSoundAt( 'pstop', sx, sy, sz );
+              playSoundAt( 'pstop', sx, sy, sz, sector);
               // fall through
             case 'crushAndRaise':
               cm.speed = CEILSPEED;

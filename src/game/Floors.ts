@@ -1,3 +1,4 @@
+import {floorMovementSound} from './SectorHelpers';
 // Doom floor movement system
 // Ported from p_floor.c
 
@@ -49,6 +50,7 @@ function makeFloorThinker( fm: FloorMove, sectors: Sector[] ): () => boolean {
       sector, fm.speed, fm.destHeight, fm.crush, 0, fm.direction
     );
 
+    floorMovementSound(sector,res==='pastdest');
     if ( res === 'pastdest' ) {
       if(fm.texture!==undefined)sector.floorTex=fm.texture;
       if(fm.newSpecial!==undefined)sector.special=fm.newSpecial;

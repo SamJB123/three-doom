@@ -102,12 +102,12 @@ export function evTeleport(
       // Store teleport angle for camera sync and set reaction time
       if(player){pendingTeleportAngle = Math.floor(thing.angle / 45) * 45;pendingTeleportReaction = 18;}
 
-      spawnMobj(old.x,old.y,old.z,'MT_TFOG');
-      playSoundAt('telept',old.x,old.y,old.z);
+      const oldFog=spawnMobj(old.x,old.y,old.z,'MT_TFOG');
+      playSoundAt('telept',old.x,old.y,old.z,oldFog);
       const fogX = destX + 20 * fineCos(mover.angle);
       const fogY = destY + 20 * fineSin(mover.angle);
-      spawnMobj(fogX,fogY,destFloorZ,'MT_TFOG');
-      playSoundAt('telept',fogX,fogY,destFloorZ);
+      const newFog=spawnMobj(fogX,fogY,destFloorZ,'MT_TFOG');
+      playSoundAt('telept',fogX,fogY,destFloorZ,newFog);
 
       return true;
 

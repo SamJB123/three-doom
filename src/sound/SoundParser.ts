@@ -1,3 +1,4 @@
+import {SOURCE_SOUNDS} from './SourceSounds';
 // Parse Doom DMX sound lumps from WAD into Web Audio API AudioBuffers.
 // DMX format: 8-byte header (uint16 format=3, uint16 sampleRate, uint32 numSamples)
 // followed by unsigned 8-bit PCM data (128 = silence).
@@ -5,111 +6,6 @@
 
 import type { WAD } from '../wad/types';
 import { getLump } from '../wad/WADParser';
-
-// Sound name → WAD lump name mapping (DS prefix per sounds.c)
-const SFX_LUMP_MAP: Record<string, string> = {
-  doropn: 'DSDOROPN',
-  dorcls: 'DSDORCLS',
-  bdopn: 'DSBDOPN',
-  bdcls: 'DSBDCLS',
-  pstart: 'DSPSTART',
-  pstop: 'DSPSTOP',
-  stnmov: 'DSSTNMOV',
-  swtchn: 'DSSWTCHN',
-  swtchx: 'DSSWTCHX',
-  oof: 'DSOOF',
-  noway: 'DSNOWAY',
-  itemup: 'DSITEMUP',
-  wpnup: 'DSWPNUP',
-  getpow: 'DSGETPOW',
-  // Weapon sounds
-  pistol: 'DSPISTOL',
-  shotgn: 'DSSHOTGN',
-  dshtgn: 'DSDSHTGN',
-  dbopn: 'DSDBOPN',
-  dbcls: 'DSDBCLS',
-  dbload: 'DSDBLOAD',
-  rlaunc: 'DSRLAUNC',
-  plasma: 'DSPLASMA',
-  bfg: 'DSBFG',
-  punch: 'DSPUNCH',
-  sawup: 'DSSAWUP',
-  sawful: 'DSSAWFUL',
-  sawidl: 'DSSAWIDL',
-  sawhit: 'DSSAWHIT',
-  // Barrel / explosion
-  barexp: 'DSBAREXP',
-  // Player pain / death
-  plpain: 'DSPLPAIN',
-  pldeth: 'DSPLDETH',
-  slop: 'DSSLOP',
-  // Teleport
-  telept: 'DSTELEPT',
-  // Monster see/alert sounds
-  posit1: 'DSPOSIT1',
-  posit2: 'DSPOSIT2',
-  posit3: 'DSPOSIT3',
-  bgsit1: 'DSBGSIT1',
-  bgsit2: 'DSBGSIT2',
-  sgtsit: 'DSSGTSIT',
-  cacsit: 'DSCACSIT',
-  brssit: 'DSBRSSIT',
-  cybsit: 'DSCYBSIT',
-  spisit: 'DSSPISIT',
-  bspsit: 'DSBSPSIT',
-  kntsit: 'DSKNTSIT',
-  vilsit: 'DSVILSIT',
-  mansit: 'DSMANSIT',
-  pesit: 'DSPESIT',
-  sklatk: 'DSSKLATK',
-  skelsi: 'DSSKELSI',
-  // Monster pain sounds
-  popain: 'DSPOPAIN',
-  dmpain: 'DSDMPAIN',
-  pepain: 'DSPEPAIN',
-  vipain: 'DSVIPAIN',
-  mnpain: 'DSMNPAIN',
-  // Monster death sounds
-  podth1: 'DSPODTH1',
-  podth2: 'DSPODTH2',
-  podth3: 'DSPODTH3',
-  bgdth1: 'DSBGDTH1',
-  bgdth2: 'DSBGDTH2',
-  sgtdth: 'DSSGTDTH',
-  cacdth: 'DSCACDTH',
-  skldth: 'DSSKLDTH',
-  brsdth: 'DSBRSDTH',
-  cybdth: 'DSCYBDTH',
-  spidth: 'DSSPIDTH',
-  bspdth: 'DSBSPDTH',
-  vildth: 'DSVILDTH',
-  kntdth: 'DSKNTDTH',
-  mandth: 'DSMANDTH',
-  pedth: 'DSPEDTH',
-  skedth: 'DSSKEDTH',
-  // Monster active/idle sounds
-  posact: 'DSPOSACT',
-  bgact: 'DSBGACT',
-  dmact: 'DSDMACT',
-  // Monster attack sounds
-  claw: 'DSCLAW',
-  skeswg: 'DSSKESWG',
-  skepch: 'DSSKEPCH',
-  vilatk: 'DSVILATK',
-  firxpl: 'DSFIRXPL',
-  firsht: 'DSFIRSHT',
-  // Archvile fire sounds
-  flamst: 'DSFLAMST',
-  flame: 'DSFLAME',
-  // Mancubus attack
-  manatk: 'DSMANATK',
-  // Footstep / movement sounds
-  hoof: 'DSHOOF',
-  metal: 'DSMETAL',
-  bspwlk: 'DSBSPWLK',
-  // Rocket/plasma/BFG hit sounds
-  rxplod: 'DSRXPLOD',
-};
 
 /**
  * Parse all known sound effects from the WAD into AudioBuffers.
@@ -121,7 +17,9 @@ export async function parseSounds(
 
   const buffers: Record<string, AudioBuffer> = {};
 
-  for ( const [ name, lumpName ] of Object.entries( SFX_LUMP_MAP ) ) {
+  for ( const [ name, info ] of Object.entries( SOURCE_SOUNDS ) ) {
+    if(name==='none')continue;
+    const lumpName='DS'+(info.link??name).toUpperCase();
 
     const lump = getLump( wad, lumpName );
     if ( ! lump ) continue;

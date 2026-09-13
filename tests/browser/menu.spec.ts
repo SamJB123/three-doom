@@ -435,3 +435,21 @@ test('exit melt captures the world, freezes gameplay and presentation, and pause
   await expect.poll(async()=>(await snapshot(page)).presentation.tic).toBeGreaterThan(start.presentation.tic);
   expect((await snapshot(page)).tic).toBe(start.tic);
 });
+
+test('sound effects cannot unpause audio and are stopped when leaving a level',async({page})=>{
+  await ready(page);await startGame(page);await page.keyboard.press('Escape');
+  await expect.poll(async()=>(await snapshot(page)).audio).toBe('suspended');
+  await page.evaluate(async()=>{
+    const create=AudioContext.prototype.createBufferSource;
+    AudioContext.prototype.createBufferSource=function(){
+      const source=create.call(this),stop=source.stop.bind(source);
+      source.stop=(when?:number)=>{(window as any).__effectStopped=true;stop(when);};
+      return source;
+    };
+    const {playSound}=await import('/src/sound/SoundManager.ts');playSound('pistol');
+  });
+  await page.waitForTimeout(150);expect((await snapshot(page)).audio).toBe('suspended');
+  await page.getByRole('button',{name:'End game',exact:true}).click();await page.getByRole('button',{name:'Confirm',exact:true}).click();
+  expect(await page.evaluate(()=>(window as any).__effectStopped)).toBe(true);
+  expect((await snapshot(page)).started).toBe(false);
+});

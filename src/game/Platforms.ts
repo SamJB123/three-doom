@@ -1,3 +1,4 @@
+import {sectorTic} from './SectorHelpers';
 // Doom platform/lift system — sectors whose floors move up and down.
 // Ported from p_plats.c
 
@@ -50,7 +51,6 @@ function makePlatThinker( plat: Plat, sectors: Sector[] ): () => boolean {
 
   return archivedThinker(() => {
 
-    plat.ticCount = (plat.ticCount ?? 0) + 1;
 
     const sector = sectors[ plat.sectorIdx ];
 
@@ -63,7 +63,7 @@ function makePlatThinker( plat: Plat, sectors: Sector[] ): () => boolean {
         // raiseAndChange / raiseToNearestAndChange play sfx_stnmov every 8 tics
         if ( plat.type === 'raiseAndChange' || plat.type === 'raiseToNearestAndChange' ) {
 
-          if ( ! ( plat.ticCount & 7 ) ) playSoundAt( 'stnmov', sx, sy, sz );
+          if ( ! ( sectorTic() & 7 ) ) playSoundAt( 'stnmov', sx, sy, sz, sector);
 
         }
 
@@ -75,13 +75,13 @@ function makePlatThinker( plat: Plat, sectors: Sector[] ): () => boolean {
 
           plat.count = plat.wait;
           plat.status = 'down';
-          playSoundAt( 'pstart', sx, sy, sz );
+          playSoundAt( 'pstart', sx, sy, sz, sector);
 
         } else if ( res === 'pastdest' ) {
 
           plat.count = plat.wait;
           plat.status = 'waiting';
-          playSoundAt( 'pstop', sx, sy, sz );
+          playSoundAt( 'pstop', sx, sy, sz, sector);
 
           switch ( plat.type ) {
 
@@ -110,7 +110,7 @@ function makePlatThinker( plat: Plat, sectors: Sector[] ): () => boolean {
 
           plat.count = plat.wait;
           plat.status = 'waiting';
-          playSoundAt( 'pstop', sx, sy, sz );
+          playSoundAt( 'pstop', sx, sy, sz, sector);
 
         }
         break;
@@ -130,7 +130,7 @@ function makePlatThinker( plat: Plat, sectors: Sector[] ): () => boolean {
 
           }
 
-          playSoundAt( 'pstart', sx, sy, sz );
+          playSoundAt( 'pstart', sx, sy, sz, sector);
 
         }
         break;
@@ -230,13 +230,13 @@ export function evDoPlat(
 
       case 'raiseAndChange':
       case 'raiseToNearestAndChange':
-        playSoundAt( 'stnmov', psx, psy, psz );
+        playSoundAt( 'stnmov', psx, psy, psz, sector);
         break;
 
       case 'downWaitUpStay':
       case 'blazeDWUS':
       case 'perpetualRaise':
-        playSoundAt( 'pstart', psx, psy, psz );
+        playSoundAt( 'pstart', psx, psy, psz, sector);
         break;
 
     }

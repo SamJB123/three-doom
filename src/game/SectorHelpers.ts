@@ -1,3 +1,5 @@
+import {playSoundAt} from '../sound/SoundManager';
+import {intToFixed} from '../math/fixed';
 // Sector neighbor queries and T_MovePlane
 // Ported from p_floor.c (T_MovePlane) and p_spec.c (sector height lookups)
 
@@ -250,4 +252,13 @@ export function computeSectorSoundOrigins(
 
   }
 
+}
+
+let sectorTicSource:()=>number=()=>0;
+export function setSectorTicSource(source:()=>number):void {sectorTicSource=source;}
+export function sectorTic():number {return sectorTicSource();}
+export function floorMovementSound(sector:Sector,finished:boolean):void {
+  const x=intToFixed(sector.soundX),y=intToFixed(sector.soundY),z=intToFixed(sector.floorHeight);
+  if(!(sectorTic()&7))playSoundAt('stnmov',x,y,z,sector);
+  if(finished)playSoundAt('pstop',x,y,z,sector);
 }

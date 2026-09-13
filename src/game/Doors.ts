@@ -62,17 +62,17 @@ function makeVerticalDoorThinker(
 
             case 'blazeRaise':
               door.direction = - 1; // start closing
-              playSoundAt( 'bdcls', sx, sy, sz );
+              playSoundAt( 'bdcls', sx, sy, sz, sector);
               break;
 
             case 'normal':
               door.direction = - 1; // start closing
-              playSoundAt( 'dorcls', sx, sy, sz );
+              playSoundAt( 'dorcls', sx, sy, sz, sector);
               break;
 
             case 'close30ThenOpen':
               door.direction = 1; // reopen
-              playSoundAt( 'doropn', sx, sy, sz );
+              playSoundAt( 'doropn', sx, sy, sz, sector);
               break;
 
             default:
@@ -126,7 +126,7 @@ function makeVerticalDoorThinker(
 
             case 'blazeRaise':
             case 'blazeClose':
-              playSoundAt( 'bdcls', sx, sy, sz );
+              playSoundAt( 'bdcls', sx, sy, sz, sector);
               activeDoorSectors.delete( door.sectorIdx ); busySectors.delete(door.sectorIdx);
               return false; // done
 
@@ -151,7 +151,7 @@ function makeVerticalDoorThinker(
           if ( door.type !== 'close' && door.type !== 'blazeClose' ) {
 
             door.direction = 1;
-            playSoundAt( 'doropn', sx, sy, sz );
+            playSoundAt( 'doropn', sx, sy, sz, sector);
 
           }
 
@@ -251,11 +251,11 @@ export function evVerticalDoor(
 
   if ( line.special === 117 || line.special === 118 ) {
 
-    playSoundAt( 'bdopn', dsx, dsy, dsz );
+    playSoundAt( 'bdopn', dsx, dsy, dsz, sector);
 
   } else {
 
-    playSoundAt( 'doropn', dsx, dsy, dsz );
+    playSoundAt( 'doropn', dsx, dsy, dsz, sector);
 
   }
 
@@ -321,24 +321,24 @@ export function evDoDoor(
     switch ( type ) {
 
       case 'blazeClose':
-        playSoundAt( 'bdcls', esx, esy, esz );
+        playSoundAt( 'bdcls', esx, esy, esz, sectors[i]);
         break;
 
       case 'close':
       case 'close30ThenOpen':
-        playSoundAt( 'dorcls', esx, esy, esz );
+        playSoundAt( 'dorcls', esx, esy, esz, sectors[i]);
         break;
 
       case 'blazeRaise':
       case 'blazeOpen':
         if ( topHeight !== sectors[ i ].ceilingHeight )
-          playSoundAt( 'bdopn', esx, esy, esz );
+          playSoundAt( 'bdopn', esx, esy, esz, sectors[i]);
         break;
 
       case 'normal':
       case 'open':
         if ( topHeight !== sectors[ i ].ceilingHeight )
-          playSoundAt( 'doropn', esx, esy, esz );
+          playSoundAt( 'doropn', esx, esy, esz, sectors[i]);
         break;
 
     }

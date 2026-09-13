@@ -447,7 +447,7 @@ export function A_Chase( mo: Mobj, map: DoomMapData ): void {
   // Melee attack check
   if ( mo.info.meleeState && P_CheckMeleeRange( mo ) ) {
 
-    if ( mo.info.attackSound ) playSoundAt( mo.info.attackSound, mo.x, mo.y, mo.z );
+    if ( mo.info.attackSound ) playSoundAt( mo.info.attackSound, mo.x, mo.y, mo.z, mo);
     setMobjState( mo, mo.info.meleeState );
     return;
 
@@ -478,7 +478,7 @@ export function A_Chase( mo: Mobj, map: DoomMapData ): void {
   // Play active sound randomly
   if ( mo.info.activeSound && P_Random() < 3 ) {
 
-    playSoundAt( mo.info.activeSound, mo.x, mo.y, mo.z );
+    playSoundAt( mo.info.activeSound, mo.x, mo.y, mo.z, mo);
 
   }
 
@@ -504,7 +504,7 @@ export function A_PosAttack( mo: Mobj ): void {
   A_FaceTarget( mo );
   const slope=aimLineAttack(mo,mo.angle,MISSILERANGE).slope;
 
-  playSoundAt( 'pistol', mo.x, mo.y, mo.z );
+  playSoundAt( 'pistol', mo.x, mo.y, mo.z, mo);
 
   const angle = mo.angle + ( P_Random() - P_Random() ) * ( Math.PI / 2048 );
   const damage = ( ( P_Random() % 5 ) + 1 ) * 3;
@@ -520,7 +520,7 @@ export function A_SPosAttack( mo: Mobj ): void {
 
   if ( ! mo.target ) return;
 
-  playSoundAt( 'shotgn', mo.x, mo.y, mo.z );
+  playSoundAt( 'shotgn', mo.x, mo.y, mo.z, mo);
   A_FaceTarget( mo );
   const slope=aimLineAttack(mo,mo.angle,MISSILERANGE).slope;
 
@@ -542,7 +542,7 @@ export function A_CPosAttack( mo: Mobj ): void {
 
   if ( ! mo.target ) return;
 
-  playSoundAt( 'shotgn', mo.x, mo.y, mo.z );
+  playSoundAt( 'shotgn', mo.x, mo.y, mo.z, mo);
   A_FaceTarget( mo );
   const slope=aimLineAttack(mo,mo.angle,MISSILERANGE).slope;
 
@@ -597,7 +597,7 @@ export function A_TroopAttack( mo: Mobj ): void {
 
   if ( P_CheckMeleeRange( mo ) ) {
 
-    playSoundAt( 'claw', mo.x, mo.y, mo.z );
+    playSoundAt( 'claw', mo.x, mo.y, mo.z, mo);
     const damage = ( P_Random() % 8 + 1 ) * 3;
     damageMobj( mo.target, mo, mo, damage );
     return;
@@ -646,7 +646,7 @@ export function A_BruisAttack( mo: Mobj ): void {
 
   if ( P_CheckMeleeRange( mo ) ) {
 
-    playSoundAt( 'claw', mo.x, mo.y, mo.z );
+    playSoundAt( 'claw', mo.x, mo.y, mo.z, mo);
     const damage = ( P_Random() % 8 + 1 ) * 10;
     damageMobj( mo.target, mo, mo, damage );
     return;
@@ -663,7 +663,7 @@ export function A_SkullAttack( mo: Mobj ): void {
 
   mo.flags |= MF_SKULLFLY;
 
-  if ( mo.info.attackSound ) playSoundAt( mo.info.attackSound, mo.x, mo.y, mo.z );
+  if ( mo.info.attackSound ) playSoundAt( mo.info.attackSound, mo.x, mo.y, mo.z, mo);
 
   A_FaceTarget( mo );
 
@@ -715,7 +715,7 @@ export function A_SkelWhoosh( mo: Mobj ): void {
 
   if ( ! mo.target ) return;
   A_FaceTarget( mo );
-  playSoundAt( 'skeswg', mo.x, mo.y, mo.z );
+  playSoundAt( 'skeswg', mo.x, mo.y, mo.z, mo);
 
 }
 
@@ -726,7 +726,7 @@ export function A_SkelFist( mo: Mobj ): void {
 
   if ( P_CheckMeleeRange( mo ) ) {
 
-    playSoundAt( 'skepch', mo.x, mo.y, mo.z );
+    playSoundAt( 'skepch', mo.x, mo.y, mo.z, mo);
     const damage = ( P_Random() % 10 + 1 ) * 6;
     damageMobj( mo.target, mo, mo, damage );
 
@@ -797,7 +797,7 @@ export function A_Tracer( mo: Mobj ): void {
 export function A_FatRaise( mo: Mobj ): void {
 
   A_FaceTarget( mo );
-  playSoundAt( 'manatk', mo.x, mo.y, mo.z );
+  playSoundAt( 'manatk', mo.x, mo.y, mo.z, mo);
 
 }
 
@@ -897,7 +897,7 @@ export function A_VileChase( mo: Mobj ): void {
       mo.target = oldTarget;
 
       setMobjState( mo, 'S_VILE_HEAL1' );
-      playSoundAt( 'slop', mo.x, mo.y, mo.z );
+      playSoundAt( 'slop', mo.x, mo.y, mo.z, mo);
 
       setMobjState( thing, thing.info.raiseState );
       thing.height = thing.info.height;
@@ -917,7 +917,7 @@ export function A_VileChase( mo: Mobj ): void {
 
 export function A_VileStart( mo: Mobj ): void {
 
-  playSoundAt( 'vilatk', mo.x, mo.y, mo.z );
+  playSoundAt( 'vilatk', mo.x, mo.y, mo.z, mo);
 
 }
 
@@ -946,7 +946,7 @@ export function A_VileAttack( mo: Mobj ): void {
   const map = getMobjMapData();
   if ( map && ! P_CheckSight( mo, mo.target, map ) ) return;
 
-  playSoundAt( 'barexp', mo.x, mo.y, mo.z );
+  playSoundAt( 'barexp', mo.x, mo.y, mo.z, mo);
   damageMobj( mo.target, mo, mo, 20 );
 
   // Blast target upward
@@ -982,14 +982,14 @@ export function A_Fire( mo: Mobj ): void {
 
 export function A_StartFire( mo: Mobj ): void {
 
-  playSoundAt( 'flamst', mo.x, mo.y, mo.z );
+  playSoundAt( 'flamst', mo.x, mo.y, mo.z, mo);
   A_Fire( mo );
 
 }
 
 export function A_FireCrackle( mo: Mobj ): void {
 
-  playSoundAt( 'flame', mo.x, mo.y, mo.z );
+  playSoundAt( 'flame', mo.x, mo.y, mo.z, mo);
   A_Fire( mo );
 
 }
@@ -1058,7 +1058,7 @@ function playMonsterVoice(mo:Mobj,name:string):void {
   else if(/^podth[123]$/.test(name))name='podth'+(P_Random()%3+1);
   else if(/^bgdth[12]$/.test(name))name='bgdth'+(P_Random()%2+1);
   if(mo.type==='MT_CYBORG'||mo.type==='MT_SPIDER')playSound(name);
-  else playSoundAt(name,mo.x,mo.y,mo.z);
+  else playSoundAt(name, mo.x, mo.y, mo.z, mo);
 }
 
 export function A_Scream( mo: Mobj ): void {
@@ -1069,13 +1069,13 @@ export function A_Scream( mo: Mobj ): void {
 
 export function A_XScream( mo: Mobj ): void {
 
-  playSoundAt( 'slop', mo.x, mo.y, mo.z );
+  playSoundAt( 'slop', mo.x, mo.y, mo.z, mo);
 
 }
 
 export function A_Pain( mo: Mobj ): void {
 
-  if ( mo.info.painSound ) playSoundAt( mo.info.painSound, mo.x, mo.y, mo.z );
+  if ( mo.info.painSound ) playSoundAt( mo.info.painSound, mo.x, mo.y, mo.z, mo);
 
 }
 
@@ -1102,7 +1102,7 @@ export function A_BossDeath(mo: Mobj): void {
 
 export function A_Hoof( mo: Mobj ): void {
 
-  playSoundAt( 'hoof', mo.x, mo.y, mo.z );
+  playSoundAt( 'hoof', mo.x, mo.y, mo.z, mo);
   const map = getMobjMapData();
   if ( map ) A_Chase( mo, map );
 
@@ -1110,7 +1110,7 @@ export function A_Hoof( mo: Mobj ): void {
 
 export function A_Metal( mo: Mobj ): void {
 
-  playSoundAt( 'metal', mo.x, mo.y, mo.z );
+  playSoundAt( 'metal', mo.x, mo.y, mo.z, mo);
   const map = getMobjMapData();
   if ( map ) A_Chase( mo, map );
 
@@ -1118,7 +1118,7 @@ export function A_Metal( mo: Mobj ): void {
 
 export function A_BabyMetal( mo: Mobj ): void {
 
-  playSoundAt( 'bspwlk', mo.x, mo.y, mo.z );
+  playSoundAt( 'bspwlk', mo.x, mo.y, mo.z, mo);
   const map = getMobjMapData();
   if ( map ) A_Chase( mo, map );
 

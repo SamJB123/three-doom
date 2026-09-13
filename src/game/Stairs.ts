@@ -1,3 +1,4 @@
+import {floorMovementSound} from './SectorHelpers';
 // Doom stair builder — ported from p_floor.c EV_BuildStairs.
 // Walks adjacent sectors with matching floor textures to build staircases.
 
@@ -28,6 +29,7 @@ function makeStairThinker( sm: StairMove, sectors: Sector[] ): () => boolean {
 
     const res = movePlane( sector, sm.speed, sm.destHeight, false, 0, sm.direction );
 
+    floorMovementSound(sector,res==='pastdest');
     if ( res === 'pastdest' ) {
 
       activeStairSectors.delete( sm.sectorIdx ); busySectors.delete(sm.sectorIdx);

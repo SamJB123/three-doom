@@ -1,0 +1,129 @@
+{
+  "function": "S_AdjustSoundParams",
+  "sourceSha256": "4feb68dcba87262903b3c5e1aed3db05fb554c56040c58bac6af97d8920ef2c5",
+  "renderSha256": "2aae43cf807929a8758f71ed0205fc08017556541ba8df2ea9167c003d0dec5a",
+  "tablesSha256": "db8759f4311654c63785dcffb8f73a00a61cfe2713e4284c238dea420b6e5f89",
+  "scope": "Volume 127; inaudible results normalized to volume 0. No mixer/resampler or channel allocation comparison.",
+  "cases": [
+    {
+      "input": {
+        "x": 6553600,
+        "y": 0,
+        "angle": 0,
+        "map": 1
+      },
+      "expected": {
+        "volume": 127,
+        "separation": 129
+      }
+    },
+    {
+      "input": {
+        "x": 10485760,
+        "y": 0,
+        "angle": 0,
+        "map": 1
+      },
+      "expected": {
+        "volume": 127,
+        "separation": 129
+      }
+    },
+    {
+      "input": {
+        "x": 44564480,
+        "y": 0,
+        "angle": 0,
+        "map": 1
+      },
+      "expected": {
+        "volume": 63,
+        "separation": 129
+      }
+    },
+    {
+      "input": {
+        "x": 78643200,
+        "y": 0,
+        "angle": 0,
+        "map": 1
+      },
+      "expected": {
+        "volume": 0,
+        "separation": 129
+      }
+    },
+    {
+      "input": {
+        "x": 85196800,
+        "y": 0,
+        "angle": 0,
+        "map": 1
+      },
+      "expected": {
+        "volume": 0,
+        "separation": 128
+      }
+    },
+    {
+      "input": {
+        "x": 26214400,
+        "y": 26214400,
+        "angle": 0,
+        "map": 1
+      },
+      "expected": {
+        "volume": 73,
+        "separation": 61
+      }
+    },
+    {
+      "input": {
+        "x": 0,
+        "y": 13107200,
+        "angle": 0,
+        "map": 1
+      },
+      "expected": {
+        "volume": 122,
+        "separation": 33
+      }
+    },
+    {
+      "input": {
+        "x": 0,
+        "y": -13107200,
+        "angle": 0,
+        "map": 1
+      },
+      "expected": {
+        "volume": 122,
+        "separation": 224
+      }
+    },
+    {
+      "input": {
+        "x": 262144000,
+        "y": 0,
+        "angle": 0,
+        "map": 8
+      },
+      "expected": {
+        "volume": 15,
+        "separation": 129
+      }
+    },
+    {
+      "input": {
+        "x": 13107200,
+        "y": 0,
+        "angle": 1073741824,
+        "map": 1
+      },
+      "expected": {
+        "volume": 122,
+        "separation": 224
+      }
+    }
+  ]
+}

@@ -1,3 +1,4 @@
+import {stopSound} from '../sound/SoundManager';
 import {fineSin,fineCos,pointToRadians} from '../math/angles';
 // Map object (mobj) system — ported from p_mobj.c.
 // Handles spawning, state machine, and per-tic thinking for all map objects
@@ -269,7 +270,7 @@ function execMobjAction( mo: Mobj, action: string ): void {
   switch ( action ) {
 
     case 'A_Scream':
-      if ( mo.info.deathSound ) playSoundAt( mo.info.deathSound, mo.x, mo.y, mo.z );
+      if ( mo.info.deathSound ) playSoundAt( mo.info.deathSound, mo.x, mo.y, mo.z, mo);
       break;
 
     case 'A_BFGSpray':
@@ -595,7 +596,7 @@ export function explodeMissile( mo: Mobj ): void {
   // Play death sound
   if ( mo.info.deathSound ) {
 
-    playSoundAt( mo.info.deathSound, mo.x, mo.y, mo.z );
+    playSoundAt( mo.info.deathSound, mo.x, mo.y, mo.z, mo);
 
   }
 
@@ -648,7 +649,7 @@ export function spawnMissile( source: Mobj, dest: Mobj, typeName: string ): Mobj
   // Play see sound
   if ( missile.info.seeSound ) {
 
-    playSoundAt( missile.info.seeSound, missile.x, missile.y, missile.z );
+    playSoundAt( missile.info.seeSound, missile.x, missile.y, missile.z, missile);
 
   }
 
@@ -779,7 +780,7 @@ function mobjThinker( mo: Mobj ): boolean {
         const floor=findSectorAt(point.x,point.y,mapData)?.floorHeight ?? 0;
         const oldFog=spawnMobj(mo.x,mo.y,mo.floorz,'MT_TFOG');
         const newFog=spawnMobj(x,y,intToFixed(floor),'MT_TFOG');
-        playSoundAt('telept',oldFog.x,oldFog.y,oldFog.z);playSoundAt('telept',newFog.x,newFog.y,newFog.z);
+        playSoundAt('telept',oldFog.x,oldFog.y,oldFog.z,oldFog);playSoundAt('telept',newFog.x,newFog.y,newFog.z,newFog);
         const replacement=spawnMobj(x,y,intToFixed(floor),mo.type);
         replacement.spawnPoint={...point};replacement.angle=Math.trunc(point.angle/45)*Math.PI/4;
         if(point.flags&8)replacement.flags|=MF_AMBUSH;
@@ -821,6 +822,7 @@ export function removeMobj( mo: Mobj ): void {
 
   if ( mo.removed ) return;
   mo.removed = true;
+  stopSound(mo);
 
   // Remove from scene
   if ( mo.mesh && spriteGroup ) {

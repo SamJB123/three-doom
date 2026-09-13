@@ -59,3 +59,5 @@ Intermission tests use named single-player WI stages and source-derived timing. 
 `scripts/reference-damage.mjs` executes original `P_DamageMobj` for eleven player health/armor/cheat/exit-sector cases. Null inflictor/source and stubbed actions deliberately exclude knockback, kill side effects and infighting. Tests compare arithmetic/state outcomes; gameplay death actions have separate source-derived regressions.
 
 `scripts/reference-melt.mjs` executes original melt initialization/column transformation/ticking with scripted cosmetic RNG, checking every column position through completion. Browser checks establish connected canvas composition and paused world state. Software-renderer pixel identity, CSS palette overlays and title demo sequencing remain outside that evidence.
+
+`scripts/reference-sound.mjs` executes original `S_AdjustSoundParams` with original angle tables/routines for ten distance/pan cases. Audio tests also cover live actor positions during nearby/distant teleports, channel replacement/priority, sector sound cadence and cleanup. Browser checks cover pause and level teardown. These do not establish original mixer/resampling or listening parity.

@@ -24,7 +24,7 @@ import { P_NoiseAlert, advanceEnemyTic } from './game/EnemyAI';
 import { checkPickups, setPickupMessageCallback, setPickupCallback, COUNTED_ITEMS } from './game/Pickups';
 import { WeaponSystem } from './game/Weapons';
 import { sectorChangeHandler } from './game/SectorOccupants';
-import { setSectorChangeCallback } from './game/SectorHelpers';
+import { setSectorChangeCallback,setSectorTicSource } from './game/SectorHelpers';
 import { feedCheatChar } from './game/Cheats';
 import { archiveWorld, restoreWorld } from './game/WorldArchive';
 import { SaveSlots, type SaveGame } from './game/SaveGame';
@@ -39,7 +39,7 @@ import { Automap } from './hud/Automap';
 import { StatusBar } from './hud/StatusBar';
 import { WeaponOverlay } from './hud/WeaponOverlay';
 import { parseSounds, initSoundManager, MusicPlayer, updateListener } from './sound';
-import { setSoundVolume } from './sound/SoundManager';
+import { setSoundVolume,stopAllSounds } from './sound/SoundManager';
 import { FRACUNIT } from './math/fixed';
 
 async function main(): Promise<void> {
@@ -81,6 +81,7 @@ async function main(): Promise<void> {
   const scene=new Scene(), camera=new PerspectiveCamera(90,container.clientWidth/container.clientHeight,0.1,500);
   const world=createWorld(Time,Input,DoomWorld,Camera,PlayerStatus);
   setMobjLevelTimeSource(()=>world.get(Time)!.levelTime);
+  setSectorTicSource(()=>world.get(Time)!.levelTime);
   setPlayerThinkerCallback(()=>{
     playerMobjTickSystem(world);
     const state=world.get(PlayerStatus)!;
@@ -101,6 +102,7 @@ async function main(): Promise<void> {
 
   function loadLevel(episode: number, number: number, skill: Skill, carry?: PlayerStatusState): void {
     controls.setEnabled(false);
+    stopAllSounds();
     level?.dispose(); automap.reset(); messages.reset();
     level=new Level(wad,assets,episode,number,skill);
     scene.add(level.root);
@@ -123,6 +125,7 @@ async function main(): Promise<void> {
     });
     weapons.setMissileCallback((angle,type)=>spawnPlayerMissile(level.player,angle,type));
     syncPlayerPositionSystem(world); cameraSystem(world);
+    updateListener(level.player.mo,gameRules.map);
     ticks.advance(0,false,()=>{}); clock.getDelta();
     exitRequested=null; destination=null;
     hud.update(world);
@@ -269,7 +272,7 @@ async function main(): Promise<void> {
     time=world.get(Time)!;
     if(session.presenting && audio.state==='running')playMusic(menu.presentationMusic);
     cameraSystem(world);
-    updateListener(camera.position.x,camera.position.y,camera.position.z,-Math.sin(camera.rotation.y),-Math.cos(camera.rotation.y));
+    updateListener(level.player.mo,gameRules.map);
     weapons.applyBob(level.player.bob,time.levelTime);
     if(dirtySectors.size) {level.manager.rebuildDirtySectors(dirtySectors);updateSpriteFloorHeights(level.sprites);clearDirtySectors();}
     setCameraPosition(level.player.mo.x,level.player.mo.y);
