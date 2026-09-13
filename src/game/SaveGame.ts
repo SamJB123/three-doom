@@ -62,6 +62,7 @@ export function decodeSave(text:string,wad:string): SaveGame {
   if(!save.player.mobjState||typeof save.player.mobjState.name!=='string'||!Number.isFinite(save.player.mobjState.tics))invalid();
   if(!Number.isFinite(save.view.yaw)||!Number.isFinite(save.view.pitch))invalid();
   for(const key of ['kills','items','secrets'] as const)if(!integer(save.stats[key],0,1000000))invalid();
+  if(save.automap.nextMark!==undefined&&!integer(save.automap.nextMark,0,9))invalid();
   if(!Array.isArray(save.automap.seen)||save.automap.seen.some(i=>!integer(i,0,w.lines.length-1))||!Array.isArray(save.automap.marks)||!save.automap.center||!Number.isFinite(save.automap.zoom))invalid();
   for(const point of [save.automap.center,...save.automap.marks])if(!Number.isFinite(point.x)||!Number.isFinite(point.y))invalid();
   for(const sprite of save.sprites.sprites)if(!integer(sprite.index,0,100000)||!integer(sprite.frame,0,100)||!Number.isFinite(sprite.tics))invalid();

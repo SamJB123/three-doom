@@ -2,6 +2,7 @@ import {getLump,parsePatch,type WAD,type Palette} from '../wad';
 export class WadGraphics {
   private patches=new Map<string,{canvas:HTMLCanvasElement;left:number;top:number}>();
   constructor(private wad:WAD,private palette:Palette) {}
+  color(index:number):string {return `rgb(${this.palette[index*3]},${this.palette[index*3+1]},${this.palette[index*3+2]})`;}
   menuLabel(text:string):HTMLCanvasElement|null {
     // The IWAD has menu word pictures, not a large-font character atlas.
     // Reuse their original pixels, preserving baseline and capital/lowercase

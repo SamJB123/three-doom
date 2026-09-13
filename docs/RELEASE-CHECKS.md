@@ -10,7 +10,7 @@ This checklist supplements [ROADMAP.md](ROADMAP.md). A checked automated route i
 | PHYS-01 / ACTOR-01 / ACTOR-02 / COMBAT-01 / PLAYER-01 | Boundary scenarios and C comparisons for remaining collision, AI, aiming, weapon and player behavior | Regression coverage does not yet establish every action or rule |
 | SPEC-01 / SPEC-02 | Scenario coverage against every family in IWAD-SPECIALS.md, including retrigger, obstruction, key and actor restrictions | Inventory exists; scenario coverage incomplete |
 | SAVE-01 / MENU-02 | Save/restore during doors, lifts, crushing, projectiles, infighting, powers, death and secret progression; compare continued traces | Five active door/lift/crusher/stair/death scenarios match 160 continued tics each with combat, projectiles and powers; browser persistence passes; broader campaign saves pending |
-| UI-01 / UI-02 / UI-03 | HUD face/palette/automap, messages, all intermissions/finales, original title/credit/demo sequence | Connected presentation checks pass; title/credit/four-demo cycle browser check passes; HUD faces and authored palette/power lookup checked; automap and broader visual comparison pending |
+| UI-01 / UI-02 / UI-03 | HUD face/palette/automap, messages, all intermissions/finales, original title/credit/demo sequence | Connected presentation checks pass; title/credit/four-demo cycle browser check passes; HUD faces and authored palette/power lookup checked; BSP automap discovery/layout/marks checked; broader visual comparison pending |
 | RENDER-01 / AUDIO-01 | Reference views/listening at representative indoor, outdoor, sky, masked-wall, moving-sector and combat scenes | Scoped rendering/audio regressions pass; full comparison pending |
 
 ## Campaign playthroughs — FLOW-02 / BOSS-01

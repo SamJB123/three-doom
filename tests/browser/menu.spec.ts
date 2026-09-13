@@ -803,3 +803,21 @@ test('a malformed BSP reports a startup error instead of hanging map traversal',
   await page.goto('/?inspect');
   await expect(page.locator('#loading')).toHaveText('Unable to start Doom: Invalid map BSP cycle');
 });
+
+test('automap preserves HUD space, uses WAD glyphs and saves circular numbered marks',async({page})=>{
+  await ready(page);await startGame(page);
+  await page.evaluate(()=>{
+    (window as any).__mapFallback=0;const fillText=CanvasRenderingContext2D.prototype.fillText;
+    CanvasRenderingContext2D.prototype.fillText=function(...args){if(this.canvas.id==='automap')(window as any).__mapFallback++;return fillText.apply(this,args as any);};
+  });
+  await page.keyboard.press('Tab');await expect(page.locator('#automap')).toBeVisible();
+  const layout=await page.evaluate(()=>({map:document.getElementById('automap')!.getBoundingClientRect().bottom,hud:document.getElementById('doom-status-bar')!.getBoundingClientRect().top}));
+  expect(layout.map).toBeLessThanOrEqual(layout.hud+1);
+  await page.keyboard.press('KeyF');
+  for(let i=0;i<11;i++){await page.keyboard.press('KeyM');await page.keyboard.press('ArrowRight');}
+  await page.keyboard.press('Escape');
+  await page.getByRole('button',{name:'Save game',exact:true}).click();await page.getByRole('button',{name:/Save slot 1:/}).click();
+  const saved=await page.evaluate(()=>JSON.parse(localStorage.getItem('three-doom.save.v1.0')!).automap);
+  expect(saved.marks).toHaveLength(10);expect(saved.nextMark).toBe(1);expect(saved.marks[0].x).toBeGreaterThan(saved.marks[1].x);
+  expect(await page.evaluate(()=>(window as any).__mapFallback)).toBe(0);
+});

@@ -34,7 +34,7 @@ Status vocabulary: **missing**, **partial** (implemented but incomplete or not c
 | COMBAT-01 | `p_pspr.c`, `p_map.c` aiming/line attacks | partial: hit effects/RNG, weapon timing, chainsaw contact, ammo fallback and per-shot bullet slope checked | Correct melee range, autoaim, first-shot accuracy, spread, projectile wall impacts and BFG behavior |
 | PLAYER-01 | `p_inter.c`, `p_user.c`, `p_pspr.c` | partial: pickup, damage C fixtures, corpse and Use-rebirth checks pass | Damage/armor/powers, pickups, cheats, death/rebirth, skill modifiers and weapon selection match C |
 | BOSS-01 | `p_enemy.c A_BossDeath`, episode/map rules | connected; last-boss/living-player exit checks pass | E1M8/E2M8/E3M8/E4M6/E4M8 progression and surviving-boss checks |
-| UI-01 | `st_stuff.c`, `hu_stuff.c`, `am_map.c` | partial: attacker-directed faces/timers checked; PLAYPAL colors checked in Chrome/WebKit; power colormaps and muzzle light connected | HUD state/timing and messages; automap; palette/power effects |
+| UI-01 | `st_stuff.c`, `hu_stuff.c`, `am_map.c` | partial: attacker-directed faces/timers checked; PLAYPAL colors checked in Chrome/WebKit; power colormaps, BSP automap discovery and circular marks checked | HUD state/timing and messages; automap; palette/power effects |
 | UI-03 | `hu_stuff.c HU_Ticker/HU_Drawer`, `p_inter.c P_TouchSpecialThing`, `d_englsh.h GOT*` | connected; pickup families, timing, pause and options checks pass | Original health/armor/ammo/weapon/key/powerup messages, WAD HUD glyphs, timeout in simulation tics, message toggle; only successful pickups notify, including dropped items |
 | UI-02 | `wi_stuff.c`, `f_finale.c`, `d_main.c` demo sequence | connected: stats, animated maps/music and episode finales; melt connected; retail title/credit/four-demo cycle browser-checked | Stats/par/intermission maps, episode finales, title/credit/demo cycle |
 | SAVE-01 | `p_saveg.c`, `G_DoSaveGame`, `G_DoLoadGame` | connected; five active combat/special save scenarios continue for 160 matching tics each; browser persistence verified | Versioned snapshots preserve player, thinkers, world, RNG; round-trip identical continued traces |
@@ -53,7 +53,7 @@ These remain open unless a progress entry and acceptance test explicitly close t
 
 ## Next slices — presentation and release coverage first
 
-1. UI-01 / RENDER-01: finish automap discovery/presentation and broader lighting/sprite comparisons. Title/credits/four-demo playback, HUD faces and authored PLAYPAL effects are now connected and checked.
+1. UI-01 / RENDER-01: broader lighting/sprite comparisons. Automap BSP discovery, HUD layout and saved circular marks have scoped checks. Title/credits/four-demo playback, HUD faces and authored PLAYPAL effects are now connected and checked.
 2. UI-01 / RENDER-01: broaden reference-view comparisons after indexed power colormaps and muzzle lighting; source distance-light falloff remains an approximation.
 3. SPEC-01 / SPEC-02: complete scenario coverage for IWAD-used special families. Known chainsaw, ammo fallback and monster manual-door omissions have behavioral regressions and are checkpointed.
 4. SAVE-01 / MAP-01: complex gameplay save/restore and malformed-input cases.

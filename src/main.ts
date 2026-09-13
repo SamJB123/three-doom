@@ -121,7 +121,7 @@ async function main(): Promise<void> {
     }else{replay=null;stopAllSounds();if(attract.index===0)playMusic('D_INTRO');}
     refreshAttract();
   }
-  const automap=new Automap(()=>session.running&&!wipe.active);
+  const automap=new Automap(()=>session.running&&!wipe.active,new WadGraphics(wad,palette));
   automap.button.setAttribute('aria-label','Map');
   automap.button.replaceChildren(new WadGraphics(wad,palette).label('Map'));
   let level: Level;
@@ -313,7 +313,7 @@ async function main(): Promise<void> {
       advanceEnemyTic();
       const state=world.get(PlayerStatus)!; if(state.playerState==='PST_LIVE')level.player.mo.health=state.health;
       if(state.playerState==='PST_DEAD')automap.active=false;
-      if((time.levelTime & 3) === 0) automap.discover(level.map,level.player);
+      if((time.levelTime & 3) === 0) automap.discover(level.map,level.player,Math.atan(Math.tan(camera.fov*Math.PI/360)*camera.aspect));
       if(replay&&!replay.attract)replay.trace.push({
         tic:time.levelTime,random:archiveRandom().play,player:structuredClone(world.get(PlayerStatus)!),weapons:weapons.archive(),
         actors:allMobjs.map(m=>[m.type,m.x,m.y,m.z,m.momx,m.momy,m.momz,m.angle,m.health,m.state,m.tics,m.flags,m.target?allMobjs.indexOf(m.target):-1]),
@@ -349,7 +349,7 @@ async function main(): Promise<void> {
     updateDoomLighting(world.get(PlayerStatus)!,weapons.extraLight);
     weaponOverlay.update(weapons,assets.sprites,level.map.sectors[level.player.mo.sectorIndex]?.lightLevel??255);
     renderer.render(scene,camera);
-    automap.draw(level.map,level.player,!!world.get(PlayerStatus)!.powers.allmap);
+    automap.draw(level.map,level.player,!!world.get(PlayerStatus)!.powers.allmap,!!world.get(PlayerStatus)!.powers.invisibility);
     if(wipe.pending)wipe.finishCapture(captureScreen());
   });
 }
