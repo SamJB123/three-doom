@@ -35,7 +35,7 @@ This removes frame batching differences from the prior two-clock loop. It does *
 - Run typecheck, relevant tests, and build; browser checks when UI/input/lifecycle changes.
 - Record evidence and remaining limitations in `PROGRESS.md`; update only the scoped roadmap status.
 
-Current priority is missing presentation and gameplay coverage, followed by campaign and release verification. Use focused source comparisons to resolve concrete behavior; increasingly long demo comparisons must not displace those completion gates. A passing build or source inventory is not fidelity evidence.
+Current priority is finishing known implementation gaps, followed by a final campaign, comparison and release verification pass. Focused regression checks accompany each implementation fix; broad coverage-only work waits until that queue is closed. Use focused source comparisons to resolve concrete behavior; increasingly long demo comparisons must not displace those completion gates. A passing build or source inventory is not fidelity evidence.
 
 
 ## Current reference evidence
@@ -125,3 +125,10 @@ The retail `D_DoAdvanceDemo` title/credit/four-demo sequence is now production-a
 `ST_updateFaceWidget` priorities, attacker-facing, sustained-fire delay and reset are covered by behavioral tests and connected HUD checks. `ST_doPaletteStuff` selects the original PLAYPAL transforms. Captured 256-color swatches under damage, bonus and suit transforms match the supplied palettes within one RGB byte in Chrome and WebKit; interpolation for Three.js antialiasing is a presentation adaptation.
 
 Indexed world/sprite textures now preserve source palette indices, with COLORMAP lookup in shaders. `P_PlayerThink` invulnerability/infrared priority and expiry blink select rows 32 and 1, including full-bright actors and the weapon overlay. `A_Light0/1/2` drive shared muzzle-light uniforms and are saved/restored. Color lookup uses sRGB conversion explicitly; original palette colors are not treated as linear intensities. Browser synthetic planes compare all 256 colors for ordinary/flash/power/blink/full-bright cases on the default renderer and forced WebGL path. This verifies palette/colormap lookup, not original screen-column distance attenuation: sector-to-light lookup and flash brightness still use the port's existing approximate sector-light scale. Source distance falloff, horizontal/vertical wall shading and complete screenshot comparison remain open.
+
+
+## Distance lighting implementation
+
+`R_InitLightTables` / `R_ExecuteSetViewSize` now supply the renderer's discrete distance-colormap rules: sixteen sector-light bands, wall/sprite scale indices capped at 47, and plane distance indices capped at 127. Axis-aligned walls receive the original -1/+1 light-band bias before clamping; opposing faces agree. Weapon overlays use `R_DrawPlayerSprites`'s maximum scale index. Muzzle light changes the source light band; fixed power colormaps and full-bright frames retain precedence.
+
+Shader depth is converted from Three.js units back to map units. Projection is normalized to the original full 320-wide view rather than making lighting change with browser pixel resolution. Three.js perspective/free look, float fragment depth and antialiasing remain rendering adaptations; this does not establish software-renderer pixel identity. Focused browser checks sample walls and flats at 32/128/512 units under ordinary, flash and power effects on default and forced-WebGL backends. Broad reference scene comparisons remain deferred to final acceptance. This supersedes the earlier constant-sector-light approximation.

@@ -443,3 +443,14 @@ Validation: typecheck, 163 unit tests and production build pass. WebKit audio li
 Validation: typecheck, 164 unit tests and build pass. Unit coverage exercises all twelve keyed door/object variants with cards and skulls. Two Chrome HUD checks pass (28 seconds, clean exit), including pickup message options and locked-door feedback surviving a pause longer than its normal lifetime. The preceding combined checkpoint passed the full 28-check Chrome suite and scoped WebKit checks. No further full-suite pass is implied after this small HUD addition.
 
 Next: broader scene lighting/presentation comparison and remaining special topology/obstruction scenarios, then actual campaign combat routes, campaign saves and release performance/device evidence. The port remains incomplete; physical hardware checks, full combat completion and documented long C differences are unresolved.
+
+
+## 2026-09-13 — implementation-first queue, distance lighting and Watch demos lettering
+
+**RENDER-01 / UI-01 / MENU-01.** Reordered ROADMAP.md per user direction: known implementation work first; broad comparison/scenario/campaign/device acceptance afterward. Focused regression checks remain part of each fix. Recorded coverage gaps are not reclassified as confirmed bugs.
+
+Implemented `R_InitLightTables` / `R_ExecuteSetViewSize` distance bands for wall/sprite and floor/ceiling materials, original axis-aligned wall brightness bias, and `R_DrawPlayerSprites` weapon-light selection. Muzzle flashes adjust source sector-light bands; power overrides and full-bright frames remain connected. Browser resolution does not change the normalized source projection. Float depth/free look remain Three.js adaptations, documented in FIDELITY.md.
+
+“Watch demos” now uses original large menu artwork fragments, including capital W from M_EPISOD and D from M_DETAIL, with the same 15-pixel canvas and CSS sizing as the other custom menu labels. The resulting menu screenshot was visually inspected; it no longer uses small HUD glyphs. No IWAD pixels or generated screenshots are committed.
+
+Validation: typecheck, 165 unit tests and build pass. Three focused Chrome checks pass with clean exit (8.9 seconds): 84 wall/flat shader swatch comparisons across three distances, power/flash states and two renderer backends; Watch demos lettering/height; mobile action layout. This is implementation regression coverage, not the deferred broad acceptance pass. Next known implementation items are automap vertical visibility, saved-state validation, title/demo wipe lifecycle, recorded simulation discrepancies and diagnostic worker shutdown.

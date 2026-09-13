@@ -12,8 +12,10 @@ export class WadGraphics {
     const first:Piece[]|undefined = text==='Resume game' ? resume
       : text==='Load game' ? [['M_LOADG',0,60]]
       : text==='Save game' ? [['M_SAVEG',0,58]] : undefined;
-    if(!first)return null;
-    const pieces:Piece[]=[...first,['',0,7],['M_NGAME',51,59]];
+    const watch:Piece[]=[['M_EPISOD',0,16],['M_NGAME',68,13],['M_OPTION',30,11],['M_EPISOD',35,14],['M_EPISOD',16,13],
+      ['',0,7],['M_DETAIL',100,17],['M_NGAME',16,13],['M_NGAME',81,17],['M_OPTION',47,15],['M_OPTION',78,14]];
+    if(!first&&text!=='Watch demos')return null;
+    const pieces:Piece[]=text==='Watch demos'?watch:[...first!,['',0,7],['M_NGAME',51,59]];
     if(pieces.some(([name,x,width])=>name && (!this.patch(name) || this.patch(name)!.canvas.width<x+width)))return null;
     const canvas=document.createElement('canvas');canvas.width=pieces.reduce((sum,piece)=>sum+piece[2],0);canvas.height=15;
     canvas.className='doom-menu-label';canvas.setAttribute('aria-hidden','true');

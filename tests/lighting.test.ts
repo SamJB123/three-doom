@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {powerColormap,initDoomLighting,updateDoomLighting,lightingIndex,spriteColors} from '../src/renderer/DoomLighting';
+import {powerColormap,initDoomLighting,updateDoomLighting,lightingIndex,spriteColors,distanceColormap,wallLightBias} from '../src/renderer/DoomLighting';
 import {createPlayerStatus} from '../src/ecs/traits';
 import {WeaponSystem} from '../src/game/Weapons';
 
@@ -19,8 +19,20 @@ test('weapon light actions reset and survive save; fixed colormaps override even
   (copy as any).execAction('A_Light0',state,copy.psprites[1]);assert.equal(copy.extraLight,0);
   const palette=Uint8Array.from({length:768},(_,i)=>Math.floor(i/3));
   const tables=Array.from({length:34},(_,row)=>Uint8Array.from({length:256},(_,i)=>(i+row)%256));
-  initDoomLighting(palette,tables);updateDoomLighting(state,0);const normal=lightingIndex(128);
-  updateDoomLighting(state,2);assert.equal(lightingIndex(128),normal-4);assert.equal(lightingIndex(128,true),0);
+  initDoomLighting(palette,tables);updateDoomLighting(state,0);const normal=lightingIndex(80);
+  updateDoomLighting(state,2);assert.equal(lightingIndex(80),normal-8);assert.equal(lightingIndex(128,true),0);
   state.powers.invulnerability=200;updateDoomLighting(state,2);assert.equal(lightingIndex(128,true),32);
   assert.deepEqual([...spriteColors({width:1,height:1,leftOffset:0,topOffset:0,indices:new Uint8Array([100]),rgba:new Uint8Array([100,100,100,0])},32)],[132,132,132,0]);
+});
+
+
+test('source light tables darken with distance, distinguish planes and apply wall direction before clamping',()=>{
+  assert.deepEqual([32,128,512,4096].map(d=>distanceColormap(160,d)),[0,10,18,20]);
+  assert.deepEqual([32,128,512,4096].map(d=>distanceColormap(160,d,0,0,'flat')),[0,12,18,20]);
+  assert.equal(distanceColormap(128,0),5,'weapon uses MAXLIGHTSCALE-1');
+  assert.equal(distanceColormap(160,128,0,-1),14);
+  assert.equal(distanceColormap(160,128,0,1),6);
+  assert.equal(distanceColormap(160,128,2),2);
+  assert.equal(distanceColormap(0,4096),31);assert.equal(distanceColormap(255,4096,2),0);
+  assert.deepEqual([[1,0],[-1,0],[0,1],[0,-1],[1,1]].map(([x,y])=>wallLightBias(x,y)),[-1,-1,1,1,0]);
 });

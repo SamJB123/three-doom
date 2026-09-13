@@ -111,7 +111,7 @@ export class TextureManager {
       side: FrontSide,
       transparent: false,
       alphaTest: masked ? 0.5 : 0
-    },lightLevel,false,this.colorAtlas );
+    },lightLevel,false,this.colorAtlas,'wall' );
     this.wallCache.set( key, mat );
     this.registerAnimation(mat,texName,lightLevel,true);
     return mat;
@@ -145,7 +145,7 @@ export class TextureManager {
     const mat = litMaterial( {
       map: tex,
       side: DoubleSide
-    },lightLevel,false,this.colorAtlas );
+    },lightLevel,false,this.colorAtlas,'flat' );
     this.flatCache.set( key, mat );
 
     this.registerAnimation(mat,texName,lightLevel,false);

@@ -740,34 +740,37 @@ test('indexed shaders render original power colormaps and muzzle lighting on bot
   const results=await page.evaluate(async()=>{
     const {parseWAD,parsePalette,parseColormap}=await import('/src/wad/index.ts');
     const {TextureManager}=await import('/src/renderer/TextureManager.ts');
-    const {updateDoomLighting,lightingIndex,updateMaterialLight}=await import('/src/renderer/DoomLighting.ts');
+    const {updateDoomLighting,powerColormap,distanceColormap,updateMaterialLight}=await import('/src/renderer/DoomLighting.ts');
     const {createPlayerStatus}=await import('/src/ecs/traits.ts');
     const {WebGPURenderer,Scene,OrthographicCamera,Mesh,PlaneGeometry}=await import('/tests/browser/three.ts');
     const wad=parseWAD(await(await fetch('/doomu.wad')).arrayBuffer()),palette=parsePalette(wad),tables=parseColormap(wad);
     const rgba=new Uint8Array(256*4),indices=Uint8Array.from({length:256},(_,i)=>i);
     for(let i=0;i<256;i++)rgba.set([palette[i*3],palette[i*3+1],palette[i*3+2],255],i*4);
-    const manager=new TextureManager({TEST:{width:256,height:1,rgba,indices}},{},tables,palette);
-    const material=manager.getWallMaterial('TEST',128)!;
-    const scene=new Scene(),geometry=new PlaneGeometry(256,8);scene.add(new Mesh(geometry,material));
-    const camera=new OrthographicCamera(-128,128,4,-4,.1,10);camera.position.z=1;
+    const manager=new TextureManager({TEST:{width:256,height:1,rgba,indices}},{TEST:{width:256,height:1,rgba,indices}},tables,palette);
+    const wall=manager.getWallMaterial('TEST',128)!,flat=manager.getFlatMaterial('TEST',128)!;
+    const scene=new Scene(),geometry=new PlaneGeometry(256,8);const mesh=new Mesh(geometry,wall);scene.add(mesh);
+    const camera=new OrthographicCamera(-128,128,4,-4,.1,100);camera.position.z=1;
     const copy=document.createElement('canvas');copy.width=256;copy.height=8;const ctx=copy.getContext('2d')!;
     const errors=[],renderers=[];
     for(const forceWebGL of [false,true]){
       const renderer=new WebGPURenderer({forceWebGL,antialias:false});renderer.setSize(256,8);await renderer.init();
+      for(const surface of ['wall','flat'] as const)for(const depth of [32,128,512]){
+      const material=surface==='wall'?wall:flat;mesh.material=material;camera.position.z=depth/32;
       for(const [inv,infra,extra,bright] of [[0,0,0,false],[0,0,2,false],[200,0,0,false],[0,200,0,false],[128,200,2,false],[200,0,0,true],[0,0,0,true]] as const){
         await new Promise<void>(resolve=>requestAnimationFrame(()=>resolve()));
         const state=createPlayerStatus();state.powers.invulnerability=inv;state.powers.infrared=infra;updateDoomLighting(state,extra);
-        updateMaterialLight(material,128,bright);const row=lightingIndex(128,bright);renderer.render(scene,camera);
+        updateMaterialLight(material,128,bright);const row=powerColormap(state)>=0?powerColormap(state):bright?0:distanceColormap(128,depth,extra,surface==='wall'?-1:0,surface);renderer.render(scene,camera);
         await renderer.backend.device?.queue.onSubmittedWorkDone();ctx.drawImage(renderer.domElement,0,0);
         const actual=ctx.getImageData(0,4,256,1).data;let maxError=0;
         for(let i=0;i<256;i++)for(let c=0;c<3;c++)maxError=Math.max(maxError,Math.abs(actual[i*4+c]-palette[tables[row][i]*3+c]));
-        errors.push({forceWebGL,row,bright,maxError,sample:Array.from(actual.slice(400,403)),expected:Array.from(palette.slice(tables[row][100]*3,tables[row][100]*3+3))});
+        errors.push({forceWebGL,surface,depth,row,bright,maxError,sample:Array.from(actual.slice(400,403)),expected:Array.from(palette.slice(tables[row][100]*3,tables[row][100]*3+3))});
+      }
       }
       renderers.push(renderer);
     }
     geometry.dispose();manager.dispose();for(const renderer of renderers)renderer.dispose();updateDoomLighting(createPlayerStatus(),0);return errors;
   });
-  expect(results).toHaveLength(14);for(const error of results)expect(error.maxError,JSON.stringify(results)).toBeLessThanOrEqual(1);
+  expect(results).toHaveLength(84);for(const error of results)expect(error.maxError,JSON.stringify(results)).toBeLessThanOrEqual(1);
 });
 
 test('death view turns toward the killer and pauses with the menu',async({page})=>{
@@ -836,4 +839,16 @@ test('locked doors show original key feedback in the WAD HUD and pause its lifet
   await expect(page.getByRole('status')).toHaveText('You need a blue key to open this door');
   await page.getByRole('button',{name:'Resume game',exact:true}).click();
   await expect(page.locator('#hud-message')).toBeHidden({timeout:6000});
+});
+
+
+test('Watch demos uses the large authored menu lettering and matching height',async({page})=>{
+  await ready(page);
+  const watch=page.getByRole('button',{name:'Watch demos',exact:true});
+  await expect(watch.locator('canvas.doom-menu-label')).toBeVisible();
+  await expect(watch.locator('canvas.doom-label')).toHaveCount(0);
+  const bounds=await watch.locator('canvas').boundingBox();
+  const canonical=await page.getByRole('button',{name:'New game',exact:true}).locator('img').boundingBox();
+  expect(bounds!.height).toBeCloseTo(canonical!.height,0);
+  await page.screenshot({path:'artifacts/watch-demos-lettering.png'});
 });

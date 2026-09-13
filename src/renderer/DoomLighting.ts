@@ -1,8 +1,19 @@
 import {DataTexture,RGBAFormat,SRGBColorSpace,NearestFilter,RepeatWrapping,MeshBasicMaterial,MeshBasicNodeMaterial,type MeshBasicMaterialParameters,type Material} from 'three/webgpu';
-import {uniform,materialReference,texture,vec2,vec4} from 'three/tsl';
+import {uniform,materialReference,texture,vec2,vec4,positionView,normalWorld} from 'three/tsl';
 import type {PlayerStatusState} from '../ecs/traits';
 import type {TextureData,SpriteFrame} from '../wad';
-import {lightLevelToColormapIndex} from '../wad/ColormapParser';
+export type LightSurface='sprite'|'wall'|'flat';
+// R_InitLightTables / R_ExecuteSetViewSize, normalized to the original 320-wide
+// view. Depth is in map units. Three.js perspective/free look remain adaptations.
+export function distanceColormap(light:number,depth:number,extraLight=0,bias=0,surface:LightSurface='sprite'):number {
+  const level=Math.max(0,Math.min(15,(light>>4)+extraLight+bias));
+  const scale=surface==='flat'
+    ?Math.floor(160/(Math.min(127,Math.floor(Math.max(0,depth)/16))+1))
+    :Math.min(47,Math.floor(2560/Math.max(depth,0.001)));
+  return Math.max(0,Math.min(31,(15-level)*4-Math.floor(scale/2)));
+}
+export function wallLightBias(dx:number,dy:number):number {return dy===0?-1:dx===0?1:0;}
+
 
 export function powerColormap(state:PlayerStatusState):number {
   const inv=state.powers.invulnerability,infra=state.powers.infrared;
@@ -25,7 +36,7 @@ export function initDoomLighting(colors:Uint8Array,tables:Uint8Array[]):void {
 }
 export function updateDoomLighting(state:PlayerStatusState,extraLight:number):void {extra.value=extraLight;fixed.value=powerColormap(state);}
 export function lightingIndex(light:number,bright=false):number {
-  return fixed.value>=0?fixed.value:bright?0:Math.max(0,lightLevelToColormapIndex(light)-extra.value*2);
+  return fixed.value>=0?fixed.value:bright?0:distanceColormap(light,0,extra.value);
 }
 export function indexedTexture(data:TextureData|SpriteFrame,enabled=!!atlas):DataTexture|null {
   if(!enabled||!data.indices)return null;
@@ -34,11 +45,19 @@ export function indexedTexture(data:TextureData|SpriteFrame,enabled=!!atlas):Dat
   const result=new DataTexture(rgba,data.width,data.height,RGBAFormat);
   result.magFilter=result.minFilter=NearestFilter;result.wrapS=result.wrapT=RepeatWrapping;result.needsUpdate=true;return result;
 }
-export function litMaterial(params:MeshBasicMaterialParameters,light:number,bright=false,lookup=atlas):MeshBasicMaterial|MeshBasicNodeMaterial {
+export function litMaterial(params:MeshBasicMaterialParameters,light:number,bright=false,lookup=atlas,surface:LightSurface='sprite'):MeshBasicMaterial|MeshBasicNodeMaterial {
   if(!lookup)return new MeshBasicMaterial(params);
-  const material=new MeshBasicNodeMaterial(params),base=uniform(lightLevelToColormapIndex(light)),full=uniform(bright?1:0);
+  const material=new MeshBasicNodeMaterial(params),base=uniform(light),full=uniform(bright?1:0);
   const sample=vec4(materialReference('map','texture'));
-  const ordinary=full.greaterThan(0).select(0,base.sub(extra.mul(2)).clamp(0,31));
+  // Map X/Y correspond to world X/-Z; opposing faces share the same bias.
+  const bias=surface==='wall'?normalWorld.x.abs().greaterThan(0.99999).select(1,normalWorld.z.abs().greaterThan(0.99999).select(-1,0)):uniform(0);
+  const level=base.div(16).floor().add(extra).add(bias).clamp(0,15);
+  const depth=positionView.z.negate().mul(32).max(0.001);
+  const scale=surface==='flat'
+    ?depth.div(16).floor().min(127).add(1).reciprocal().mul(160).floor()
+    :depth.reciprocal().mul(2560).floor().min(47);
+  const shade=level.negate().add(15).mul(4).sub(scale.div(2).floor()).clamp(0,31);
+  const ordinary=full.greaterThan(0).select(0,shade);
   const row=fixed.greaterThanEqual(0).select(fixed,ordinary);
   material.colorNode=texture(lookup,vec2(sample.r.mul(255).add(0.5).div(256),row.add(0.5).div(34))).rgb;
   material.opacityNode=sample.a;
@@ -46,7 +65,7 @@ export function litMaterial(params:MeshBasicMaterialParameters,light:number,brig
   return material;
 }
 export function updateMaterialLight(material:Material,light:number,bright=false):void {
-  if(material.userData.doomLight){material.userData.doomLight.value=lightLevelToColormapIndex(light);material.userData.doomBright.value=bright?1:0;}
+  if(material.userData.doomLight){material.userData.doomLight.value=light;material.userData.doomBright.value=bright?1:0;}
 }
 export function spriteColors(frame:SpriteFrame,index:number):Uint8Array {
   if(!palette||!colormaps||!frame.indices)return frame.rgba;

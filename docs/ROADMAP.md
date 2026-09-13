@@ -53,13 +53,20 @@ The initial review reproduced: solid actor overlap; ignored two-sided `ML_BLOCKI
 
 These remain open unless a progress entry and acceptance test explicitly close them. Tests marked TODO are not passing fidelity evidence.
 
-## Next slices — presentation and release coverage first
+## Implementation first, final acceptance afterward
 
-1. UI-01 / RENDER-01: broader lighting/sprite comparisons. Automap BSP discovery, HUD layout and saved circular marks have scoped checks. Title/credits/four-demo playback, HUD faces and authored PLAYPAL effects are now connected and checked.
-2. UI-01 / RENDER-01: broaden reference-view comparisons after indexed power colormaps and muzzle lighting; source distance-light falloff remains an approximation.
-3. SPEC-01 / SPEC-02: complete scenario coverage for IWAD-used special families. Known chainsaw, ammo fallback and monster manual-door omissions have behavioral regressions and are checkpointed.
-4. SAVE-01 / MAP-01: complex gameplay save/restore and malformed-input cases.
-5. FLOW-02 / BOSS-01 / AUDIO-01: campaign combat progression, secret routes, boss gates, all endings and representative audiovisual checks.
-6. Release browser/device/performance gates in RELEASE-CHECKS.md, including long-worker shutdown. Physical-device checks require actual hardware evidence.
+User direction: finish known implementation gaps before broad verification. Each fix retains focused regression checks plus required typecheck/unit/build checks; campaign playthroughs, broad reference comparisons, expanded coverage-only scenarios and device/performance acceptance are deferred to the final pass.
 
-Longer C discrepancies remain tracked (DEMO1 RNG at 463, DEMO2 angle at 2271, DEMO3 blood height at 2036, DEMO4 enemy wake at 368). They do not take priority over the above missing coverage unless a concrete gameplay blocker requires them. The bullet side-probe fix is implemented with a behavioral regression; refreshed C evidence remains pending. Exact full-demo equivalence is not substituted for playable campaign/release coverage.
+| Order | ID | Known implementation work | State |
+|---|---|---|---|
+| 1 | RENDER-01 | Replace constant approximate lighting with source distance bands, wall direction bias and weapon light-table selection (`R_InitLightTables`, `R_ExecuteSetViewSize`, `R_DrawPlayerSprites`) | Connected; focused table/shader checks pass |
+| 2 | MENU-01 | Match Watch demos lettering to original large menu glyphs | Fixed; rendered menu checked |
+| 3 | UI-01 | Automap discovery lacks vertical visibility clipping; horizontal BSP spans can reveal vertically occluded lines | Open |
+| 4 | SAVE-01 | Reject malformed saved state enums/booleans before restoring runtime thinkers and weapons | Open; input-validation gap, not a confirmed valid-save failure |
+| 5 | UI-02 | Title/demo transitions do not yet reproduce the original wipe lifecycle | Open; title/credit/demo content already connected |
+| 6 | LOOP-02 | Diagnose and repair the already recorded simulation differences; do not expand trace lengths as an end in itself | Open; historical DEMO1 RNG 463, DEMO2 angle 2271, DEMO3 blood height 2036, DEMO4 enemy wake 368. Bullet side probes are implemented; that comparison needs refreshing before claiming an unresolved cause |
+| 7 | BUILD-01 | Resolve long diagnostic worker shutdown stall | Open; tooling defect, not a production attract-cycle failure |
+
+Three.js rasterization, free-look sky pole handling, the requested continuous scrolling-loop UV adjustment, original DOS executable/save-format compatibility and multiplayer are explicitly distinct from missing single-player implementation. Preserve those distinctions when auditing gaps.
+
+After the implementation queue: run the finite special-family, campaign-save, audiovisual comparison, 36-map combat and browser/device/performance acceptance gates in SPECIAL-COVERAGE.md and RELEASE-CHECKS.md. A coverage gap alone is not a confirmed implementation defect; failures discovered during acceptance become concrete fixes.
