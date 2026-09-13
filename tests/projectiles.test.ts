@@ -102,3 +102,22 @@ test('overlapping projectile candidates follow block-link order, including same-
   }
   resetThinkers();allMobjs.length=0;
 });
+
+test('P_XYMovement splits ordinary knockback before collision and applies friction once',()=>{
+  for(const [x,momentum,expected] of [[-40,30,-25],[40,-30,40]]){
+    resetThinkers();allMobjs.length=0;const map=dividedMap();map.linedefs[0].left=-1;
+    initMobjSystem({},new Group(),map);const actor=spawnMobj(x*F,0,0,'MT_TROOP');actor.momx=momentum*F;
+    runThinkers();assert.equal(actor.x,expected*F);assert.equal(actor.momx,0);
+  }
+  setup();const actor=spawnMobj(40*F,0,0,'MT_TROOP');actor.momx=20*F;
+  runThinkers();assert.equal(actor.x,60*F);assert.equal(actor.momx,20*0xe800);
+  resetThinkers();allMobjs.length=0;
+});
+test('P_XYMovement retains corpse momentum while straddling a lower floor',async()=>{
+  const {MF_CORPSE,MF_DROPOFF}=await import('../src/game/MobjData');
+  resetThinkers();allMobjs.length=0;const map=dividedMap();map.sectors[0].floorHeight=48;
+  initMobjSystem({},new Group(),map);const actor=spawnMobj(5*F,0,48*F,'MT_TROOP');
+  actor.flags|=MF_CORPSE|MF_DROPOFF;actor.momx=-8*F;
+  runThinkers();assert.equal(actor.x,-3*F);assert.equal(actor.floorz,48*F);assert.equal(actor.momx,-8*F);
+  resetThinkers();allMobjs.length=0;
+});

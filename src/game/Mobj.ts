@@ -334,7 +334,24 @@ export function setMissileAimCallback(callback:NonNullable<typeof missileAim>):v
 // ============================================================
 
 function xyMovement( mo: Mobj ): void {
-  if (!(mo.flags & (MF_MISSILE | MF_SKULLFLY))) { xyMovementStep(mo); return; }
+  if ( mo.momx === 0 && mo.momy === 0 ) {
+
+    // Skull fly that stopped: reset to spawn state
+    if ( ( mo.flags & MF_SKULLFLY ) !== 0 ) {
+
+      mo.flags &= ~MF_SKULLFLY;
+      mo.momx = 0;
+      mo.momy = 0;
+      mo.momz = 0;
+      setMobjState( mo, mo.info.spawnState );
+
+    }
+
+    return;
+
+  }
+
+  const projectile=!!(mo.flags&(MF_MISSILE|MF_SKULLFLY));
   mo.momx=Math.max(-30*FRACUNIT,Math.min(30*FRACUNIT,mo.momx));
   mo.momy=Math.max(-30*FRACUNIT,Math.min(30*FRACUNIT,mo.momy));
   let xmove=mo.momx,ymove=mo.momy;
@@ -344,8 +361,9 @@ function xyMovement( mo: Mobj ): void {
       dx=Math.trunc(xmove/2);dy=Math.trunc(ymove/2);xmove>>=1;ymove>>=1;
     }else{dx=xmove;dy=ymove;xmove=ymove=0;}
     xyMovementStep(mo,dx,dy);
-    if(mo.removed||!(mo.flags&(MF_MISSILE|MF_SKULLFLY))||(!mo.momx&&!mo.momy))return;
+    if(mo.removed||(projectile&&(!(mo.flags&(MF_MISSILE|MF_SKULLFLY))||(!mo.momx&&!mo.momy))))return;
   }while(xmove||ymove);
+  applyFriction(mo);
 }
 
 // PIT_CheckThing projectile/skull branches. Check the candidate position
@@ -378,23 +396,6 @@ function projectileThingImpact(mo:Mobj,x:Fixed,y:Fixed):boolean {
 
 function xyMovementStep( mo: Mobj, dx=mo.momx, dy=mo.momy ): void {
 
-  if ( mo.momx === 0 && mo.momy === 0 ) {
-
-    // Skull fly that stopped: reset to spawn state
-    if ( ( mo.flags & MF_SKULLFLY ) !== 0 ) {
-
-      mo.flags &= ~MF_SKULLFLY;
-      mo.momx = 0;
-      mo.momy = 0;
-      mo.momz = 0;
-      setMobjState( mo, mo.info.spawnState );
-
-    }
-
-    return;
-
-  }
-
   const nextX = mo.x + dx;
   const nextY = mo.y + dy;
 
@@ -425,11 +426,20 @@ function xyMovementStep( mo: Mobj, dx=mo.momx, dy=mo.momy ): void {
   }
 
   // tryMove already updated position and may have teleported through a crossing.
+}
 
+function applyFriction(mo:Mobj):void {
   if (mo.flags & (MF_MISSILE | MF_SKULLFLY)) return; // no friction
 
   // Don't apply friction if airborne
   if ( mo.z > mo.floorz ) return;
+
+  // P_XYMovement keeps a corpse sliding when its collision floor still
+  // straddles a ledge above the floor of its centre subsector.
+  if((mo.flags&MF_CORPSE)&&(Math.abs(mo.momx)>FRACUNIT/4||Math.abs(mo.momy)>FRACUNIT/4)&&mapData){
+    const sector=findSectorAt(mo.x/FRACUNIT,mo.y/FRACUNIT,mapData);
+    if(sector&&mo.floorz!==intToFixed(sector.floorHeight))return;
+  }
 
   // Stop if below threshold
   if (

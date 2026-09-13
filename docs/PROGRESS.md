@@ -342,3 +342,9 @@ Typecheck, 121 unit tests and production build pass. Chrome and WebKit each pass
 DEMO2 now passes the explicit 700-tic C gate. Its extended trace agrees through tic 1335, then first differs in a dead imp's XY position at 1336. Inspection finds ordinary actor knockback still skips `P_XYMovement` subdivision, unlike the already-corrected projectile branch; that is next. The full recording still reaches rebirth and is not a full-demo pass.
 
 Validation: typecheck, 122 unit tests and build pass. The 700-tic DEMO2 repeatability/pause check, mobile tap/wheel check and dedicated weapon-turn/preserved-pitch browser check pass. Regressions cover punch RNG, matching aim/fire rays, hit-facing and unchanged facing after a miss. Broader completion gates remain open.
+
+## 2026-09-13 — ordinary knockback subdivision and corpse ledges
+
+**PHYS-01 / COMBAT-01 / LOOP-02.** Ordinary actors now share `P_XYMovement`'s clamped, signed subdivision with missiles, applying friction once after all steps. A blocked second half preserves the first half's movement. Corpse momentum is retained when collision support straddles a ledge above the centre sector's floor. Tests cover positive/negative split asymmetry at a wall, once-per-tic friction and corpse ledge sliding.
+
+DEMO2 now completes all 2347 commands and its two port recordings agree across frame schedules and pause. Original C agrees through 2270 tics; the next first mismatch is player angle at 2271. The earlier knocked-back corpse divergence at 1336 is resolved. Typecheck, 124 unit tests and build pass; full DEMO2 browser repeatability passes. Next: centre-sector floor contact for DEMO3 environmental damage, then remaining first trace failures.

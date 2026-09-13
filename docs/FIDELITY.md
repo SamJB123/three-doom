@@ -109,3 +109,5 @@ Developer replay now pauses and retains its trace on rebirth/level-exit boundari
 Mobile touch-handler/menu assertions pass in installed Chrome and Playwright WebKit 26.6 using portable synthetic events. Those assertions do not establish trusted hardware delivery, thumb comfort, mobile Safari/Android performance or sound quality. See RELEASE-CHECKS.md for reproducible commands and outstanding campaign/device gates.
 
 Restoring `A_Punch` spread, hit feedback and target-facing advances DEMO2 agreement through 1335 tics; the explicit 700-tic gate passes. The next captured mismatch at 1336 is ordinary corpse XY movement. Browser control synchronization preserves vertical look while applying the weapon turn.
+
+Ordinary actor movement subdivision and corpse ledge friction advance DEMO2 agreement through 2270 tics. The complete 2347-command recording is now port-repeatable; the remaining first C difference is player angle at 2271. The earlier rebirth truncation is resolved for this demo.
