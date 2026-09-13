@@ -57,7 +57,7 @@ function ensureValidArray( numLinedefs: number ): void {
 // Returns: 0 = front/left, 1 = back/right, 2 = on line
 // ============================================================
 
-function divlineSide( x: number, y: number, node: DivLine ): 0 | 1 | 2 {
+export function divlineSide( x: number, y: number, node: DivLine ): 0 | 1 | 2 {
 
   if ( node.dx === 0 ) {
 
@@ -68,7 +68,8 @@ function divlineSide( x: number, y: number, node: DivLine ): 0 | 1 | 2 {
 
   if ( node.dy === 0 ) {
 
-    if ( y === node.y ) return 2;
+    // Preserve P_DivlineSide's original horizontal x==node.y test.
+    if ( x === node.y ) return 2;
     return y <= node.y ? ( node.dx < 0 ? 1 : 0 ) : ( node.dx > 0 ? 1 : 0 );
 
   }

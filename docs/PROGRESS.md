@@ -310,3 +310,9 @@ Fixed command thrust rounding, original `P_XYMovement` projectile subdivision, `
 Added `npm run verify:world -- 350` to compare existing browser captures against fresh C runs for all four demos, retaining separate ignored provenance/reports. It deliberately fails while any demo differs. Full hitscan blockmap ordering, three-angle bullet autoaim, longer recordings and presentation/campaign/device gates remain open. Next: investigate DEMO4's first sight/wake difference, then extend recordings.
 
 Validation: 119 unit tests, typecheck and production build pass. All four 350-tic browser replay checks pass, including pause and changed frame batching. The preceding save/load and mobile checks passed with the new collision-link persistence; all 36 WAD maps pass smoke verification. The C gate passes DEMO1–3 and correctly fails DEMO4 at tic 158.
+
+## 2026-09-13 — original sight boundary behavior
+
+**ACTOR-02 / LOOP-02.** `P_DivlineSide` in the supplied original C tests `x == node->y` in its horizontal branch. Preserving that quirk fixes DEMO4's premature enemy wake at tic 158 and extends agreement through tic 216. A direct boundary regression distinguishes it from the geometrically conventional Y test. Raised-floor and explosion-occlusion fixtures now sit one unit off that boundary so they continue to isolate their intended behavior.
+
+The next divergence, tic 217, is a shotgun pellet hitting an actor whose centre lies outside the traversed blockmap cells. The current hitscan path scans all actors; replacing it with source cell ordering is the next work item. This is a source-compatibility finding, not evidence of full sight or demo parity. Typecheck, 120 unit tests and build pass; all 22 installed-Chrome browser checks pass (4.2 minutes), including all four replay comparisons, campaign routing, saves and mobile controls. All 36 maps pass WAD smoke verification.

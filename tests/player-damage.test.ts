@@ -21,7 +21,7 @@ test('player damage applies armor, cheat threshold and hell-exit survival in sou
 test('radius damage reaches the player once through sight tracing and excludes both boss types',()=>{
   resetThinkers();allMobjs.length=0;
   const map=dividedMap();initMobjSystem({},new Group(),map);setAttackMap(map);
-  const player=spawnMobj(40*F,0,0,'MT_PLAYER'),spot=spawnMobj(-40*F,0,0,'MT_ROCKET');
+  const player=spawnMobj(40*F,F,0,'MT_PLAYER'),spot=spawnMobj(-40*F,F,0,'MT_ROCKET');
   const cyborg=spawnMobj(-40*F,0,0,'MT_CYBORG'),spider=spawnMobj(-40*F,0,0,'MT_SPIDER');
   const seen:number[]=[];setPlayerDamageMobjCallback(damage=>{seen.push(damage);});
   radiusAttack(spot,null,128);assert.deepEqual(seen,[64]);assert.equal(cyborg.health,4000);assert.equal(spider.health,3000);
