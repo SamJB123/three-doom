@@ -1,9 +1,11 @@
 // Doom door system — vertical doors that raise/lower sector ceilings.
 // Ported from p_doors.c
 
+import type { PlayerStatusState } from '../ecs/traits';
+import { playSound } from '../sound';
 import type { Linedef, Sidedef, Sector } from '../wad';
 import { movePlane, getLowestCeilingHeight } from './SectorHelpers';
-import { addThinker, markSectorDirty } from './Thinkers';
+import { addThinker, markSectorDirty, archivedThinker, busySectors } from './Thinkers';
 import { playSoundAt } from '../sound';
 import { intToFixed } from '../math/fixed';
 
@@ -20,7 +22,7 @@ export type VDoorType =
   | 'blazeClose'     // fast close
   | 'close30ThenOpen'; // closes, waits 30s, opens
 
-interface VDoor {
+export interface VDoor {
   sectorIdx: number;
   type: VDoorType;
   topHeight: number;
@@ -31,7 +33,8 @@ interface VDoor {
 }
 
 // Track which sectors already have active door thinkers
-const activeDoorSectors = new Set<number>();
+const activeDoorSectors = new Map<number, VDoor>();
+export function resetDoors(): void { activeDoorSectors.clear(); }
 
 // T_VerticalDoor — runs every tic for an active door
 // Ported from p_doors.c lines 63-198
@@ -44,7 +47,7 @@ function makeVerticalDoorThinker(
   const sy = intToFixed( sectors[ door.sectorIdx ].soundY );
   const sz = intToFixed( sectors[ door.sectorIdx ].floorHeight );
 
-  return () => {
+  return archivedThinker(() => {
 
     const sector = sectors[ door.sectorIdx ];
 
@@ -98,7 +101,7 @@ function makeVerticalDoorThinker(
             case 'blazeOpen':
             case 'open':
               // Door stays open — remove thinker
-              activeDoorSectors.delete( door.sectorIdx );
+              activeDoorSectors.delete( door.sectorIdx ); busySectors.delete(door.sectorIdx);
               return false;
 
             default:
@@ -124,12 +127,12 @@ function makeVerticalDoorThinker(
             case 'blazeRaise':
             case 'blazeClose':
               playSoundAt( 'bdcls', sx, sy, sz );
-              activeDoorSectors.delete( door.sectorIdx );
+              activeDoorSectors.delete( door.sectorIdx ); busySectors.delete(door.sectorIdx);
               return false; // done
 
             case 'normal':
             case 'close':
-              activeDoorSectors.delete( door.sectorIdx );
+              activeDoorSectors.delete( door.sectorIdx ); busySectors.delete(door.sectorIdx);
               return false; // done
 
             case 'close30ThenOpen':
@@ -161,7 +164,7 @@ function makeVerticalDoorThinker(
 
     return true; // keep alive
 
-  };
+  }, 'door', () => door);
 
 }
 
@@ -171,25 +174,28 @@ export function evVerticalDoor(
   line: Linedef,
   linedefs: Linedef[],
   sidedefs: Sidedef[],
-  sectors: Sector[]
-): void {
+  sectors: Sector[],
+  state?: PlayerStatusState,
+  playerUse = true
+): boolean {
 
+  const color = ({26:'blue',32:'blue',27:'yellow',34:'yellow',28:'red',33:'red'} as const)[line.special as 26];
+  if (color && (!state || !(state.cards[`${color}card`] || state.cards[`${color}skull`]))) {
+    playSound('oof');
+    return false;
+  }
   // The door sector is on the BACK side of the linedef
-  if ( line.left < 0 ) return;
+  if ( line.left < 0 ) return false;
 
   const doorSectorIdx = sidedefs[ line.left ].sector;
   const sector = sectors[ doorSectorIdx ];
 
-  // If door is already active, reverse it
-  if ( activeDoorSectors.has( doorSectorIdx ) ) {
-
-    // We don't have direct reference to the door thinker, so just skip
-    // (In original Doom, this reverses the door direction)
-    return;
-
+  const active = activeDoorSectors.get(doorSectorIdx);
+  if (active) {
+    if ([1,26,27,28,117].includes(line.special) && (active.direction === -1 || playerUse)) active.direction = active.direction === -1 ? 1 : -1;
+    return true;
   }
-
-  activeDoorSectors.add( doorSectorIdx );
+  if(busySectors.has(doorSectorIdx))return false;
 
   // Determine door type and speed from line special
   let type: VDoorType = 'normal';
@@ -253,8 +259,10 @@ export function evVerticalDoor(
 
   }
 
+  activeDoorSectors.set(door.sectorIdx, door);busySectors.add(door.sectorIdx);
   addThinker( makeVerticalDoorThinker( door, sectors ) );
 
+  return true;
 }
 
 // EV_DoDoor — activate tagged doors (switches, walk-overs)
@@ -272,9 +280,8 @@ export function evDoDoor(
   for ( let i = 0; i < sectors.length; i ++ ) {
 
     if ( sectors[ i ].tag !== tag ) continue;
-    if ( activeDoorSectors.has( i ) ) continue;
+    if ( busySectors.has( i ) ) continue;
 
-    activeDoorSectors.add( i );
     activated = true;
 
     let speed = VDOORSPEED;
@@ -286,7 +293,7 @@ export function evDoDoor(
 
     }
 
-    if ( type === 'close' || type === 'blazeClose' ) {
+    if ( type === 'close' || type === 'blazeClose' || type === 'close30ThenOpen' ) {
 
       direction = - 1;
 
@@ -336,10 +343,16 @@ export function evDoDoor(
 
     }
 
-    addThinker( makeVerticalDoorThinker( door, sectors ) );
+    activeDoorSectors.set(door.sectorIdx, door);busySectors.add(door.sectorIdx);
+  addThinker( makeVerticalDoorThinker( door, sectors ) );
 
   }
 
   return activated;
 
+}
+
+export function restoreDoors(state: VDoor, sectors: Sector[]): void {
+  activeDoorSectors.set(state.sectorIdx, state);busySectors.add(state.sectorIdx);
+  addThinker(makeVerticalDoorThinker(state, sectors));
 }

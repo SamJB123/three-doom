@@ -68,7 +68,7 @@ export interface MobjInfo {
   painSound: string | null;
   deathSound: string | null;
   activeSound: string | null;
-  speed: Fixed;
+  speed: number; // Integer map units for monsters; fixed-point for missiles.
   radius: Fixed;
   height: Fixed;
   mass: number;
@@ -1621,6 +1621,31 @@ export const MOBJ_TYPES: Record<string, MobjInfo> = {
     flags: MF_NOBLOCKMAP | MF_MISSILE | MF_DROPOFF | MF_NOGRAVITY,
   },
 
+  MT_EXTRABFG: {
+    doomedNum: -1,
+    spawnState: 'S_BFGEXP',
+    spawnHealth: 1000,
+    seeState: null,
+    painState: null,
+    painChance: 0,
+    meleeState: null,
+    missileState: null,
+    deathState: 'S_NULL',
+    xDeathState: null,
+    raiseState: null,
+    seeSound: null,
+    attackSound: null,
+    painSound: null,
+    deathSound: null,
+    activeSound: null,
+    speed: 0,
+    radius: 20 * FRACUNIT,
+    height: 16 * FRACUNIT,
+    mass: 100,
+    damage: 0,
+    flags: MF_NOBLOCKMAP | MF_NOGRAVITY,
+  },
+
   MT_TFOG: {
     doomedNum: -1,
     spawnState: 'S_TFOG',
@@ -1693,15 +1718,37 @@ export const MOBJ_TYPES: Record<string, MobjInfo> = {
     height: 56 * FRACUNIT,
     mass: 100,
     damage: 0,
-    flags: MF_SOLID | MF_SHOOTABLE,
+    flags: MF_SOLID | MF_SHOOTABLE | MF_DROPOFF | MF_PICKUP,
   },
 
 };
+
+// Stationary pickup states and info from info.c. These are real actors so
+// monster drops participate in movement, sector changes and save archives.
+for (const [type, doomedNum, state, sprite] of [
+  ['MT_CLIP', 2007, 'S_CLIP', 'CLIP'],
+  ['MT_SHOTGUN', 2001, 'S_SHOT', 'SHOT'],
+  ['MT_CHAINGUN', 2002, 'S_MGUN', 'MGUN'],
+] as const) {
+  MOBJ_STATES[state] = {sprite, frame:0, bright:false, tics:-1, action:null, next:'S_NULL'};
+  MOBJ_TYPES[type] = {
+    doomedNum, spawnState:state, spawnHealth:1000, seeState:null,
+    painState:null, painChance:0, meleeState:null, missileState:null,
+    deathState:'S_NULL', xDeathState:null, raiseState:null,
+    seeSound:null, attackSound:null, painSound:null, deathSound:null, activeSound:null,
+    speed:0, radius:20*FRACUNIT, height:16*FRACUNIT, mass:100, damage:0, flags:MF_SPECIAL,
+  };
+}
 
 // Reverse lookup: WAD doomednum → type name
 export const DOOMEDNUM_TO_TYPE: Record<number, string> = {};
 
 for ( const [ typeName, info ] of Object.entries( MOBJ_TYPES ) ) {
+
+  // Keep existing map pickups in the static-pickup archive format. The new
+  // actors are used for monster drops; migrating map items needs a save-format
+  // migration so existing saves do not silently lose their remaining items.
+  if (typeName === 'MT_CLIP' || typeName === 'MT_SHOTGUN' || typeName === 'MT_CHAINGUN') continue;
 
   if ( info.doomedNum >= 0 ) {
 

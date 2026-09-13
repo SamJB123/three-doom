@@ -16,91 +16,24 @@ export function movePlane(
   direction: number       // 1 = up, -1 = down
 ): MovePlaneResult {
 
-  if ( floorOrCeiling === 0 ) {
-
-    // Moving the floor
-    if ( direction === - 1 ) {
-
-      // Floor moving down
-      if ( sector.floorHeight - speed < dest ) {
-
-        sector.floorHeight = dest;
-        return 'pastdest';
-
-      }
-
-      sector.floorHeight -= speed;
-
-    } else {
-
-      // Floor moving up
-      if ( sector.floorHeight + speed > dest ) {
-
-        sector.floorHeight = dest;
-        return 'pastdest';
-
-      }
-
-      // Check for crushing against ceiling
-      if ( sector.floorHeight + speed > sector.ceilingHeight ) {
-
-        return crush ? 'crushed' : 'pastdest';
-
-      }
-
-      sector.floorHeight += speed;
-
+  const key = floorOrCeiling === 0 ? 'floorHeight' : 'ceilingHeight';
+  const previous = sector[key];
+  const candidate = previous + speed * direction;
+  const past = direction < 0 ? candidate < dest : candidate > dest;
+  sector[key] = past ? dest : candidate;
+  const blocked = changeSector(sector, crush);
+  if (blocked && (past || !(floorOrCeiling === 1 && direction > 0))) {
+    if (past || !crush || (floorOrCeiling === 0 && direction < 0)) {
+      sector[key] = previous;
+      changeSector(sector, crush);
     }
-
-  } else {
-
-    // Moving the ceiling
-    if ( direction === - 1 ) {
-
-      // Ceiling moving down
-      if ( sector.ceilingHeight - speed < dest ) {
-
-        sector.ceilingHeight = dest;
-        return 'pastdest';
-
-      }
-
-      // Check for crushing against floor
-      if ( sector.ceilingHeight - speed < sector.floorHeight ) {
-
-        if ( crush ) {
-
-          sector.ceilingHeight -= speed;
-          return 'crushed';
-
-        }
-
-        sector.ceilingHeight = sector.floorHeight;
-        return 'pastdest';
-
-      }
-
-      sector.ceilingHeight -= speed;
-
-    } else {
-
-      // Ceiling moving up
-      if ( sector.ceilingHeight + speed > dest ) {
-
-        sector.ceilingHeight = dest;
-        return 'pastdest';
-
-      }
-
-      sector.ceilingHeight += speed;
-
-    }
-
+    return past ? 'pastdest' : 'crushed';
   }
-
-  return 'ok';
-
+  return past ? 'pastdest' : 'ok';
 }
+
+let changeSector: (sector: Sector, crush: boolean) => boolean = () => false;
+export function setSectorChangeCallback(callback: typeof changeSector): void { changeSector = callback; }
 
 // Find sectors neighboring a given sector via shared two-sided linedefs
 export function getNeighborSectors(

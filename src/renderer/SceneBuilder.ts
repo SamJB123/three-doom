@@ -1,6 +1,6 @@
 import { Group, BufferGeometry, Float32BufferAttribute, Mesh } from 'three/webgpu';
 import type { Vertex, Linedef, Sidedef, Sector, Thing, TextureData, Palette } from '../wad/types';
-import { buildSectorPolygons, triangulate } from '../wad/SectorBuilder';
+import { buildSectorPolygons, triangulateSector } from '../wad/SectorBuilder';
 import { TextureManager } from './TextureManager';
 
 const SCALE = 1.0 / 32.0;
@@ -8,13 +8,16 @@ const SCALE = 1.0 / 32.0;
 interface WallBatch {
   texName: string;
   lightLevel: number;
+  masked: boolean;
   positions: number[];
   uvs: number[];
+  scrolls: {start:number;side:Sidedef;offset:number;width:number}[];
 }
 
 export class SceneManager {
 
   private texMgr: TextureManager;
+  private scrollingSides=new Set<Sidedef>();
   private sectorGroups: Map<number, Group> = new Map();
   private sectorLinedefs: Map<number, number[]> = new Map(); // sector → linedef indices
   readonly root = new Group();
@@ -30,6 +33,7 @@ export class SceneManager {
     palette: Palette
   ) {
 
+    for(const line of linedefs)if(line.special===48)this.scrollingSides.add(sidedefs[line.right]);
     this.texMgr = new TextureManager( wallTextures, flats, colormap, palette );
 
     // Pre-compute which linedefs touch each sector
@@ -66,9 +70,26 @@ export class SceneManager {
 
   }
 
+  dispose(): void {
+    this.root.traverse(child => { if (child instanceof Mesh) child.geometry.dispose(); });
+    this.root.clear(); this.sectorGroups.clear(); this.texMgr.dispose();
+  }
+
   updateAnimatedTextures( levelTic: number ): void {
 
     this.texMgr.updateAnimatedTextures( levelTic );
+    this.root.traverse(object=>{
+      if(!(object instanceof Mesh))return;
+      const records=object.geometry.userData.scrolls as WallBatch['scrolls'] | undefined;
+      if(!records?.length)return;
+      const uv=object.geometry.getAttribute('uv');
+      for(const record of records){
+        const delta=(record.side.xoff-record.offset)/record.width;
+        if(!delta)continue;
+        for(let i=record.start;i<record.start+6;i++)uv.setX(i,uv.getX(i)+delta);
+        record.offset=record.side.xoff;uv.needsUpdate=true;
+      }
+    });
 
   }
 
@@ -159,9 +180,10 @@ export class SceneManager {
       const geom = new BufferGeometry();
       geom.setAttribute( 'position', new Float32BufferAttribute( batch.positions, 3 ) );
       geom.setAttribute( 'uv', new Float32BufferAttribute( batch.uvs, 2 ) );
+      geom.userData.scrolls=batch.scrolls;
       geom.computeVertexNormals();
 
-      const mat = this.texMgr.getWallMaterial( batch.texName, batch.lightLevel );
+      const mat = this.texMgr.getWallMaterial( batch.texName, batch.lightLevel, batch.masked );
       if ( mat ) group.add( new Mesh( geom, mat ) );
 
     }
@@ -206,7 +228,7 @@ export class SceneManager {
           const top = sector.ceilingHeight * SCALE;
           const bot = backSector.ceilingHeight * SCALE;
           const texData = this.texMgr.wallTextures[ side.upper ];
-          const pegged = upperUnpegged ? 'lower' : 'upper';
+          const pegged = upperUnpegged ? 'upper' : 'lower';
           this.addWallQuad( batches, side.upper, sector.lightLevel, x1, z1, x2, z2, bot, top, side, texData, pegged );
 
         }
@@ -217,7 +239,7 @@ export class SceneManager {
           const top = backSector.floorHeight * SCALE;
           const bot = sector.floorHeight * SCALE;
           const texData = this.texMgr.wallTextures[ side.lower ];
-          const pegged = lowerUnpegged ? 'lower' : 'upper';
+          const pegged = lowerUnpegged ? sector.ceilingHeight * SCALE : 'upper';
           this.addWallQuad( batches, side.lower, sector.lightLevel, x1, z1, x2, z2, bot, top, side, texData, pegged );
 
         }
@@ -228,7 +250,7 @@ export class SceneManager {
           const top = Math.min( sector.ceilingHeight, backSector.ceilingHeight ) * SCALE;
           const bot = Math.max( sector.floorHeight, backSector.floorHeight ) * SCALE;
           const texData = this.texMgr.wallTextures[ side.middle ];
-          this.addWallQuad( batches, side.middle, sector.lightLevel, x1, z1, x2, z2, bot, top, side, texData, 'lower' );
+          this.addWallQuad( batches, side.middle, sector.lightLevel, x1, z1, x2, z2, bot, top, side, texData, lowerUnpegged ? 'lower' : 'upper', true );
 
         }
 
@@ -251,7 +273,7 @@ export class SceneManager {
         const top = sector.ceilingHeight * SCALE;
         const bot = frontSector.ceilingHeight * SCALE;
         const texData = this.texMgr.wallTextures[ side.upper ];
-        const pegged = upperUnpegged ? 'lower' : 'upper';
+        const pegged = upperUnpegged ? 'upper' : 'lower';
         this.addWallQuad( batches, side.upper, sector.lightLevel, bx1, bz1, bx2, bz2, bot, top, side, texData, pegged );
 
       }
@@ -261,7 +283,7 @@ export class SceneManager {
         const top = frontSector.floorHeight * SCALE;
         const bot = sector.floorHeight * SCALE;
         const texData = this.texMgr.wallTextures[ side.lower ];
-        const pegged = lowerUnpegged ? 'lower' : 'upper';
+        const pegged = lowerUnpegged ? sector.ceilingHeight * SCALE : 'upper';
         this.addWallQuad( batches, side.lower, sector.lightLevel, bx1, bz1, bx2, bz2, bot, top, side, texData, pegged );
 
       }
@@ -271,7 +293,7 @@ export class SceneManager {
         const top = Math.min( sector.ceilingHeight, frontSector.ceilingHeight ) * SCALE;
         const bot = Math.max( sector.floorHeight, frontSector.floorHeight ) * SCALE;
         const texData = this.texMgr.wallTextures[ side.middle ];
-        this.addWallQuad( batches, side.middle, sector.lightLevel, bx1, bz1, bx2, bz2, bot, top, side, texData, 'lower' );
+        this.addWallQuad( batches, side.middle, sector.lightLevel, bx1, bz1, bx2, bz2, bot, top, side, texData, lowerUnpegged ? 'lower' : 'upper', true );
 
       }
 
@@ -284,17 +306,8 @@ export class SceneManager {
     const sector = this.sectors[ si ];
     const loops = buildSectorPolygons( si, this.linedefs, this.sidedefs, this.vertexes );
 
-    for ( const loop of loops ) {
+    for ( const {vertices:loop, triangles:tris} of triangulateSector(loops,this.vertexes) ) {
 
-      const flat2D: number[] = [];
-
-      for ( const vi of loop ) {
-
-        flat2D.push( this.vertexes[ vi ].x, this.vertexes[ vi ].y );
-
-      }
-
-      const tris = triangulate( flat2D );
       if ( tris.length === 0 ) continue;
 
       const floorY = sector.floorHeight * SCALE;
@@ -390,60 +403,53 @@ export class SceneManager {
     x1: number, z1: number, x2: number, z2: number,
     bottom: number, top: number,
     sidedef: Sidedef, texData: TextureData | undefined,
-    pegged: string
+    pegged: string | number, masked = false
   ): void {
 
     if ( top <= bottom ) return;
 
-    const key = texName + '_' + lightLevel;
+    const key = texName + '_' + lightLevel + '_' + masked;
 
     if ( ! batches[ key ] ) {
 
-      batches[ key ] = { texName, lightLevel, positions: [], uvs: [] };
+      batches[ key ] = { texName, lightLevel, masked, positions: [], uvs: [], scrolls: [] };
 
     }
 
     const batch = batches[ key ];
 
     const wallWidth = Math.sqrt( ( x2 - x1 ) ** 2 + ( z2 - z1 ) ** 2 );
-    const wallHeight = top - bottom;
 
     let tw = 64, th = 64;
     if ( texData ) { tw = texData.width; th = texData.height; }
 
     const uOff = ( sidedef.xoff * SCALE ) / ( tw * SCALE );
-    const vOff = ( sidedef.yoff * SCALE ) / ( th * SCALE );
 
     const u0 = uOff;
     const u1 = uOff + wallWidth / ( tw * SCALE );
 
-    // v0 = top of wall, v1 = bottom of wall (in Doom texture V-space: 0=top row)
-    // DataTexture flipY=false means V=0 maps to row 0 of pixel data (top of Doom image),
-    // so Doom texture coords map directly to OpenGL V without needing a 1-v flip.
-    let v0: number, v1: number;
-
-    if ( pegged === 'lower' ) {
-
-      // Texture anchored at bottom: bottom of texture (V=1) aligns with bottom of wall
-      v1 = 1 + vOff;
-      v0 = 1 + vOff - wallHeight / ( th * SCALE );
-
-    } else {
-
-      // Texture anchored at top: top of texture (V=0) aligns with top of wall
-      v0 = vOff;
-      v1 = vOff + wallHeight / ( th * SCALE );
-
+    // R_StoreWallRange / R_RenderMaskedSegRange: absolute world height of
+    // texture row zero, including the sidedef row offset.
+    const textureTop = (typeof pegged === 'number' ? pegged : pegged === 'lower'
+      ? bottom + th * SCALE : top) + sidedef.yoff * SCALE;
+    if (masked) {
+      // Masked middle textures draw once vertically, clipped to the opening.
+      top = Math.min(top, textureTop);
+      bottom = Math.max(bottom, textureTop - th * SCALE);
+      if (top <= bottom) return;
     }
+    const v0 = (textureTop - top) / (th * SCALE);
+    const v1 = (textureTop - bottom) / (th * SCALE);
 
     batch.positions.push(
-      x1, top, z1, x2, top, z2, x2, bottom, z2,
-      x1, top, z1, x2, bottom, z2, x1, bottom, z1
+      x1, top, z1, x2, bottom, z2, x2, top, z2,
+      x1, top, z1, x1, bottom, z1, x2, bottom, z2
     );
 
+    if(this.scrollingSides.has(sidedef))batch.scrolls.push({start:batch.uvs.length/2,side:sidedef,offset:sidedef.xoff,width:tw});
     batch.uvs.push(
-      u0, v0, u1, v0, u1, v1,
-      u0, v0, u1, v1, u0, v1
+      u0, v0, u1, v1, u1, v0,
+      u0, v0, u0, v1, u1, v1
     );
 
   }

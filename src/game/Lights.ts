@@ -1,232 +1,84 @@
-// Sector light specials — ported from p_lights.c / p_spec.c
-// Fire flicker, strobe flash, and smooth glow effects.
-
+// p_lights.c: all mutable timing is explicit so saving preserves the next tic.
 import type { Sector, Linedef, Sidedef } from '../wad';
-import { addThinker, markSectorDirty } from './Thinkers';
+import { P_Random } from './DoomRandom';
+import { addThinker, archivedThinker, markSectorDirty } from './Thinkers';
 import { lightLevelToColormapIndex } from '../wad/ColormapParser';
 
-// --- Constants from p_spec.h ---
-const GLOWSPEED = 8;
-const STROBEBRIGHT = 5;
-const FASTDARK = 15;
-const SLOWDARK = 35;
-
-// --- P_FindMinSurroundingLight ---
-// Scans all two-sided linedefs of a sector for the lowest neighboring light level.
-
-function findMinSurroundingLight(
-  sectorIdx: number,
-  max: number,
-  linedefs: Linedef[],
-  sidedefs: Sidedef[],
-  sectors: Sector[]
-): number {
-
-  let min = max;
-
-  for ( const ld of linedefs ) {
-
-    if ( ld.left < 0 ) continue;
-
-    const frontSi = sidedefs[ ld.right ].sector;
-    const backSi = sidedefs[ ld.left ].sector;
-
-    if ( frontSi === sectorIdx && sectors[ backSi ].lightLevel < min ) {
-
-      min = sectors[ backSi ].lightLevel;
-
-    } else if ( backSi === sectorIdx && sectors[ frontSi ].lightLevel < min ) {
-
-      min = sectors[ frontSi ].lightLevel;
-
-    }
-
+export interface LightState {
+  sectorIdx: number;
+  type: 'fire' | 'flash' | 'strobe' | 'glow';
+  min: number; max: number; count: number; dark: number; direction: number;
+}
+function minimum(si: number, lines: Linedef[], sides: Sidedef[], sectors: Sector[]): number {
+  let min=sectors[si].lightLevel;
+  for(const line of lines) {
+    if(line.left<0)continue;
+    const a=sides[line.right].sector,b=sides[line.left].sector;
+    if(a===si)min=Math.min(min,sectors[b].lightLevel);
+    else if(b===si)min=Math.min(min,sectors[a].lightLevel);
   }
-
   return min;
-
 }
-
-// Helper: only mark dirty when the visible colormap band changes
-function setLightLevel( sector: Sector, sectorIdx: number, newLevel: number ): void {
-
-  const oldCm = lightLevelToColormapIndex( sector.lightLevel );
-  sector.lightLevel = newLevel;
-  const newCm = lightLevelToColormapIndex( newLevel );
-
-  if ( oldCm !== newCm ) markSectorDirty( sectorIdx );
-
-}
-
-// --- Fire Flicker (sector types 1 & 17) ---
-
-function spawnFireFlicker(
-  sectorIdx: number,
-  sectors: Sector[],
-  linedefs: Linedef[],
-  sidedefs: Sidedef[]
-): void {
-
-  const sector = sectors[ sectorIdx ];
-  const maxlight = sector.lightLevel;
-  const minlight = Math.min(
-    maxlight,
-    findMinSurroundingLight( sectorIdx, maxlight, linedefs, sidedefs, sectors ) + 16
-  );
-  let count = 4;
-
-  addThinker( () => {
-
-    if ( -- count > 0 ) return true;
-
-    const amount = ( Math.floor( Math.random() * 4 ) ) * 16;
-    const newLevel = Math.max( minlight, maxlight - amount );
-    setLightLevel( sector, sectorIdx, newLevel );
-    count = 4;
-    return true;
-
-  } );
-
-}
-
-// --- Strobe Flash (sector types 2, 3, 4, 12, 13) ---
-
-function spawnStrobeFlash(
-  sectorIdx: number,
-  sectors: Sector[],
-  linedefs: Linedef[],
-  sidedefs: Sidedef[],
-  darkTime: number,
-  inSync: boolean
-): void {
-
-  const sector = sectors[ sectorIdx ];
-  const maxlight = sector.lightLevel;
-  let minlight = findMinSurroundingLight( sectorIdx, maxlight, linedefs, sidedefs, sectors );
-
-  if ( minlight === maxlight ) minlight = 0;
-
-  let count = inSync ? 1 : ( Math.floor( Math.random() * 8 ) + 1 );
-
-  addThinker( () => {
-
-    if ( -- count > 0 ) return true;
-
-    if ( sector.lightLevel === minlight ) {
-
-      setLightLevel( sector, sectorIdx, maxlight );
-      count = STROBEBRIGHT;
-
-    } else {
-
-      setLightLevel( sector, sectorIdx, minlight );
-      count = darkTime;
-
-    }
-
-    return true;
-
-  } );
-
-}
-
-// --- Glowing Light (sector type 8) ---
-
-function spawnGlowingLight(
-  sectorIdx: number,
-  sectors: Sector[],
-  linedefs: Linedef[],
-  sidedefs: Sidedef[]
-): void {
-
-  const sector = sectors[ sectorIdx ];
-  const maxlight = sector.lightLevel;
-  const minlight = findMinSurroundingLight( sectorIdx, maxlight, linedefs, sidedefs, sectors );
-  let direction = - 1;
-
-  addThinker( () => {
-
-    if ( direction === - 1 ) {
-
-      const newLevel = sector.lightLevel - GLOWSPEED;
-
-      if ( newLevel <= minlight ) {
-
-        setLightLevel( sector, sectorIdx, sector.lightLevel + GLOWSPEED );
-        direction = 1;
-
-      } else {
-
-        setLightLevel( sector, sectorIdx, newLevel );
-
+export function restoreLights(state: LightState, sectors: Sector[]): void {
+  addThinker(archivedThinker(()=>{
+    const sector=sectors[state.sectorIdx], old=sector.lightLevel;
+    if(state.type==='glow') {
+      sector.lightLevel+=state.direction*8;
+      if(sector.lightLevel<=state.min || sector.lightLevel>=state.max) {
+        sector.lightLevel=old;state.direction=-state.direction;
       }
-
-    } else {
-
-      const newLevel = sector.lightLevel + GLOWSPEED;
-
-      if ( newLevel >= maxlight ) {
-
-        setLightLevel( sector, sectorIdx, sector.lightLevel - GLOWSPEED );
-        direction = - 1;
-
+    } else if(--state.count===0) {
+      if(state.type==='fire') {
+        const amount=(P_Random()&3)*16;
+        sector.lightLevel=old-amount<state.min ? state.min : state.max-amount;
+        state.count=4;
+      } else if(state.type==='flash') {
+        const bright=old===state.max;
+        sector.lightLevel=bright ? state.min : state.max;
+        state.count=(P_Random()&(bright ? 7 : 64))+1;
       } else {
-
-        setLightLevel( sector, sectorIdx, newLevel );
-
+        sector.lightLevel=old===state.min ? state.max : state.min;
+        state.count=old===state.min ? 5 : state.dark;
       }
-
     }
-
+    if(lightLevelToColormapIndex(old)!==lightLevelToColormapIndex(sector.lightLevel))markSectorDirty(state.sectorIdx);
     return true;
-
-  } );
-
+  },'light',()=>state));
+}
+export function spawnLightSpecials(sectors: Sector[], lines: Linedef[], sides: Sidedef[]): void {
+  sectors.forEach((sector,sectorIdx)=>{
+    const special=sector.special;
+    if(![1,2,3,4,8,12,13,17].includes(special))return;
+    const state:LightState={sectorIdx,type:'strobe',max:sector.lightLevel,
+      min:minimum(sectorIdx,lines,sides,sectors),count:1,dark:35,direction:-1};
+    if(special===1){state.type='flash';state.count=(P_Random()&64)+1;}
+    else if(special===17){state.type='fire';state.min+=16;state.count=4;}
+    else if(special===8)state.type='glow';
+    else {
+      if(state.min===state.max)state.min=0;
+      state.dark=[2,4,13].includes(special)?15:35;
+      state.count=[12,13].includes(special)?1:(P_Random()&7)+1;
+    }
+    if(special!==4)sector.special=0;
+    restoreLights(state,sectors);
+  });
 }
 
-// --- Spawn all sector light specials ---
+import type { DoomMapData } from '../physics/DoomMovement';
 
-export function spawnLightSpecials(
-  sectors: Sector[],
-  linedefs: Linedef[],
-  sidedefs: Sidedef[]
-): void {
-
-  for ( let si = 0; si < sectors.length; si ++ ) {
-
-    switch ( sectors[ si ].special ) {
-
-      case 1:  // Flickering lights
-      case 17: // Fire flicker
-        spawnFireFlicker( si, sectors, linedefs, sidedefs );
-        break;
-
-      case 2:  // Strobe fast (unsynchronized)
-        spawnStrobeFlash( si, sectors, linedefs, sidedefs, FASTDARK, false );
-        break;
-
-      case 3:  // Strobe slow (unsynchronized)
-        spawnStrobeFlash( si, sectors, linedefs, sidedefs, SLOWDARK, false );
-        break;
-
-      case 4:  // Strobe fast + damage (same light effect as type 2)
-        spawnStrobeFlash( si, sectors, linedefs, sidedefs, FASTDARK, false );
-        break;
-
-      case 8:  // Glowing light
-        spawnGlowingLight( si, sectors, linedefs, sidedefs );
-        break;
-
-      case 12: // Sync strobe slow
-        spawnStrobeFlash( si, sectors, linedefs, sidedefs, SLOWDARK, true );
-        break;
-
-      case 13: // Sync strobe fast
-        spawnStrobeFlash( si, sectors, linedefs, sidedefs, FASTDARK, true );
-        break;
-
+export function evLightTurnOff(tag: number, map: DoomMapData): void {
+  map.sectors.forEach((s,i)=>{if(s.tag===tag){s.lightLevel=minimum(i,map.linedefs,map.sidedefs,map.sectors);markSectorDirty(i);}});
+}
+export function evLightTurnOn(tag: number, bright: number, map: DoomMapData): void {
+  // C intentionally carries the first discovered maximum to later tagged sectors.
+  map.sectors.forEach((s,i)=>{
+    if(s.tag!==tag)return;
+    if(!bright)for(const line of map.linedefs) {
+      if(line.left<0)continue;
+      const a=map.sidedefs[line.right].sector,b=map.sidedefs[line.left].sector;
+      if(a===i)bright=Math.max(bright,map.sectors[b].lightLevel);
+      else if(b===i)bright=Math.max(bright,map.sectors[a].lightLevel);
     }
-
-  }
-
+    s.lightLevel=bright;markSectorDirty(i);
+  });
 }

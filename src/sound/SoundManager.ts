@@ -6,6 +6,9 @@
 const SCALE = 1.0 / 32.0;
 
 let audioCtx: AudioContext | null = null;
+let masterGain: GainNode | null = null;
+export function setSoundVolume(volume: number): void { if (masterGain) masterGain.gain.value=Math.max(0,Math.min(1,volume)); }
+
 let sfxBuffers: Record<string, AudioBuffer> = {};
 
 export function initSoundManager(
@@ -14,6 +17,7 @@ export function initSoundManager(
 ): void {
 
   audioCtx = ctx;
+  masterGain?.disconnect(); masterGain=ctx.createGain(); masterGain.connect(ctx.destination);
   sfxBuffers = buffers;
 
 }
@@ -60,7 +64,7 @@ export function playSound( name: string ): void {
 
   const source = audioCtx.createBufferSource();
   source.buffer = buffer;
-  source.connect( audioCtx.destination );
+  source.connect( masterGain! );
   source.start();
 
 }
@@ -103,7 +107,7 @@ export function playSoundAt( name: string, x: number, y: number, z: number = 0 )
   const source = audioCtx.createBufferSource();
   source.buffer = buffer;
   source.connect( panner );
-  panner.connect( audioCtx.destination );
+  panner.connect( masterGain! );
   source.start();
 
   // Clean up nodes after playback finishes

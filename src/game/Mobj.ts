@@ -10,11 +10,12 @@ import type { SpriteFrame, Thing } from '../wad/types';
 import type { Fixed } from '../math/fixed';
 import { FRACUNIT, FRACBITS, intToFixed, fixedToFloat, fixedMul, fixedDiv } from '../math/fixed';
 import type { DoomMapData, DoomPlayer } from '../physics/DoomMovement';
-import { findSectorAt } from '../physics/DoomMovement';
-import { addThinker } from './Thinkers';
+import { findSectorAt, tryMove, checkPosition } from '../physics/DoomMovement';
+import { addThinker, archivedThinker } from './Thinkers';
 import type { MobjInfo, MobjState } from './MobjData';
-import { MOBJ_STATES, MOBJ_TYPES, DOOMEDNUM_TO_TYPE, MF_SHOOTABLE, MF_SOLID, MF_NOBLOOD, MF_CORPSE, MF_NOGRAVITY, MF_NOBLOCKMAP, MF_MISSILE, MF_NOCLIP, MF_SKULLFLY, MF_COUNTKILL } from './MobjData';
+import { MOBJ_STATES, MOBJ_TYPES, DOOMEDNUM_TO_TYPE, MF_AMBUSH, MF_SPAWNCEILING, MF_SHOOTABLE, MF_SOLID, MF_NOBLOOD, MF_CORPSE, MF_NOGRAVITY, MF_NOBLOCKMAP, MF_MISSILE, MF_NOCLIP, MF_SKULLFLY, MF_COUNTKILL, MF_FLOAT, MF_INFLOAT, MF_SPECIAL } from './MobjData';
 import { playSound, playSoundAt } from '../sound';
+import { gameRules, shouldSpawnThing } from './GameRules';
 import { P_Random } from './DoomRandom';
 
 const SCALE = 1.0 / 32.0;
@@ -58,6 +59,8 @@ export interface Mobj {
 
   // Sector tracking (for sight checks and sound propagation)
   sectorIndex: number;
+  spawnPoint?: Thing;
+  respawnTics?: number;
 
   // AI fields (used by enemies)
   target: Mobj | null;    // what this mobj is targeting / who damaged it
@@ -101,7 +104,14 @@ export function initMobjSystem(
   spriteFrames = sprites;
   spriteGroup = group;
   mapData = map;
+  map.mobjs = allMobjs;
 
+}
+
+export function resetMobjs(): void {
+  for (const mo of [...allMobjs]) removeMobj(mo);
+  for (const texture of textureCache.values()) texture.dispose();
+  textureCache.clear();
 }
 
 /** Get current map data (for AI, physics, etc.) */
@@ -116,6 +126,8 @@ export function getMobjMapData(): DoomMapData | null {
 // ============================================================
 
 export function spawnMapThing( thing: Thing ): Mobj | null {
+
+  if (!shouldSpawnThing(thing)) return null;
 
   const typeName = DOOMEDNUM_TO_TYPE[ thing.type ];
   if ( ! typeName ) return null;
@@ -132,6 +144,10 @@ export function spawnMapThing( thing: Thing ): Mobj | null {
   const ceilingz = sector ? intToFixed( sector.ceilingHeight ) : 0;
 
   const mo = spawnMobj( x, y, floorz, typeName );
+  mo.spawnPoint = {...thing};
+  mo.angle = Math.trunc(thing.angle / 45) * Math.PI / 4;
+  if (thing.flags & 8) mo.flags |= MF_AMBUSH;
+  if (mo.tics > 0) mo.tics = 1 + P_Random() % mo.tics;
   return mo;
 
 }
@@ -163,7 +179,7 @@ export function spawnMobj(
     target: null,
     tracer: null,
     threshold: 0,
-    reactionTime: 8,
+    reactionTime: gameRules.skill === 5 ? 0 : 8,
     moveDir: 8,     // DI_NODIR
     movecount: 0,
     lastLook: 0,
@@ -172,7 +188,8 @@ export function spawnMobj(
   };
 
   // Set initial state
-  setMobjState( mo, info.spawnState );
+  mo.state = info.spawnState;
+  mo.tics = MOBJ_STATES[info.spawnState]?.tics ?? -1;
 
   // Find sector for correct floor/ceiling
   if ( mapData ) {
@@ -183,7 +200,8 @@ export function spawnMobj(
 
       mo.floorz = intToFixed( sector.floorHeight );
       mo.ceilingz = intToFixed( sector.ceilingHeight );
-      mo.z = mo.floorz;
+      mo.sectorIndex = mapData.sectors.indexOf(sector);
+      mo.z = (mo.flags & MF_SPAWNCEILING) ? mo.ceilingz - mo.height : z;
 
     }
 
@@ -193,7 +211,7 @@ export function spawnMobj(
   createMobjSprite( mo );
 
   // Register thinker
-  addThinker( () => mobjThinker( mo ) );
+  restoreMobjThinker(mo);
 
   allMobjs.push( mo );
   return mo;
@@ -222,7 +240,7 @@ export function setMobjState( mo: Mobj, stateName: string ): boolean {
 
     const st: MobjState = MOBJ_STATES[ name ];
     mo.state = name;
-    mo.tics = st.tics;
+    mo.tics = gameRules.skill===5 && /^S_SARG_(RUN|ATK|PAIN)/.test(name) ? Math.max(1,st.tics>>1) : st.tics;
 
     // Execute action
     if ( st.action ) execMobjAction( mo, st.action );
@@ -253,6 +271,10 @@ function execMobjAction( mo: Mobj, action: string ): void {
       if ( mo.info.deathSound ) playSoundAt( mo.info.deathSound, mo.x, mo.y, mo.z );
       break;
 
+    case 'A_BFGSpray':
+      bfgSprayCallback?.(mo);
+      break;
+
     case 'A_Explode':
       // Imported dynamically to avoid circular deps — called from Attack.ts
       if ( explodeCallback ) explodeCallback( mo );
@@ -277,6 +299,9 @@ export function setEnemyActionCallback( cb: ( mo: Mobj, action: string ) => bool
 
 }
 
+let bfgSprayCallback: ((mo: Mobj) => void) | null = null;
+export function setBfgSprayCallback(callback: (mo: Mobj) => void): void { bfgSprayCallback = callback; }
+
 // Callback for A_Explode — set by Attack.ts to avoid circular import
 let explodeCallback: ( ( mo: Mobj ) => void ) | null = null;
 
@@ -300,6 +325,47 @@ export function setDamageMobjCallback( cb: ( target: Mobj, inflictor: Mobj | nul
 // ============================================================
 
 function xyMovement( mo: Mobj ): void {
+  if (!(mo.flags & (MF_MISSILE | MF_SKULLFLY))) { xyMovementStep(mo); return; }
+  const mx = mo.momx, my = mo.momy;
+  const steps = Math.max(1, Math.ceil(Math.max(Math.abs(mx), Math.abs(my)) / (8 * FRACUNIT)));
+  for (let i=0; i<steps; i++) {
+    mo.momx = Math.trunc(mx * (i+1) / steps) - Math.trunc(mx * i / steps);
+    mo.momy = Math.trunc(my * (i+1) / steps) - Math.trunc(my * i / steps);
+    xyMovementStep(mo);
+    if (mo.removed || !(mo.flags & (MF_MISSILE | MF_SKULLFLY)) || (mo.momx===0 && mo.momy===0)) return;
+  }
+  mo.momx = mx; mo.momy = my;
+}
+
+// PIT_CheckThing projectile/skull branches. Check the candidate position
+// before committing movement, including the initial half-tic missile step.
+function projectileThingImpact(mo:Mobj,x:Fixed,y:Fixed):boolean {
+  if(!(mo.flags & (MF_MISSILE|MF_SKULLFLY)) || mo.flags & MF_NOCLIP)return false;
+  for(const thing of allMobjs){
+    if(thing===mo || thing.removed || !(thing.flags & (MF_SOLID|MF_SPECIAL|MF_SHOOTABLE)))continue;
+    const distance=thing.radius+mo.radius;
+    if(Math.abs(thing.x-x)>=distance || Math.abs(thing.y-y)>=distance)continue;
+    if(mo.flags & MF_SKULLFLY){
+      damageMobjCallback?.(thing,mo,mo,((P_Random()%8)+1)*mo.info.damage);
+      mo.flags &= ~MF_SKULLFLY;mo.momx=mo.momy=mo.momz=0;
+      setMobjState(mo,mo.info.spawnState);return true;
+    }
+    if(mo.z>thing.z+thing.height || mo.z+mo.height<thing.z)continue;
+    const origin=mo.target;
+    if(thing===origin)continue;
+    const sameSpecies=origin && (origin.type===thing.type ||
+      (origin.type==='MT_KNIGHT' && thing.type==='MT_BRUISER') ||
+      (origin.type==='MT_BRUISER' && thing.type==='MT_KNIGHT'));
+    if(sameSpecies && thing.type!=='MT_PLAYER'){explodeMissile(mo);return true;}
+    if(!(thing.flags & MF_SHOOTABLE)){
+      if(!(thing.flags & MF_SOLID))continue;
+    }else damageMobjCallback?.(thing,mo,origin,((P_Random()%8)+1)*mo.info.damage);
+    explodeMissile(mo);return true;
+  }
+  return false;
+}
+
+function xyMovementStep( mo: Mobj ): void {
 
   if ( mo.momx === 0 && mo.momy === 0 ) {
 
@@ -321,7 +387,9 @@ function xyMovement( mo: Mobj ): void {
   const nextX = mo.x + mo.momx;
   const nextY = mo.y + mo.momy;
 
-  // Check if the new position is valid (simplified — sector-based)
+  if(projectileThingImpact(mo,nextX,nextY))return;
+
+  // Check shared line/sector movement constraints.
   const blocked = isMovementBlocked( mo, nextX, nextY );
 
   if ( blocked ) {
@@ -341,73 +409,12 @@ function xyMovement( mo: Mobj ): void {
 
   }
 
-  // Move succeeded
-  mo.x = nextX;
-  mo.y = nextY;
+  // tryMove already updated position and may have teleported through a crossing.
 
   // Update floor/ceiling from new sector
   updateFloorCeiling( mo );
 
-  // Missile / skull-fly vs thing collision (PIT_CheckThing from p_map.c)
-  if ( ( mo.flags & ( MF_MISSILE | MF_SKULLFLY ) ) !== 0 ) {
-
-    for ( const thing of allMobjs ) {
-
-      if ( thing === mo ) continue;
-      if ( thing.removed ) continue;
-      if ( ! ( thing.flags & MF_SHOOTABLE ) ) continue;
-      if ( thing.health <= 0 ) continue;
-
-      // Don't hit the shooter (missile's target is who fired it)
-      if ( thing === mo.target ) continue;
-
-      const blockDist = thing.radius + mo.radius;
-      if ( Math.abs( thing.x - mo.x ) >= blockDist ) continue;
-      if ( Math.abs( thing.y - mo.y ) >= blockDist ) continue;
-
-      // Vertical check: missile must overlap thing's height range
-      if ( mo.z > thing.z + thing.height ) continue;
-      if ( mo.z + mo.height < thing.z ) continue;
-
-      // Hit! Apply damage
-      let damage = 0;
-      if ( mo.info.damage > 0 ) {
-
-        damage = ( ( P_Random() % 8 ) + 1 ) * mo.info.damage;
-
-      }
-
-      if ( damageMobjCallback && damage > 0 ) {
-
-        damageMobjCallback( thing, mo, mo.target, damage );
-
-      }
-
-      // Skull fly: take damage back and stop
-      if ( ( mo.flags & MF_SKULLFLY ) !== 0 ) {
-
-        mo.momx = 0;
-        mo.momy = 0;
-        mo.momz = 0;
-        mo.flags &= ~MF_SKULLFLY;
-        setMobjState( mo, mo.info.spawnState );
-        return;
-
-      }
-
-      // Missile: explode
-      if ( ( mo.flags & MF_MISSILE ) !== 0 ) {
-
-        explodeMissile( mo );
-        return;
-
-      }
-
-    }
-
-    return; // skip friction for missiles/skulls
-
-  }
+  if (mo.flags & (MF_MISSILE | MF_SKULLFLY)) return; // no friction
 
   // Don't apply friction if airborne
   if ( mo.z > mo.floorz ) return;
@@ -440,6 +447,13 @@ function zMovement( mo: Mobj ): void {
 
   // Apply vertical momentum
   mo.z += mo.momz;
+  // P_ZMovement: float only when close enough to the target's vertical offset.
+  if ((mo.flags & MF_FLOAT) && mo.target && !(mo.flags & (MF_SKULLFLY | MF_INFLOAT))) {
+    const distance = approxDistance(mo.x-mo.target.x, mo.y-mo.target.y);
+    const delta = mo.target.z + (mo.height >> 1) - mo.z;
+    if (delta < 0 && distance < -delta * 3) mo.z -= 4 * FRACUNIT;
+    else if (delta > 0 && distance < delta * 3) mo.z += 4 * FRACUNIT;
+  }
 
   // Hit floor
   if ( mo.z <= mo.floorz ) {
@@ -524,39 +538,8 @@ function zMovement( mo: Mobj ): void {
  *  Simplified: missiles are blocked by invalid sectors or floor too high. */
 function isMovementBlocked( mo: Mobj, nx: Fixed, ny: Fixed ): boolean {
 
-  if ( ( mo.flags & MF_NOCLIP ) !== 0 ) return false;
-  if ( ! mapData ) return false;
-
-  const sector = findSectorAt( nx >> FRACBITS, ny >> FRACBITS, mapData );
-
-  if ( ! sector ) {
-
-    // No sector at destination — blocked (out of map)
-    return true;
-
-  }
-
-  const destFloor = intToFixed( sector.floorHeight );
-  const destCeiling = intToFixed( sector.ceilingHeight );
-
-  // Step too high (non-missile) or any obstacle (missile)
-  if ( ( mo.flags & MF_MISSILE ) !== 0 ) {
-
-    // Missiles are blocked if the gap is too small
-    if ( destCeiling - destFloor < mo.height ) return true;
-    // Missiles are blocked if floor is above the missile
-    if ( destFloor > mo.z + mo.height ) return true;
-    return false;
-
-  }
-
-  // Non-missile: blocked by too-high step
-  if ( destFloor - mo.floorz > MAXSTEP ) return true;
-
-  // Blocked if gap is too small
-  if ( destCeiling - destFloor < mo.height ) return true;
-
-  return false;
+  if ( !mapData ) return false;
+  return !tryMove(mo, nx, ny, mapData);
 
 }
 
@@ -569,6 +552,7 @@ function updateFloorCeiling( mo: Mobj ): void {
 
   if ( sector ) {
 
+    mo.sectorIndex = mapData.sectors.indexOf(sector);
     mo.floorz = intToFixed( sector.floorHeight );
     mo.ceilingz = intToFixed( sector.ceilingHeight );
 
@@ -625,7 +609,8 @@ function checkMissileSpawn( missile: Mobj ): void {
   missile.y += missile.momy >> 1;
   missile.z += missile.momz >> 1;
 
-  // Check for immediate collision
+  // P_CheckMissileSpawn also checks actors at the initial half-step.
+  if (projectileThingImpact(missile,missile.x,missile.y))return;
   if ( isMovementBlocked( missile, missile.x, missile.y ) ) {
 
     explodeMissile( missile );
@@ -667,7 +652,7 @@ export function spawnMissile( source: Mobj, dest: Mobj, typeName: string ): Mobj
   missile.angle = Math.atan2( dy, dx );
 
   // Set horizontal momentum from angle and speed
-  const speed = missile.info.speed;
+  const speed = gameRules.skill===5 && ['MT_TROOPSHOT','MT_HEADSHOT','MT_BRUISERSHOT'].includes(typeName) ? 20*FRACUNIT : missile.info.speed;
   missile.momx = fixedMul( speed, Math.round( Math.cos( missile.angle ) * FRACUNIT ) );
   missile.momy = fixedMul( speed, Math.round( Math.sin( missile.angle ) * FRACUNIT ) );
 
@@ -710,11 +695,11 @@ export function spawnPlayerMissile(
 
   }
 
-  missile.target = null; // player missiles don't have an mobj target
+  missile.target = player.mo; // shooter must be excluded from missile impacts
   missile.angle = angle;
 
   // Set momentum from angle and speed (horizontal only — slope = 0)
-  const speed = missile.info.speed;
+  const speed = gameRules.skill===5 && ['MT_TROOPSHOT','MT_HEADSHOT','MT_BRUISERSHOT'].includes(typeName) ? 20*FRACUNIT : missile.info.speed;
   missile.momx = fixedMul( speed, Math.round( Math.cos( angle ) * FRACUNIT ) );
   missile.momy = fixedMul( speed, Math.round( Math.sin( angle ) * FRACUNIT ) );
   missile.momz = 0; // horizontal fire (no auto-aim slope)
@@ -761,6 +746,18 @@ function mobjThinker( mo: Mobj ): boolean {
 
   }
 
+  // P_NightmareRespawn: wait twelve seconds, then attempt every 32 tics.
+  if (gameRules.skill===5 && mo.health<=0 && mo.tics===-1 && mo.spawnPoint && mapData) {
+    mo.respawnTics=(mo.respawnTics ?? 0)+1;
+    if (mo.respawnTics>=12*35 && !(mo.respawnTics&31) && P_Random()<=4) {
+      const point=mo.spawnPoint;
+      const candidate={...mo,flags:mo.info.flags,radius:mo.info.radius,height:mo.info.height};
+      if (checkPosition(candidate,intToFixed(point.x),intToFixed(point.y),mapData)) {
+        const replacement=spawnMapThing(point); if(replacement) replacement.reactionTime=18;
+        removeMobj(mo); return false;
+      }
+    }
+  }
   // Advance state machine
   if ( mo.tics !== - 1 ) {
 
@@ -1042,4 +1039,29 @@ function updateMobjSprite( mo: Mobj ): void {
     - fixedToFloat( mo.y ) * SCALE
   );
 
+}
+
+export type SavedMobj = Omit<Mobj, 'mesh' | 'info' | 'target' | 'tracer'> & {target: number; tracer: number};
+export function archiveMobjs(): SavedMobj[] {
+  return allMobjs.map(mo=>{
+    const {mesh,info,target,tracer,...state}=mo;
+    return structuredClone({...state,target:target ? allMobjs.indexOf(target) : -1,tracer:tracer ? allMobjs.indexOf(tracer) : -1});
+  });
+}
+export function restoreMobjThinker(mo: Mobj): void {
+  addThinker(archivedThinker(()=>mobjThinker(mo),'mobj',()=>mo.removed ? undefined : allMobjs.indexOf(mo)));
+}
+export function restoreMobjs(saved: SavedMobj[], player: Mobj): void {
+  resetMobjs();
+  for(const state of saved) {
+    const mo=state.type==='MT_PLAYER' ? player : spawnMobj(state.x,state.y,state.z,state.type);
+    if(mo===player)allMobjs.push(mo);
+    const {target,tracer,...scalar}=state;
+    Object.assign(mo,scalar,{info:MOBJ_TYPES[state.type],target:null,tracer:null});
+    if(mo!==player)updateMobjSprite(mo);
+  }
+  saved.forEach((state,i)=>{
+    allMobjs[i].target=allMobjs[state.target] ?? null;
+    allMobjs[i].tracer=allMobjs[state.tracer] ?? null;
+  });
 }

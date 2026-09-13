@@ -195,7 +195,7 @@ interface PSpriteDef {
 // ============================================================
 
 /** Callback for weapon fire — receives angle (radians), slope (fixed), damage */
-export type FireCallback = ( angle: number, slope: Fixed, damage: number ) => void;
+export type FireCallback = ( angle: number, slope: Fixed, damage: number, range: Fixed ) => void;
 
 /** Callback for projectile weapon fire — receives angle (radians) and mobj type name */
 export type MissileCallback = ( angle: number, typeName: string ) => void;
@@ -207,8 +207,16 @@ export class WeaponSystem {
     { state: null, tics: 0, sx: FRACUNIT, sy: WEAPONTOP },   // ps_flash
   ];
 
+  archive() {return structuredClone({psprites:this.psprites,attackDown:this.attackDown,refire:this.refire,lastAngle:this.lastAngle});}
+  restore(saved: ReturnType<WeaponSystem['archive']>): void {
+    this.psprites=structuredClone(saved.psprites);this.attackDown=saved.attackDown;this.refire=saved.refire;this.lastAngle=saved.lastAngle;
+  }
   private attackDown = false;
   private refire = false;
+  private aimCallback: ((angle: number, range: Fixed) => Fixed) | null = null;
+  private noiseCallback: (() => void) | null = null;
+  setAimCallback(cb: (angle: number, range: Fixed) => Fixed): void { this.aimCallback = cb; }
+  setNoiseCallback(cb: () => void): void { this.noiseCallback = cb; }
   private fireCallback: FireCallback | null = null;
   private missileCallback: MissileCallback | null = null;
   private lastAngle = 0; // player aim angle in radians (Doom-space)
@@ -427,7 +435,7 @@ export class WeaponSystem {
 
     if ( ! this.checkAmmo( state ) ) return;
 
-    this.refire = true;
+    this.noiseCallback?.();
     const info = WEAPON_INFO[ state.currentWeapon ];
     this.setPsprite( state, 0, info.atkState );
 
@@ -551,9 +559,9 @@ export class WeaponSystem {
   // --- Hitscan / projectile actions ---
   // Ported from p_pspr.c — hitscans now call lineAttack via fireCallback
 
-  private fireHitscan( angle: number, damage: number ): void {
+  private fireHitscan( angle: number, damage: number, range = 2048 * FRACUNIT ): void {
 
-    if ( this.fireCallback ) this.fireCallback( angle, 0, damage );
+    if ( this.fireCallback ) this.fireCallback( angle, this.aimCallback?.(this.lastAngle, range) ?? 0, damage, range );
 
   }
 
@@ -565,7 +573,7 @@ export class WeaponSystem {
 
     // Pistol: 5 * (1d3) damage, with ±5.625° spread
     const damage = 5 * ( ( P_Random() % 3 ) + 1 );
-    const spread = ( P_Random() - P_Random() ) * ( 5.625 / 256 ) * ( Math.PI / 180 );
+    const spread = this.refire ? ( P_Random() - P_Random() ) * ( 5.625 / 256 ) * ( Math.PI / 180 ) : 0;
     this.fireHitscan( this.lastAngle + spread, damage );
 
   }
@@ -617,7 +625,7 @@ export class WeaponSystem {
 
     // Chaingun: same as pistol per bullet
     const damage = 5 * ( ( P_Random() % 3 ) + 1 );
-    const spread = ( P_Random() - P_Random() ) * ( 5.625 / 256 ) * ( Math.PI / 180 );
+    const spread = this.refire ? ( P_Random() - P_Random() ) * ( 5.625 / 256 ) * ( Math.PI / 180 ) : 0;
     this.fireHitscan( this.lastAngle + spread, damage );
 
   }
@@ -653,7 +661,7 @@ export class WeaponSystem {
     let damage = ( P_Random() % 10 + 1 ) * 2;
     if ( state.powers.strength ) damage *= 10;
     playSound( 'punch' );
-    this.fireHitscan( this.lastAngle, damage );
+    this.fireHitscan( this.lastAngle, damage, 64 * FRACUNIT );
 
   }
 
@@ -661,7 +669,7 @@ export class WeaponSystem {
 
     const damage = 2 * ( P_Random() % 10 + 1 );
     playSound( 'sawful' );
-    this.fireHitscan( this.lastAngle, damage );
+    this.fireHitscan( this.lastAngle, damage, 65 * FRACUNIT );
 
   }
 

@@ -1,13 +1,17 @@
+import type { Mobj } from './Mobj';
+import { evLightTurnOn, evLightTurnOff } from './Lights';
 // Doom use action — player presses "use" to activate switches and doors.
 // Also handles walk-over (cross) triggers.
 // Ported from p_map.c (P_UseLines, PTR_UseTraverse) and p_spec.c / p_switch.c
 
+import type { PlayerStatusState } from '../ecs/traits';
+import { pointOnLineSide } from '../physics/DoomMovement';
 import type { Linedef, Sidedef, Thing } from '../wad';
 import { getLinedefsInBounds } from '../wad/BlockmapParser';
 import type { DoomPlayer, DoomMapData } from '../physics/DoomMovement';
 import { evVerticalDoor, evDoDoor } from './Doors';
-import { evDoPlat } from './Platforms';
-import { evDoFloor } from './Floors';
+import { evDoPlat, evStopPlat } from './Platforms';
+import { evDoFloor, evDoDonut } from './Floors';
 import { evDoCeiling, evCeilingCrushStop } from './Ceilings';
 import { evBuildStairs } from './Stairs';
 import { evTeleport } from './Teleport';
@@ -34,7 +38,8 @@ let useDown = false;
 export function useLines(
   player: DoomPlayer,
   angle: number, // Doom angle (radians)
-  map: DoomMapData
+  map: DoomMapData,
+  state?: PlayerStatusState
 ): void {
 
   // Convert fixed-point player position to integer map units for ray trace
@@ -51,35 +56,20 @@ export function useLines(
 
   const candidates = getLinedefsInBounds( map.blockmap, minX, minY, maxX, maxY );
 
-  // Sort by distance to player for "nearest first" traversal
-  const sorted = [ ...candidates ].sort( ( a, b ) => {
+  // P_PathTraverse orders actual ray intersections, not linedef endpoints.
+  const hits = [...candidates].flatMap(idx => {
+    const ld = map.linedefs[idx], a = map.vertexes[ld.v1], b = map.vertexes[ld.v2];
+    const hit = rayLinedefIntersect(x1, y1, x2, y2, a.x, a.y, b.x, b.y);
+    return hit && hit.t >= 0 && hit.t <= 1 && hit.u >= 0 && hit.u <= 1 ? [{ idx, t: hit.t }] : [];
+  }).sort((a, b) => a.t - b.t);
 
-    const la = map.linedefs[ a ];
-    const lb = map.linedefs[ b ];
-    const va = map.vertexes[ la.v1 ];
-    const vb = map.vertexes[ lb.v1 ];
-    const da = ( va.x - x1 ) * ( va.x - x1 ) + ( va.y - y1 ) * ( va.y - y1 );
-    const db = ( vb.x - x1 ) * ( vb.x - x1 ) + ( vb.y - y1 ) * ( vb.y - y1 );
-    return da - db;
-
-  } );
-
-  for ( const idx of sorted ) {
-
-    const ld = map.linedefs[ idx ];
-    const lv1 = map.vertexes[ ld.v1 ];
-    const lv2 = map.vertexes[ ld.v2 ];
-
-    // Ray-linedef intersection: compute t (along use ray) and u (along linedef)
-    const hit = rayLinedefIntersect( x1, y1, x2, y2, lv1.x, lv1.y, lv2.x, lv2.y );
-    if ( ! hit ) continue;
-    if ( hit.t < 0 || hit.t > 1 ) continue; // beyond USERANGE
-    if ( hit.u < 0 || hit.u > 1 ) continue; // off the linedef segment
-
+  for ( const {idx} of hits ) {
+    const ld = map.linedefs[idx];
     if ( ld.special !== 0 ) {
 
       // Activate this special line
-      useSpecialLine( ld, map );
+      const side = pointOnLineSide(player.mo.x, player.mo.y, map.vertexes[ld.v1], map.vertexes[ld.v2]);
+      if (side === 0) useSpecialLine( ld, map, state );
       return; // only one line per use
 
     }
@@ -110,14 +100,15 @@ export function handleUseInput(
   pressed: boolean,
   player: DoomPlayer,
   angle: number,
-  map: DoomMapData
+  map: DoomMapData,
+  state?: PlayerStatusState
 ): void {
 
   if ( pressed ) {
 
     if ( ! useDown ) {
 
-      useLines( player, angle, map );
+      useLines( player, angle, map, state );
       useDown = true;
 
     }
@@ -132,7 +123,7 @@ export function handleUseInput(
 
 // P_UseSpecialLine — dispatch line special actions (use-activated)
 // Ported from p_switch.c lines 323-650
-function useSpecialLine( line: Linedef, map: DoomMapData ): void {
+export function useSpecialLine( line: Linedef, map: DoomMapData, state?: PlayerStatusState ): void {
 
   const { linedefs, sidedefs, sectors } = map;
 
@@ -142,9 +133,18 @@ function useSpecialLine( line: Linedef, map: DoomMapData ): void {
     case 1: case 26: case 27: case 28:
     case 31: case 32: case 33: case 34:
     case 117: case 118:
-      evVerticalDoor( line, linedefs, sidedefs, sectors );
+      evVerticalDoor( line, linedefs, sidedefs, sectors, state );
       break;
 
+    case 9:
+      if(evDoDonut(line.tag,linedefs,sidedefs,sectors))changeSwitchTexture(line,sidedefs,false);
+      break;
+    case 99: case 133: case 134: case 135: case 136: case 137: {
+      const color=[99,133].includes(line.special)?'blue':[134,135].includes(line.special)?'red':'yellow';
+      if(!state || !(state.cards[`${color}card`]||state.cards[`${color}skull`])){playSound('oof');break;}
+      if(evDoDoor('blazeOpen',line.tag,linedefs,sidedefs,sectors))changeSwitchTexture(line,sidedefs,[99,134,136].includes(line.special));
+      break;
+    }
     // === SWITCHES (one-time use: special cleared) ===
     case 11: // Exit level (switch)
       changeSwitchTexture( line, sidedefs, false );
@@ -208,53 +208,53 @@ function useSpecialLine( line: Linedef, map: DoomMapData ): void {
 
     // Platforms
     case 14: // Raise floor 32 and change
-      if ( evDoPlat( 'raiseAndChange', line.tag, 32, linedefs, sidedefs, sectors ) )
+      if ( evDoPlat( 'raiseAndChange', line.tag, 32, linedefs, sidedefs, sectors, line ) )
         changeSwitchTexture( line, sidedefs, false );
       break;
 
     case 15: // Raise floor 24 and change
-      if ( evDoPlat( 'raiseAndChange', line.tag, 24, linedefs, sidedefs, sectors ) )
+      if ( evDoPlat( 'raiseAndChange', line.tag, 24, linedefs, sidedefs, sectors, line ) )
         changeSwitchTexture( line, sidedefs, false );
       break;
 
     case 20: // Raise plat to nearest and change
-      if ( evDoPlat( 'raiseToNearestAndChange', line.tag, 0, linedefs, sidedefs, sectors ) )
+      if ( evDoPlat( 'raiseToNearestAndChange', line.tag, 0, linedefs, sidedefs, sectors, line ) )
         changeSwitchTexture( line, sidedefs, false );
       break;
 
     case 21: // PlatDownWaitUpStay
-      if ( evDoPlat( 'downWaitUpStay', line.tag, 0, linedefs, sidedefs, sectors ) )
+      if ( evDoPlat( 'downWaitUpStay', line.tag, 0, linedefs, sidedefs, sectors, line ) )
         changeSwitchTexture( line, sidedefs, false );
       break;
 
     case 122: // Blazing PlatDWUS
-      if ( evDoPlat( 'blazeDWUS', line.tag, 0, linedefs, sidedefs, sectors ) )
+      if ( evDoPlat( 'blazeDWUS', line.tag, 0, linedefs, sidedefs, sectors, line ) )
         changeSwitchTexture( line, sidedefs, false );
       break;
 
     // Floors
     case 18: // Raise floor to next highest
-      if ( evDoFloor( 'raiseFloorToNearest', line.tag, linedefs, sidedefs, sectors ) )
+      if ( evDoFloor( 'raiseFloorToNearest', line.tag, linedefs, sidedefs, sectors, line ) )
         changeSwitchTexture( line, sidedefs, false );
       break;
 
     case 23: // Lower floor to lowest
-      if ( evDoFloor( 'lowerFloorToLowest', line.tag, linedefs, sidedefs, sectors ) )
+      if ( evDoFloor( 'lowerFloorToLowest', line.tag, linedefs, sidedefs, sectors, line ) )
         changeSwitchTexture( line, sidedefs, false );
       break;
 
     case 71: // Turbo lower floor
-      if ( evDoFloor( 'turboLower', line.tag, linedefs, sidedefs, sectors ) )
+      if ( evDoFloor( 'turboLower', line.tag, linedefs, sidedefs, sectors, line ) )
         changeSwitchTexture( line, sidedefs, false );
       break;
 
     case 101: // Raise floor
-      if ( evDoFloor( 'raiseFloor', line.tag, linedefs, sidedefs, sectors ) )
+      if ( evDoFloor( 'raiseFloor', line.tag, linedefs, sidedefs, sectors, line ) )
         changeSwitchTexture( line, sidedefs, false );
       break;
 
     case 102: // Lower floor
-      if ( evDoFloor( 'lowerFloor', line.tag, linedefs, sidedefs, sectors ) )
+      if ( evDoFloor( 'lowerFloor', line.tag, linedefs, sidedefs, sectors, line ) )
         changeSwitchTexture( line, sidedefs, false );
       break;
 
@@ -270,7 +270,7 @@ function useSpecialLine( line: Linedef, map: DoomMapData ): void {
       break;
 
     case 62: // PlatDWUS (button)
-      if ( evDoPlat( 'downWaitUpStay', line.tag, 0, linedefs, sidedefs, sectors ) )
+      if ( evDoPlat( 'downWaitUpStay', line.tag, 0, linedefs, sidedefs, sectors, line ) )
         changeSwitchTexture( line, sidedefs, true );
       break;
 
@@ -280,32 +280,32 @@ function useSpecialLine( line: Linedef, map: DoomMapData ): void {
       break;
 
     case 45: // Lower floor (button)
-      if ( evDoFloor( 'lowerFloor', line.tag, linedefs, sidedefs, sectors ) )
+      if ( evDoFloor( 'lowerFloor', line.tag, linedefs, sidedefs, sectors, line ) )
         changeSwitchTexture( line, sidedefs, true );
       break;
 
     case 60: // Lower floor to lowest (button)
-      if ( evDoFloor( 'lowerFloorToLowest', line.tag, linedefs, sidedefs, sectors ) )
+      if ( evDoFloor( 'lowerFloorToLowest', line.tag, linedefs, sidedefs, sectors, line ) )
         changeSwitchTexture( line, sidedefs, true );
       break;
 
     case 64: // Raise floor (button)
-      if ( evDoFloor( 'raiseFloor', line.tag, linedefs, sidedefs, sectors ) )
+      if ( evDoFloor( 'raiseFloor', line.tag, linedefs, sidedefs, sectors, line ) )
         changeSwitchTexture( line, sidedefs, true );
       break;
 
     case 65: // Raise floor crush (button)
-      if ( evDoFloor( 'raiseFloorCrush', line.tag, linedefs, sidedefs, sectors ) )
+      if ( evDoFloor( 'raiseFloorCrush', line.tag, linedefs, sidedefs, sectors, line ) )
         changeSwitchTexture( line, sidedefs, true );
       break;
 
     case 69: // Raise floor to nearest (button)
-      if ( evDoFloor( 'raiseFloorToNearest', line.tag, linedefs, sidedefs, sectors ) )
+      if ( evDoFloor( 'raiseFloorToNearest', line.tag, linedefs, sidedefs, sectors, line ) )
         changeSwitchTexture( line, sidedefs, true );
       break;
 
     case 70: // Turbo lower floor (button)
-      if ( evDoFloor( 'turboLower', line.tag, linedefs, sidedefs, sectors ) )
+      if ( evDoFloor( 'turboLower', line.tag, linedefs, sidedefs, sectors, line ) )
         changeSwitchTexture( line, sidedefs, true );
       break;
 
@@ -325,7 +325,7 @@ function useSpecialLine( line: Linedef, map: DoomMapData ): void {
       break;
 
     case 123: // Blazing PlatDWUS (button)
-      if ( evDoPlat( 'blazeDWUS', line.tag, 0, linedefs, sidedefs, sectors ) )
+      if ( evDoPlat( 'blazeDWUS', line.tag, 0, linedefs, sidedefs, sectors, line ) )
         changeSwitchTexture( line, sidedefs, true );
       break;
 
@@ -344,46 +344,62 @@ export function crossSpecialLine(
   line: Linedef,
   map: DoomMapData,
   player?: DoomPlayer,
-  things?: Thing[]
+  things?: Thing[],
+  oldSide = 0,
+  actor?: Mobj
 ): void {
 
   if ( line.special === 0 ) return;
+  actor ??= player?.mo;
+  if(actor && actor.type!=='MT_PLAYER' && ![4,10,39,88,97,125,126].includes(line.special))return;
 
   const { linedefs, sidedefs, sectors } = map;
   let clearSpecial = true; // most walk-overs are one-time triggers
 
   switch ( line.special ) {
 
+    case 125: case 126:
+      clearSpecial=line.special===125 && actor?.type!=='MT_PLAYER';
+      if(actor && actor.type!=='MT_PLAYER' && things)evTeleport(line,oldSide,actor,map,things);
+      break;
+    case 13: evLightTurnOn(line.tag,255,map); break;
+    case 35: evLightTurnOn(line.tag,35,map); break;
+    case 104: evLightTurnOff(line.tag,map); break;
+    case 40:
+      evDoCeiling('raiseToHighest',line.tag,linedefs,sidedefs,sectors);
+      evDoFloor('lowerFloorToLowest',line.tag,linedefs,sidedefs,sectors,line);break;
+    case 54: evStopPlat(line.tag);break;
+    case 89: evStopPlat(line.tag);clearSpecial=false;break;
     // Walk-over triggers (one-time)
     case 2: evDoDoor( 'open', line.tag, linedefs, sidedefs, sectors ); break;
     case 3: evDoDoor( 'close', line.tag, linedefs, sidedefs, sectors ); break;
     case 4: evDoDoor( 'normal', line.tag, linedefs, sidedefs, sectors ); break;
-    case 10: evDoPlat( 'downWaitUpStay', line.tag, 0, linedefs, sidedefs, sectors ); break;
+    case 10: evDoPlat( 'downWaitUpStay', line.tag, 0, linedefs, sidedefs, sectors, line ); break;
     case 16: evDoDoor( 'close30ThenOpen', line.tag, linedefs, sidedefs, sectors ); break;
-    case 19: evDoFloor( 'lowerFloor', line.tag, linedefs, sidedefs, sectors ); break;
-    case 22: evDoPlat( 'raiseToNearestAndChange', line.tag, 0, linedefs, sidedefs, sectors ); break;
+    case 19: evDoFloor( 'lowerFloor', line.tag, linedefs, sidedefs, sectors, line ); break;
+    case 22: evDoPlat( 'raiseToNearestAndChange', line.tag, 0, linedefs, sidedefs, sectors, line ); break;
     case 6: evDoCeiling( 'fastCrushAndRaise', line.tag, linedefs, sidedefs, sectors ); break;
     case 8: evBuildStairs( 'build8', line.tag, linedefs, sidedefs, sectors ); break;
     case 25: evDoCeiling( 'crushAndRaise', line.tag, linedefs, sidedefs, sectors ); break;
-    case 39: if ( player && things ) evTeleport( line, 0, player, map, things ); break;
+    case 39: if ( actor && things ) evTeleport( line, oldSide, actor.type==='MT_PLAYER' && player ? player : actor, map, things ); break;
     case 44: evDoCeiling( 'lowerAndCrush', line.tag, linedefs, sidedefs, sectors ); break;
     case 57: evCeilingCrushStop( line.tag ); break;
     case 100: evBuildStairs( 'turbo16', line.tag, linedefs, sidedefs, sectors ); break;
-    case 30: evDoFloor( 'raiseFloor', line.tag, linedefs, sidedefs, sectors ); break;
-    case 36: evDoFloor( 'turboLower', line.tag, linedefs, sidedefs, sectors ); break;
-    case 37: evDoFloor( 'lowerAndChange', line.tag, linedefs, sidedefs, sectors ); break;
-    case 38: evDoFloor( 'lowerFloorToLowest', line.tag, linedefs, sidedefs, sectors ); break;
-    case 5: evDoFloor( 'raiseFloor', line.tag, linedefs, sidedefs, sectors ); break;
-    case 53: evDoPlat( 'perpetualRaise', line.tag, 0, linedefs, sidedefs, sectors ); break;
-    case 56: evDoFloor( 'raiseFloorCrush', line.tag, linedefs, sidedefs, sectors ); break;
-    case 58: evDoFloor( 'raiseFloor24', line.tag, linedefs, sidedefs, sectors ); break;
-    case 59: evDoFloor( 'raiseFloor24AndChange', line.tag, linedefs, sidedefs, sectors ); break;
+    case 30: evDoFloor( 'raiseToTexture', line.tag, linedefs, sidedefs, sectors, line ); break;
+    case 36: evDoFloor( 'turboLower', line.tag, linedefs, sidedefs, sectors, line ); break;
+    case 37: evDoFloor( 'lowerAndChange', line.tag, linedefs, sidedefs, sectors, line ); break;
+    case 38: evDoFloor( 'lowerFloorToLowest', line.tag, linedefs, sidedefs, sectors, line ); break;
+    case 5: evDoFloor( 'raiseFloor', line.tag, linedefs, sidedefs, sectors, line ); break;
+    case 53: evDoPlat( 'perpetualRaise', line.tag, 0, linedefs, sidedefs, sectors, line ); break;
+    case 56: evDoFloor( 'raiseFloorCrush', line.tag, linedefs, sidedefs, sectors, line ); break;
+    case 58: evDoFloor( 'raiseFloor24', line.tag, linedefs, sidedefs, sectors, line ); break;
+    case 59: evDoFloor( 'raiseFloor24AndChange', line.tag, linedefs, sidedefs, sectors, line ); break;
     case 108: evDoDoor( 'blazeRaise', line.tag, linedefs, sidedefs, sectors ); break;
     case 109: evDoDoor( 'blazeOpen', line.tag, linedefs, sidedefs, sectors ); break;
     case 110: evDoDoor( 'blazeClose', line.tag, linedefs, sidedefs, sectors ); break;
-    case 119: evDoFloor( 'raiseFloorToNearest', line.tag, linedefs, sidedefs, sectors ); break;
-    case 121: evDoPlat( 'blazeDWUS', line.tag, 0, linedefs, sidedefs, sectors ); break;
-    case 130: evDoFloor( 'raiseFloorTurbo', line.tag, linedefs, sidedefs, sectors ); break;
+    case 119: evDoFloor( 'raiseFloorToNearest', line.tag, linedefs, sidedefs, sectors, line ); break;
+    case 121: evDoPlat( 'blazeDWUS', line.tag, 0, linedefs, sidedefs, sectors, line ); break;
+    case 130: evDoFloor( 'raiseFloorTurbo', line.tag, linedefs, sidedefs, sectors, line ); break;
 
     // Exit (walk-over)
     case 52: if ( exitCallback ) exitCallback( false ); break;
@@ -394,24 +410,24 @@ export function crossSpecialLine(
     case 73: evDoCeiling( 'crushAndRaise', line.tag, linedefs, sidedefs, sectors ); clearSpecial = false; break;
     case 74: evCeilingCrushStop( line.tag ); clearSpecial = false; break;
     case 77: evDoCeiling( 'fastCrushAndRaise', line.tag, linedefs, sidedefs, sectors ); clearSpecial = false; break;
-    case 97: if ( player && things ) evTeleport( line, 0, player, map, things ); clearSpecial = false; break;
-    case 141: evDoCeiling( 'silentCrushAndRaise', line.tag, linedefs, sidedefs, sectors ); clearSpecial = false; break;
+    case 97: if ( actor && things ) evTeleport( line, oldSide, actor.type==='MT_PLAYER' && player ? player : actor, map, things ); clearSpecial = false; break;
+    case 141: evDoCeiling( 'silentCrushAndRaise', line.tag, linedefs, sidedefs, sectors ); break;
     case 75: evDoDoor( 'close', line.tag, linedefs, sidedefs, sectors ); clearSpecial = false; break;
     case 76: evDoDoor( 'close30ThenOpen', line.tag, linedefs, sidedefs, sectors ); clearSpecial = false; break;
     case 86: evDoDoor( 'open', line.tag, linedefs, sidedefs, sectors ); clearSpecial = false; break;
-    case 88: evDoPlat( 'downWaitUpStay', line.tag, 0, linedefs, sidedefs, sectors ); clearSpecial = false; break;
+    case 88: evDoPlat( 'downWaitUpStay', line.tag, 0, linedefs, sidedefs, sectors, line ); clearSpecial = false; break;
     case 90: evDoDoor( 'normal', line.tag, linedefs, sidedefs, sectors ); clearSpecial = false; break;
-    case 91: evDoFloor( 'raiseFloor', line.tag, linedefs, sidedefs, sectors ); clearSpecial = false; break;
-    case 82: evDoFloor( 'lowerFloorToLowest', line.tag, linedefs, sidedefs, sectors ); clearSpecial = false; break;
-    case 83: evDoFloor( 'lowerFloor', line.tag, linedefs, sidedefs, sectors ); clearSpecial = false; break;
-    case 87: evDoPlat( 'perpetualRaise', line.tag, 0, linedefs, sidedefs, sectors ); clearSpecial = false; break;
-    case 98: evDoFloor( 'turboLower', line.tag, linedefs, sidedefs, sectors ); clearSpecial = false; break;
+    case 91: evDoFloor( 'raiseFloor', line.tag, linedefs, sidedefs, sectors, line ); clearSpecial = false; break;
+    case 82: evDoFloor( 'lowerFloorToLowest', line.tag, linedefs, sidedefs, sectors, line ); clearSpecial = false; break;
+    case 83: evDoFloor( 'lowerFloor', line.tag, linedefs, sidedefs, sectors, line ); clearSpecial = false; break;
+    case 87: evDoPlat( 'perpetualRaise', line.tag, 0, linedefs, sidedefs, sectors, line ); clearSpecial = false; break;
+    case 98: evDoFloor( 'turboLower', line.tag, linedefs, sidedefs, sectors, line ); clearSpecial = false; break;
     case 105: evDoDoor( 'blazeRaise', line.tag, linedefs, sidedefs, sectors ); clearSpecial = false; break;
     case 106: evDoDoor( 'blazeOpen', line.tag, linedefs, sidedefs, sectors ); clearSpecial = false; break;
     case 107: evDoDoor( 'blazeClose', line.tag, linedefs, sidedefs, sectors ); clearSpecial = false; break;
-    case 120: evDoPlat( 'blazeDWUS', line.tag, 0, linedefs, sidedefs, sectors ); clearSpecial = false; break;
-    case 128: evDoFloor( 'raiseFloorToNearest', line.tag, linedefs, sidedefs, sectors ); clearSpecial = false; break;
-    case 129: evDoFloor( 'raiseFloorTurbo', line.tag, linedefs, sidedefs, sectors ); clearSpecial = false; break;
+    case 120: evDoPlat( 'blazeDWUS', line.tag, 0, linedefs, sidedefs, sectors, line ); clearSpecial = false; break;
+    case 128: evDoFloor( 'raiseFloorToNearest', line.tag, linedefs, sidedefs, sectors, line ); clearSpecial = false; break;
+    case 129: evDoFloor( 'raiseFloorTurbo', line.tag, linedefs, sidedefs, sectors, line ); clearSpecial = false; break;
 
     default:
       clearSpecial = false;
@@ -434,6 +450,8 @@ interface ActiveButton {
 }
 
 const activeButtons: ActiveButton[] = [];
+export function resetUseActions(): void { useDown = false; activeButtons.length = 0; }
+export function requestExit(secret = false): void { exitCallback?.(secret); }
 
 function changeSwitchTexture(
   line: Linedef,
@@ -544,4 +562,22 @@ function rayLinedefIntersect(
 
   return { t, u };
 
+}
+
+export function archiveUseActions(sides: Sidedef[]) {
+  return {useDown, buttons:activeButtons.map(({side,...state})=>({...state,side:sides.indexOf(side)}))};
+}
+export function restoreUseActions(saved: ReturnType<typeof archiveUseActions>, sides: Sidedef[]): void {
+  useDown=saved.useDown;activeButtons.length=0;
+  for(const state of saved.buttons)activeButtons.push({...state,side:sides[state.side]});
+}
+
+export function shootSpecialLine(line: Linedef, map: DoomMapData, player: boolean): void {
+  if(!player && line.special!==46)return;
+  const {linedefs,sidedefs,sectors}=map;
+  switch(line.special) {
+    case 24:evDoFloor('raiseFloor',line.tag,linedefs,sidedefs,sectors,line);changeSwitchTexture(line,sidedefs,false);break;
+    case 46:evDoDoor('open',line.tag,linedefs,sidedefs,sectors);changeSwitchTexture(line,sidedefs,true);break;
+    case 47:evDoPlat('raiseToNearestAndChange',line.tag,0,linedefs,sidedefs,sectors,line);changeSwitchTexture(line,sidedefs,false);break;
+  }
 }

@@ -4,6 +4,7 @@ import { Input } from '../ecs/traits';
 export class FPSControls {
 
   lookSpeed = 0.002;
+  private enabled = false;
 
   private keys: Record<string, boolean> = {};
   private mouseDown = false;
@@ -15,13 +16,13 @@ export class FPSControls {
 
     domElement.addEventListener( 'click', () => {
 
-      if ( ! this.locked ) domElement.requestPointerLock();
+      if ( this.enabled && ! this.locked ) domElement.requestPointerLock()?.catch( () => {} );
 
     } );
 
     document.addEventListener( 'mousedown', ( e: MouseEvent ) => {
 
-      if ( this.locked && e.button === 0 ) this.mouseDown = true;
+      if ( this.enabled && this.locked && e.button === 0 ) this.mouseDown = true;
 
     } );
     document.addEventListener( 'mouseup', ( e: MouseEvent ) => {
@@ -38,25 +39,37 @@ export class FPSControls {
 
     document.addEventListener( 'mousemove', ( e: MouseEvent ) => {
 
-      if ( ! this.locked ) return;
+      if ( ! this.enabled || ! this.locked ) return;
       this.yaw -= e.movementX * this.lookSpeed;
       this.pitch -= e.movementY * this.lookSpeed;
       this.pitch = Math.max( - Math.PI / 2, Math.min( Math.PI / 2, this.pitch ) );
 
     } );
 
-    document.addEventListener( 'keydown', ( e: KeyboardEvent ) => { this.keys[ e.code ] = true; } );
+    document.addEventListener( 'keydown', ( e: KeyboardEvent ) => { if ( this.enabled ) this.keys[ e.code ] = true; } );
     document.addEventListener( 'keyup', ( e: KeyboardEvent ) => { this.keys[ e.code ] = false; } );
 
   }
 
-  setInitialYaw( yaw: number ): void {
+  setEnabled( enabled: boolean ): void {
+    this.enabled = enabled;
+    this.keys = {};
+    this.mouseDown = false;
+    this.world.set( Input, { forward: 0, strafe: 0, vertical: 0, jump: false,
+      run: false, use: false, attack: false, weaponSelect: -1,
+      yaw: this.yaw, pitch: this.pitch } );
+  }
+
+  setInitialYaw( yaw: number, pitch = 0 ): void {
+    this.pitch = pitch;
 
     this.yaw = yaw;
 
   }
 
   update(): void {
+
+    if ( ! this.enabled ) return;
 
     let forward = 0;
     let strafe = 0;

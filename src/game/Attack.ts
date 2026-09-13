@@ -12,11 +12,12 @@ import { FRACUNIT, FRACBITS, intToFixed, fixedToFloat, fixedMul, fixedDiv, float
 import type { DoomMapData, DoomPlayer } from '../physics/DoomMovement';
 import { findSectorAtFixed } from '../physics/DoomMovement';
 import type { Mobj } from './Mobj';
-import { allMobjs, setMobjState, spawnMobj, setExplodeCallback, setDamageMobjCallback } from './Mobj';
-import { MF_SHOOTABLE, MF_NOBLOOD, MF_SOLID, MF_CORPSE, MF_SKULLFLY, MF_JUSTHIT } from './MobjData';
+import { allMobjs, setMobjState, spawnMobj, setExplodeCallback, setBfgSprayCallback, setDamageMobjCallback } from './Mobj';
+import { MF_SHOOTABLE, MF_NOBLOOD, MF_SOLID, MF_CORPSE, MF_SKULLFLY, MF_JUSTHIT, MF_FLOAT, MF_NOGRAVITY, MF_DROPOFF, MF_DROPPED } from './MobjData';
 import { P_Random } from './DoomRandom';
 import { playSoundAt } from '../sound';
 import type { PlayerStatusState } from '../ecs/traits';
+import { shootSpecialLine } from './UseAction';
 import { P_CheckSight } from './Sight';
 
 // ============================================================
@@ -37,6 +38,7 @@ const MAXINTERCEPTS = 128;
 export function initAttackSystem(): void {
 
   setExplodeCallback( A_Explode );
+  setBfgSprayCallback(A_BFGSpray);
   setDamageMobjCallback( damageMobj );
 
 }
@@ -412,6 +414,37 @@ function pathTraverse(
 // Ported from p_map.c P_LineAttack using P_PathTraverse
 // ============================================================
 
+/** P_AimLineAttack / PTR_AimTraverse: narrow vertical sight through openings. */
+export function aimLineAttack(source: Mobj, angle: number, range: Fixed): {slope: Fixed; target: Mobj | null} {
+  const result: {slope: Fixed; target: Mobj | null} = {slope:0,target:null};
+  if (!attackMap) return result;
+  const shootZ = source.z + (source.height >> 1) + 8 * FRACUNIT;
+  let top = 100 * FRACUNIT / 160, bottom = -top;
+  pathTraverse(source.x, source.y, source.x + Math.trunc(Math.cos(angle)*range),
+    source.y + Math.trunc(Math.sin(angle)*range), attackMap, true, true, intercept => {
+      const distance = Math.max(1, fixedMul(range,intercept.frac));
+      if (intercept.isLine) {
+        const line = attackMap!.linedefs[intercept.lineIdx];
+        if (line.left < 0) return false;
+        const opening = lineOpening(intercept.lineIdx,attackMap!);
+        if (!opening || opening.openBottom >= opening.openTop) return false;
+        const a=attackMap!.sectors[attackMap!.sidedefs[line.right].sector];
+        const b=attackMap!.sectors[attackMap!.sidedefs[line.left].sector];
+        if (a.floorHeight!==b.floorHeight) bottom=Math.max(bottom,fixedDiv(opening.openBottom-shootZ,distance));
+        if (a.ceilingHeight!==b.ceilingHeight) top=Math.min(top,fixedDiv(opening.openTop-shootZ,distance));
+        return top > bottom;
+      }
+      const thing=intercept.thing;
+      if (!thing || thing===source || !(thing.flags & MF_SHOOTABLE) || thing.health<=0) return true;
+      const hi=fixedDiv(thing.z+thing.height-shootZ,distance), lo=fixedDiv(thing.z-shootZ,distance);
+      if (hi<bottom || lo>top) return true;
+      result.slope=Math.trunc((Math.min(hi,top)+Math.max(lo,bottom))/2);
+      result.target=thing;
+      return false;
+    });
+  return result;
+}
+
 /**
  * Fire a hitscan from a source position.
  * angle: radians (Doom-space, 0 = east, pi/2 = north)
@@ -446,6 +479,8 @@ export function lineAttack(
       if ( intercept.isLine ) {
 
         const line = attackMap!.linedefs[ intercept.lineIdx ];
+
+        if(line.special)shootSpecialLine(line,attackMap!,sourceMobj?.type==='MT_PLAYER');
 
         // One-sided line — solid wall, stop
         if ( line.left < 0 ) return false;
@@ -514,6 +549,8 @@ export function lineAttack(
 // ============================================================
 
 const BASETHRESHOLD = 100;
+let killCallback: ((mo: Mobj) => void) | null = null;
+export function setKillCallback(cb: (mo: Mobj) => void): void { killCallback = cb; }
 
 // Player damage callback — set from main.ts
 // Called when the target mobj IS the player, so we can apply armor/HUD/death.
@@ -570,6 +607,7 @@ export function damageMobj(
 
   if ( target.health <= 0 ) {
 
+    killCallback?.(target);
     killMobj( source, target );
     return;
 
@@ -613,8 +651,10 @@ export function damageMobj(
 
 function killMobj( source: Mobj | null, target: Mobj ): void {
 
-  target.flags &= ~( MF_SHOOTABLE | MF_SOLID | MF_SKULLFLY );
-  target.flags |= MF_CORPSE;
+  target.flags &= ~( MF_SHOOTABLE | MF_FLOAT | MF_SKULLFLY );
+  if (target.type !== 'MT_SKULL') target.flags &= ~MF_NOGRAVITY;
+  if (target.type === 'MT_PLAYER') target.flags &= ~MF_SOLID;
+  target.flags |= MF_CORPSE | MF_DROPOFF;
   target.height = target.height >> 2; // reduce height to 25%
 
   // Overkill: health < -spawnHealth AND has xDeathState
@@ -626,11 +666,13 @@ function killMobj( source: Mobj | null, target: Mobj ): void {
   target.tics -= P_Random() & 3;
   if ( target.tics < 1 ) target.tics = 1;
 
-  // Play death sound
-  if ( target.info.deathSound ) {
-
-    playSoundAt( target.info.deathSound, target.x, target.y, target.z );
-
+  // Death-state actions own the sound; playing it here duplicates A_Scream.
+  const item = target.type === 'MT_POSSESSED' || target.type === 'MT_WOLFSS' ? 'MT_CLIP'
+    : target.type === 'MT_SHOTGUY' ? 'MT_SHOTGUN'
+    : target.type === 'MT_CHAINGUY' ? 'MT_CHAINGUN' : null;
+  if (item) {
+    const dropped = spawnMobj(target.x, target.y, target.floorz, item);
+    dropped.flags |= MF_DROPPED;
   }
 
 }
@@ -706,4 +748,21 @@ export function setPlayerDamageCallback(
 
   playerDamageCallback = cb;
 
+}
+
+
+// p_pspr.c A_BFGSpray: trace forty rays from the shooter, not the projectile.
+// Each acquired target takes the sum of fifteen independent 1..8 rolls.
+export function A_BFGSpray(missile: Mobj): void {
+  const source = missile.target;
+  if (!source) return;
+  for (let i = 0; i < 40; i++) {
+    const angle = missile.angle - Math.PI / 4 + (Math.PI / 2) * i / 40;
+    const target = aimLineAttack(source, angle, 1024 * FRACUNIT).target;
+    if (!target) continue;
+    spawnMobj(target.x, target.y, target.z + (target.height >> 2), 'MT_EXTRABFG');
+    let damage = 0;
+    for (let roll = 0; roll < 15; roll++) damage += (P_Random() & 7) + 1;
+    damageMobj(target, source, source, damage);
+  }
 }

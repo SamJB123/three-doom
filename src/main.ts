@@ -1,499 +1,253 @@
+import {HudMessages} from './hud/HudMessages';
+import { WadGraphics } from './menu/WadGraphics';
 import { WebGPURenderer, PerspectiveCamera, Scene, Clock } from 'three/webgpu';
-import { createWorld as createECSWorld } from 'koota';
-import {
-  parseWAD, getMapLumps,
-  parseVertexes, parseLinedefs, parseSidedefs, parseSectors, parseThings,
-  parseSegs, parseSubsectors, parseNodes,
-  parsePalette, parseFlats, parseTextures, parseSprites,
-  parseColormap, parseBlockmap
-} from './wad';
-import { buildScene } from './renderer/SceneBuilder';
-import { createSky } from './renderer/SkyRenderer';
-import { buildThingSprites, updateSpriteBillboards, updateSpriteAnimations, updateSpriteFloorHeights } from './renderer/SpriteRenderer';
+import { createWorld } from 'koota';
+import { parseWAD, getLump, parsePalette, parseColormap, parseFlats, parseTextures, parseSprites, getMapLumps } from './wad';
 import { FPSControls } from './renderer/FPSControls';
 import { TouchControls } from './renderer/TouchControls';
-import { createPlayer, findSectorAt, setCrossSpecialCallback } from './physics/DoomMovement';
-import type { DoomMapData } from './physics/DoomMovement';
-import { intToFixed, fixedToFloat, FRACUNIT } from './math/fixed';
-import {
-  Time, Input, DoomWorld, Camera, IsPlayer, Position, Rotation, PlayerStatus
-} from './ecs/traits';
-import { playerMovementSystem, cameraSystem } from './ecs/systems';
-import { crossSpecialLine, hasDirtySectors, dirtySectors, clearDirtySectors, spawnLightSpecials, consumeTeleport } from './game';
-import { checkPickups } from './game/Pickups';
+import { updateSpriteBillboards, updateSpriteAnimations, updateSpriteFloorHeights, archiveStaticSprites, restoreStaticSprites } from './renderer/SpriteRenderer';
+import { setCrossSpecialCallback } from './physics/DoomMovement';
+import { Time, Input, DoomWorld, Camera, IsPlayer, Position, PlayerStatus, createPlayerStatus, type PlayerStatusState } from './ecs/traits';
+import { playerTickSystem, cameraSystem, syncPlayerPositionSystem } from './ecs/systems';
+import { crossSpecialLine, setExitCallback } from './game/UseAction';
+import { dirtySectors, clearDirtySectors } from './game/Thinkers';
+import { consumeTeleport } from './game/Teleport';
+import { allMobjs, spawnPlayerMissile, setCameraPosition } from './game/Mobj';
+import { MF_COUNTKILL } from './game/MobjData';
+import { aimLineAttack, lineAttack, setPlayerDamageMobjCallback, setPlayerDamageCallback, setKillCallback } from './game/Attack';
+import { damagePlayer, radiusAttackPlayer, setSecretCallback } from './game/PlayerDamage';
+import { P_NoiseAlert, advanceEnemyTic } from './game/EnemyAI';
+import { checkPickups, setPickupMessageCallback, setPickupCallback, COUNTED_ITEMS } from './game/Pickups';
 import { WeaponSystem } from './game/Weapons';
-import { parseSounds, initSoundManager, MusicPlayer, updateListener } from './sound';
-import { getLump } from './wad';
+import { sectorChangeHandler } from './game/SectorOccupants';
+import { setSectorChangeCallback } from './game/SectorHelpers';
+import { feedCheatChar } from './game/Cheats';
+import { archiveWorld, restoreWorld } from './game/WorldArchive';
+import { SaveSlots, type SaveGame } from './game/SaveGame';
+import { clearRandom } from './game/DoomRandom';
+import { gameRules, type Skill } from './game/GameRules';
+import { Level } from './game/Level';
+import { nextMap, mapMusic } from './game/Campaign';
+import { GameSession } from './game/GameSession';
+import { TicClock } from './game/TicClock';
+import { GameMenu } from './menu/GameMenu';
+import { Automap } from './hud/Automap';
 import { StatusBar } from './hud/StatusBar';
 import { WeaponOverlay } from './hud/WeaponOverlay';
-import { initMobjSystem, spawnMapThing, spawnPlayerMissile, setCameraPosition, allMobjs } from './game/Mobj';
-import { computeSectorSoundOrigins } from './game/SectorHelpers';
-import { DOOMEDNUM_TO_TYPE } from './game/MobjData';
-import { initAttackSystem, setAttackMap, lineAttack, setPlayerDamageCallback, setPlayerDamageMobjCallback } from './game/Attack';
-import { radiusAttackPlayer, damagePlayer } from './game/PlayerDamage';
-import { feedCheatChar } from './game/Cheats';
-import { initEnemyAI, setPlayerMobj, advanceEnemyTic } from './game/EnemyAI';
-import { setExitCallback } from './game/UseAction';
-import type { Mobj } from './game/Mobj';
-import { MF_SOLID, MF_SHOOTABLE } from './game/MobjData';
-
-const SCALE = 1.0 / 32.0;
+import { parseSounds, initSoundManager, MusicPlayer, updateListener } from './sound';
+import { setSoundVolume } from './sound/SoundManager';
+import { FRACUNIT } from './math/fixed';
 
 async function main(): Promise<void> {
-
-  const loadingEl = document.getElementById( 'loading' )!;
-
-  // ---- Parse WAD ----
-  loadingEl.textContent = 'Fetching WAD...';
-  const response = await fetch( 'doomu.wad' );
-  const buffer = await response.arrayBuffer();
-
-  loadingEl.textContent = 'Parsing WAD...';
-  await new Promise( r => setTimeout( r, 0 ) );
-  const wad = parseWAD( buffer );
-
-  loadingEl.textContent = 'Parsing assets...';
-  await new Promise( r => setTimeout( r, 0 ) );
-  const palette = parsePalette( wad );
-  const colormap = parseColormap( wad );
-  const flats = parseFlats( wad, palette );
-  const wallTextures = parseTextures( wad, palette );
-
-  const spriteFrames = parseSprites( wad, palette );
-
-  console.log( `Parsed ${ Object.keys( flats ).length } flats, ${ Object.keys( wallTextures ).length } wall textures, ${ Object.keys( spriteFrames ).length } sprites` );
-  console.log( `Parsed ${ colormap.length } colormap tables` );
-
-  // ---- Parse sounds ----
-  loadingEl.textContent = 'Parsing sounds...';
-  await new Promise( r => setTimeout( r, 0 ) );
-  const audioCtx = new AudioContext();
-  const sfxBuffers = await parseSounds( wad, audioCtx );
-  initSoundManager( audioCtx, sfxBuffers );
-  console.log( `Parsed ${ Object.keys( sfxBuffers ).length } sound effects` );
-
-  // ---- Setup HUD ----
-  const statusBar = new StatusBar();
-  statusBar.loadGraphics( wad, palette );
-  const weaponOverlay = new WeaponOverlay();
-
-  // ---- Setup weapon system ----
-  const weaponSystem = new WeaponSystem();
-
-  // ---- Parse music ----
-  const musicPlayer = new MusicPlayer( audioCtx );
-
-  const genmidiLump = getLump( wad, 'GENMIDI' );
-  const musLump = getLump( wad, 'D_E1M1' );
-
-  if ( genmidiLump ) {
-
-    // Pass raw GENMIDI lump bytes to the OPL3 emulator
-    const genmidiBytes = wad.buf.slice( genmidiLump.offset, genmidiLump.offset + genmidiLump.size ).buffer;
-    musicPlayer.setGenmidiData( genmidiBytes );
-    console.log( `Loaded GENMIDI lump: ${ genmidiLump.size } bytes` );
-
+  const loading=document.getElementById('loading')!;
+  const response=await fetch('doomu.wad');
+  if (!response.ok) throw new Error('Could not load doomu.wad. Place your WAD at public/doomu.wad; see README.md.');
+  const wad=parseWAD(await response.arrayBuffer());
+  const wadHash=[...new Uint8Array(await crypto.subtle.digest('SHA-256',wad.buffer))].map(n=>n.toString(16).padStart(2,'0')).join('');
+  // Storage access remains lazy so disabled storage does not prevent playing.
+  const slots=new SaveSlots({getItem:key=>localStorage.getItem(key),setItem:(key,value)=>localStorage.setItem(key,value)},wadHash);
+  loading.textContent='Loading Doom assets...';
+  const palette=parsePalette(wad);
+  const assets={palette, colormap:parseColormap(wad), flats:parseFlats(wad,palette),
+    textures:parseTextures(wad,palette), sprites:parseSprites(wad,palette)};
+  const audio=new AudioContext();
+  initSoundManager(audio,await parseSounds(wad,audio));
+  const music=new MusicPlayer(audio);
+  const genmidi=getLump(wad,'GENMIDI');
+  if(genmidi) music.setGenmidiData(wad.buf.slice(genmidi.offset,genmidi.offset+genmidi.size).buffer);
+  let musicName='';
+  function playMusic(name: string): void {
+    if(musicName===name && music.isPlaying()) return;
+    const lump=getLump(wad,name);
+    music.stop(); musicName=name;
+    if(lump) music.play(wad.buf.slice(lump.offset,lump.offset+lump.size).buffer);
   }
-
-  let musData: ArrayBuffer | null = null;
-
-  if ( musLump ) {
-
-    musData = wad.buf.slice( musLump.offset, musLump.offset + musLump.size ).buffer;
-    console.log( `Loaded D_E1M1 lump: ${ musLump.size } bytes` );
-
-  }
-
-  // ---- Parse map ----
-  loadingEl.textContent = 'Parsing E1M1...';
-  await new Promise( r => setTimeout( r, 0 ) );
-  const mapLumps = getMapLumps( wad, 'E1M1' );
-  const vertexes = parseVertexes( wad, mapLumps.VERTEXES );
-  const linedefs = parseLinedefs( wad, mapLumps.LINEDEFS );
-  const sidedefs = parseSidedefs( wad, mapLumps.SIDEDEFS );
-  const sectors = parseSectors( wad, mapLumps.SECTORS );
-  const things = parseThings( wad, mapLumps.THINGS );
-  const segs = parseSegs( wad, mapLumps.SEGS );
-  const subsectors = parseSubsectors( wad, mapLumps.SSECTORS );
-  const nodes = parseNodes( wad, mapLumps.NODES );
-  const blockmap = parseBlockmap( wad, mapLumps.BLOCKMAP );
-
-  console.log( `E1M1: ${ vertexes.length } verts, ${ linedefs.length } linedefs, ${ sectors.length } sectors` );
-  console.log( `BSP: ${ nodes.length } nodes, ${ subsectors.length } subsectors, ${ segs.length } segs` );
-  console.log( `Blockmap: ${ blockmap.columns }x${ blockmap.rows } grid` );
-
-  // Precompute sector sound origins for spatial audio
-  computeSectorSoundOrigins( sectors, linedefs, sidedefs, vertexes );
-
-  // Assemble map data for Doom movement
-  const map: DoomMapData = {
-    vertexes, linedefs, sidedefs, sectors,
-    segs, subsectors, nodes, blockmap
-  };
-
-  // Spawn sector light specials (flickering, strobing, glowing)
-  spawnLightSpecials( sectors, linedefs, sidedefs );
-
-  // ---- Setup renderer ----
-  loadingEl.textContent = 'Initializing renderer...';
-  await new Promise( r => setTimeout( r, 0 ) );
-
-  // The #game container fills the space above the status bar via flexbox.
-  // Size the renderer to match it so the 3D scene isn't obscured by the HUD.
-  const gameContainer = document.getElementById( 'game' )!;
-
-  const getViewport = () => ( {
-    w: gameContainer.clientWidth,
-    h: gameContainer.clientHeight
-  } );
-
-  const renderer = new WebGPURenderer( { antialias: true } );
-  const vp = getViewport();
-  renderer.setSize( vp.w, vp.h );
-  renderer.setPixelRatio( window.devicePixelRatio );
-  renderer.setClearColor( 0x000000 );
-  gameContainer.appendChild( renderer.domElement );
-
+  const messages=new HudMessages(new WadGraphics(wad,palette));
+  setPickupMessageCallback(text=>messages.state.post(text));
+  const hud=new StatusBar(); hud.loadGraphics(wad,palette);
+  const weaponOverlay=new WeaponOverlay();
+  let weapons=new WeaponSystem();
+  const container=document.getElementById('game')!;
+  const renderer=new WebGPURenderer({antialias:true});
+  renderer.setPixelRatio(window.devicePixelRatio);
+  renderer.setSize(container.clientWidth,container.clientHeight);
+  renderer.domElement.tabIndex=0;
+  container.appendChild(renderer.domElement);
   await renderer.init();
+  const scene=new Scene(), camera=new PerspectiveCamera(90,container.clientWidth/container.clientHeight,0.1,500);
+  const world=createWorld(Time,Input,DoomWorld,Camera,PlayerStatus);
+  world.set(Camera,{camera}); world.spawn(IsPlayer,Position);
+  const touch=TouchControls.isTouchDevice();
+  const controls=touch ? new TouchControls(world) : new FPSControls(renderer.domElement,world);
+  const session=new GameSession(), clock=new Clock(), ticks=new TicClock();
+  const automap=new Automap(()=>session.running);
+  automap.button.setAttribute('aria-label','Map');
+  automap.button.replaceChildren(new WadGraphics(wad,palette).label('Map'));
+  let level: Level;
+  let exitRequested: boolean | null=null;
+  let destination: number | null=null;
+  let deathTics=0;
 
-  const scene = new Scene();
-  const camera = new PerspectiveCamera( 90, vp.w / vp.h, 0.1, 500 );
-
-  // Build visible geometry
-  const { group, manager } = buildScene( vertexes, linedefs, sidedefs, sectors, things, wallTextures, flats, colormap, palette );
-  scene.add( group );
-
-  // Build sky
-  const skyTex = wallTextures[ 'SKY1' ];
-  let skyGroup: ReturnType<typeof createSky>['mesh'] | null = null;
-
-  if ( skyTex ) {
-
-    const sky = createSky( skyTex );
-    skyGroup = sky.mesh;
-    scene.add( skyGroup );
-    renderer.setClearColor( sky.topColor );
-
+  function loadLevel(episode: number, number: number, skill: Skill, carry?: PlayerStatusState): void {
+    controls.setEnabled(false);
+    level?.dispose(); automap.reset(); messages.reset();
+    level=new Level(wad,assets,episode,number,skill);
+    scene.add(level.root);
+    music.stop(); musicName='';
+    const state=carry ? structuredClone(carry) : createPlayerStatus();
+    for(const key of Object.keys(state.cards) as (keyof typeof state.cards)[]) state.cards[key]=false;
+    for(const power of Object.keys(state.powers) as (keyof typeof state.powers)[]) state.powers[power]=0;
+    state.bonusCount=state.damageCount=0; state.playerState='PST_LIVE'; state.mobjState={name:'S_PLAY',tics:-1};
+    world.set(PlayerStatus,state); world.set(DoomWorld,{player:level.player,map:level.map});
+    world.set(Time,{delta:0,elapsed:0,levelTime:0});
+    level.player.mo.health=state.health;
+    controls.setInitialYaw(level.startYaw); controls.setEnabled(false);
+    setSectorChangeCallback(sectorChangeHandler(level.map,()=>world.get(Time)!.levelTime));
+    weapons=new WeaponSystem(); weapons.setup(world.get(PlayerStatus)!);
+    weapons.setNoiseCallback(()=>P_NoiseAlert(level.player.mo,level.player.mo,level.map));
+    weapons.setAimCallback((angle,range)=>aimLineAttack(level.player.mo,angle,range).slope);
+    weapons.setFireCallback((angle,slope,damage,range)=>{
+      const mo=level.player.mo;
+      lineAttack(mo.x,mo.y,mo.z+(mo.height>>1)+8*FRACUNIT,angle,slope,range,damage,mo);
+    });
+    weapons.setMissileCallback((angle,type)=>spawnPlayerMissile(level.player,angle,type));
+    syncPlayerPositionSystem(world); cameraSystem(world);
+    ticks.advance(0,false,()=>{}); clock.getDelta();
+    exitRequested=null; destination=null; deathTics=0;
+    hud.update(world);
   }
 
-  // Build thing sprites (decorations, pickups, enemies, etc.)
-  // Skip types managed by the mobj system (barrels, enemies)
-  const mobjDoomedNums = new Set( Object.keys( DOOMEDNUM_TO_TYPE ).map( Number ) );
-  const spriteGroup = buildThingSprites( things, spriteFrames, map, mobjDoomedNums );
-  scene.add( spriteGroup );
+  setCrossSpecialCallback((idx,side,mo)=>{
+    crossSpecialLine(level.map.linedefs[idx],level.map,level.player,level.things,side,mo);
+  });
+  setExitCallback(secret=>{ exitRequested ??= secret; });
+  setKillCallback(mo=>{if(mo.flags&MF_COUNTKILL) level.kills++;});
+  setSecretCallback(()=>level.secrets++);
+  setPickupCallback(type=>{if(COUNTED_ITEMS.has(type)) level.items++;});
+  setPlayerDamageMobjCallback(damage=>{
+    const state=world.get(PlayerStatus)!; damagePlayer(state,damage); level.player.mo.health=state.health;
+  });
+  setPlayerDamageCallback((spot,source,damage)=>{
+    const state=world.get(PlayerStatus)!; radiusAttackPlayer(level.player,state,spot,source,damage); level.player.mo.health=state.health;
+  });
+  clearRandom(); loadLevel(1,1,3);
 
-  // ---- Setup mobj system (barrels, enemies, projectiles) ----
-  initMobjSystem( spriteFrames, spriteGroup, map );
-  initAttackSystem();
-  setAttackMap( map );
-
-  // Spawn barrels (and later enemies) as live mobjs with state machines
-  for ( const thing of things ) {
-
-    if ( DOOMEDNUM_TO_TYPE[ thing.type ] ) {
-
-      spawnMapThing( thing );
-
-    }
-
+  function saveGame(slot: number): void {
+    if(!session.started||session.phase!=='level')throw new Error('Start a level before saving.');
+    const time=world.get(Time)!;
+    const save:SaveGame={format:'three-doom',version:1,wad:wadHash,
+      label:`E${gameRules.episode}M${gameRules.map} · ${Math.floor(time.levelTime/35)}s`,savedAt:new Date().toISOString(),
+      episode:gameRules.episode,map:gameRules.map,skill:gameRules.skill,tic:time.levelTime,
+      world:archiveWorld(level.map,level.player),player:structuredClone(world.get(PlayerStatus)!),weapons:weapons.archive(),
+      sprites:archiveStaticSprites(level.sprites),automap:automap.archive(),
+      view:{yaw:world.get(Input)!.yaw,pitch:world.get(Input)!.pitch},stats:{kills:level.kills,items:level.items,secrets:level.secrets}};
+    slots.write(slot,save);
   }
-
-  // Setup walk-over trigger callback (player ref set after player creation below)
-  let crossPlayer: ReturnType<typeof createPlayer> | null = null;
-  setCrossSpecialCallback( ( lineIdx: number ) => {
-
-    crossSpecialLine( map.linedefs[ lineIdx ], map, crossPlayer ?? undefined, things );
-
-  } );
-
-  // ---- Setup Doom player ----
-  const p1 = things.find( t => t.type === 1 );
-  const spawnX = p1 ? p1.x : 0;
-  const spawnY = p1 ? p1.y : 0;
-  const startYaw = p1 ? ( p1.angle * Math.PI ) / 180 - Math.PI / 2 : 0;
-
-  // Find spawn sector via BSP to get floor height
-  const spawnSector = findSectorAt( spawnX, spawnY, map );
-  const spawnFloor = spawnSector ? spawnSector.floorHeight : 0;
-
-  const doomPlayer = createPlayer( spawnX, spawnY, spawnFloor );
-  crossPlayer = doomPlayer;
-
-  if ( spawnSector ) {
-
-    doomPlayer.mo.ceilingz = intToFixed( spawnSector.ceilingHeight );
-
+  function loadGame(slot: number): void {
+    const save=slots.read(slot);
+    const lumps=getMapLumps(wad,`E${save.episode}M${save.map}`);
+    if(save.world.sectors.length!==lumps.SECTORS.size/26 || save.world.lines.length!==lumps.LINEDEFS.size/14 || save.world.sides.length!==lumps.SIDEDEFS.size/30)throw new Error('Saved map dimensions do not match this WAD.');
+    loadLevel(save.episode,save.map,save.skill);
+    restoreWorld(level.map,level.player,save.world);
+    world.set(PlayerStatus,structuredClone(save.player));weapons.restore(save.weapons);
+    restoreStaticSprites(save.sprites,level.sprites);automap.restore(save.automap);
+    Object.assign(level,save.stats);
+    world.set(Time,{levelTime:save.tic,delta:0,elapsed:save.tic/35});
+    controls.setInitialYaw(save.view.yaw,save.view.pitch);controls.setEnabled(false);
+    syncPlayerPositionSystem(world);cameraSystem(world);
+    level.map.sectors.forEach((_,i)=>dirtySectors.add(i));
+    session.started=true;session.phase='level';session.menu='main';
+    hud.update(world);
   }
-
-  // Set player facing angle (Doom angle: 0=east, stored as radians)
-  doomPlayer.mo.angle = p1 ? ( p1.angle * Math.PI ) / 180 : 0;
-
-  console.log( `Player spawned at Doom (${ spawnX }, ${ spawnY }) floor=${ spawnFloor }` );
-
-  // ---- Setup enemy AI ----
-  initEnemyAI();
-  setPlayerMobj( doomPlayer.mo );
-
-  // Add player mobj to the global mobj list so hitscans and missiles can find it
-  allMobjs.push( doomPlayer.mo );
-
-  // ---- Setup exit callback ----
-  setExitCallback( ( secret ) => {
-
-    console.log( secret ? 'SECRET EXIT!' : 'EXIT!' );
-    // For now, reload the level — future: load next map
-    setTimeout( () => window.location.reload(), 1500 );
-
-  } );
-
-  // ---- Setup ECS ----
-  const world = createECSWorld( Time, Input );
-  world.add( DoomWorld );
-  world.set( DoomWorld, {
-    player: doomPlayer,
-    map
-  } );
-  world.add( Camera );
-  world.set( Camera, { camera } );
-  world.add( PlayerStatus );
-  weaponSystem.setup( world.get( PlayerStatus )! );
-
-  // Wire weapon fire to hitscan attack system
-  weaponSystem.setFireCallback( ( angle, slope, damage ) => {
-
-    // Shoot from player eye height
-    const shootZ = doomPlayer.viewz;
-    lineAttack( doomPlayer.mo.x, doomPlayer.mo.y, shootZ, angle, slope, ( 32 * 64 ) * FRACUNIT, damage, doomPlayer.mo );
-
-  } );
-
-  // Wire projectile weapon fire (rocket, plasma, BFG)
-  weaponSystem.setMissileCallback( ( angle, typeName ) => {
-
-    spawnPlayerMissile( doomPlayer, angle, typeName );
-
-  } );
-
-  // Wire explosion damage to player
-  setPlayerDamageCallback( ( spot, source, damage ) => {
-
-    const pState = world.get( PlayerStatus );
-    if ( pState ) {
-
-      radiusAttackPlayer( doomPlayer, pState, spot, source, damage );
-      doomPlayer.mo.health = pState.health;
-
-    }
-
-  } );
-
-  // Wire enemy melee/hitscan damage → player (when damageMobj target is player)
-  setPlayerDamageMobjCallback( ( damage, _inflictor, _source ) => {
-
-    const pState = world.get( PlayerStatus );
-    if ( pState ) {
-
-      damagePlayer( pState, damage );
-      // Sync mobj health so enemies see the player as dead
-      doomPlayer.mo.health = pState.health;
-
-    }
-
-  } );
-
-  // Spawn player entity (ECS representation for camera sync)
-  world.spawn(
-    IsPlayer,
-    Position( {
-      x: spawnX * SCALE,
-      y: doomPlayer.viewz * SCALE,
-      z: - spawnY * SCALE
-    } ),
-    Rotation( { yaw: startYaw, pitch: 0 } )
-  );
-
-  // Setup controls — touch on mobile, pointer lock on desktop
-  const isTouch = TouchControls.isTouchDevice();
-  const controls = isTouch
-    ? new TouchControls( world )
-    : new FPSControls( renderer.domElement, world );
-  controls.setInitialYaw( startYaw );
-
-  // Hide the controls that don't apply to this device
-  const infoEl = document.getElementById( 'info' )!;
-  const hideClass = isTouch ? 'desktop-only' : 'touch-only';
-  for ( const el of infoEl.querySelectorAll( `.${ hideClass }` ) ) {
-
-    ( el as HTMLElement ).style.display = 'none';
-
-  }
-
-  // Dismiss overlay and start game on first click/tap.
-  // The overlay covers the screen, so it must handle the initial gesture itself.
-  const startGame = () => {
-
-    infoEl.classList.add( 'hidden' );
-
-    audioCtx.resume().then( () => {
-
-      if ( musData && ! musicPlayer.isPlaying() ) {
-
-        musicPlayer.play( musData );
-
+  const menu=new GameMenu(session,wad,palette,{
+    messages:enabled=>{messages.state.enabled=enabled;},
+    save:saveGame,load:loadGame,slotLabel:slot=>slots.label(slot),
+    changed:()=>{
+      controls.setEnabled(session.running); ticks.advance(0,false,()=>{}); clock.getDelta();
+      if(session.running || session.presenting) {
+        if(session.running)renderer.domElement.focus();
+        void audio.resume().then(()=>{if(session.running)playMusic(mapMusic(gameRules.episode,gameRules.map));else if(session.presenting)playMusic(menu.presentationMusic);}).catch(console.error);
+        if(session.running && !touch) renderer.domElement.requestPointerLock()?.catch(()=>{});
+        else if(document.pointerLockElement)document.exitPointerLock();
+      } else {
+        if(document.pointerLockElement) document.exitPointerLock();
+        void audio.suspend().catch(console.error);
       }
-
-    } );
-
-    if ( ! isTouch ) renderer.domElement.requestPointerLock();
-
-    infoEl.removeEventListener( 'click', startGame );
-    infoEl.removeEventListener( 'touchstart', startGame );
-
-  };
-
-  infoEl.addEventListener( isTouch ? 'touchstart' : 'click', startGame );
-
-  // Cheat code listener
-  document.addEventListener( 'keypress', ( e: KeyboardEvent ) => {
-
-    const pState = world.get( PlayerStatus );
-    if ( pState ) feedCheatChar( e.key, pState );
-
-  } );
-
-  // Resize handler — also listen for orientationchange on mobile
-  const onResize = () => {
-
-    const v = getViewport();
-    camera.aspect = v.w / v.h;
-    camera.updateProjectionMatrix();
-    renderer.setSize( v.w, v.h );
-
-  };
-
-  window.addEventListener( 'resize', onResize );
-  screen.orientation?.addEventListener( 'change', onResize );
-
-  loadingEl.style.display = 'none';
-
-  // ---- Game loop ----
-  const clock = new Clock();
-  let weaponTicAccum = 0;
-  const TIC_SEC = 1 / 35;
-  let deathTimer = 0;
-
-  renderer.setAnimationLoop( () => {
-
-    const dt = Math.min( clock.getDelta(), 1 / 30 ); // cap delta
-
-    // Update ECS time — mutate in place to preserve levelTime across frames
-    const time = world.get( Time )!;
-    time.delta = dt;
-    time.elapsed = clock.elapsedTime;
-
-    // Auto-reload after death (3 second delay)
-    const pStateLoop = world.get( PlayerStatus );
-    if ( pStateLoop && pStateLoop.playerState === 'PST_DEAD' ) {
-
-      deathTimer += dt;
-      if ( deathTimer >= 3 ) {
-
-        window.location.reload();
-        return;
-
-      }
-
-    }
-
-    // Gather input
+    },
+    newGame:(episode,skill)=>{clearRandom();loadLevel(episode,1,skill);},
+    end:()=>{
+      loadLevel(1,1,3); session.started=false; session.phase='level'; session.menu='main'; menu.refresh();
+    },
+    next:()=>{
+      if(destination===null) { session.started=false; session.phase='level'; session.menu='main'; loadLevel(1,1,3); menu.refresh(); }
+      else {loadLevel(gameRules.episode,destination,gameRules.skill,world.get(PlayerStatus)!);menu.start();}
+    },
+    volume:(musicVolume,soundVolume)=>{music.setVolume(musicVolume);setSoundVolume(soundVolume);}
+  });
+  const gameActions=document.createElement('div');gameActions.id='game-actions';
+  gameActions.append(automap.button,document.getElementById('menu-button')!);
+  document.body.append(gameActions);
+  document.addEventListener('pointerlockchange',()=>{if(!touch && !document.pointerLockElement && session.running) menu.open();});
+  window.addEventListener('blur',()=>{if(session.running) menu.open();});
+  document.addEventListener('visibilitychange',()=>{if(document.hidden && session.running) menu.open();});
+  document.addEventListener('keydown',event=>{if(event.code==='Enter' && session.running && !event.repeat)messages.refresh();});
+  document.addEventListener('keypress',e=>{if(session.running) feedCheatChar(e.key,world.get(PlayerStatus)!);});
+  const resize=()=>{camera.aspect=container.clientWidth/container.clientHeight;camera.updateProjectionMatrix();renderer.setSize(container.clientWidth,container.clientHeight);};
+  window.addEventListener('resize',resize); screen.orientation?.addEventListener('change',resize);
+  if(import.meta.env.DEV && new URLSearchParams(location.search).has('inspect')) {
+    Object.defineProperty(window,'__doomInspect',{value:()=>({
+      audio:audio.state,music:musicName,presentation:menu.inspectPresentation(), started:session.started,running:session.running, phase:session.phase,
+      episode:gameRules.episode,map:gameRules.map,skill:gameRules.skill,tic:world.get(Time)!.levelTime,
+      player:{x:level.player.mo.x,y:level.player.mo.y,z:level.player.mo.z,health:world.get(PlayerStatus)!.health,ammo:{...world.get(PlayerStatus)!.ammo}},
+      input:{...world.get(Input)!},
+      actors:allMobjs.map(mo=>({x:mo.x,y:mo.y,z:mo.z,health:mo.health,state:mo.state,tics:mo.tics})),
+      sectors:level.map.sectors.map(s=>[s.floorHeight,s.ceilingHeight,s.lightLevel])
+    })});
+  }
+  loading.style.display='none';
+  renderer.setAnimationLoop(()=>{
+    const dt=clock.getDelta(), time=world.get(Time)!;
+    time.delta=0; time.elapsed=time.levelTime/35;
     controls.update();
-
-    // Run systems
-    playerMovementSystem( world );
-    cameraSystem( world );
-
-    // Sync audio listener to camera position and facing
-    updateListener(
-      camera.position.x, camera.position.y, camera.position.z,
-      - Math.sin( camera.rotation.y ), - Math.cos( camera.rotation.y )
-    );
-
-    // Check for pending teleport and sync camera yaw
-    const tp = consumeTeleport();
-    if ( tp ) {
-
-      const newYaw = ( tp.angle * Math.PI ) / 180 - Math.PI / 2;
-      controls.setInitialYaw( newYaw );
-
+    let finishPresentation=false;
+    ticks.advance(dt,session.running || session.presenting,()=>{
+      if(session.presenting){finishPresentation=menu.tickPresentation() || finishPresentation;return;}
+      if(!session.running || exitRequested!==null) return;
+      time.delta=1/35;
+      playerTickSystem(world);
+      const tp=consumeTeleport();
+      if(tp) {const yaw=tp.angle*Math.PI/180-Math.PI/2;controls.setInitialYaw(yaw);world.set(Input,{yaw});}
+      weapons.tick(world); advanceEnemyTic();
+      const state=world.get(PlayerStatus)!; level.player.mo.health=state.health;
+      if(state.playerState!=='PST_DEAD') checkPickups(world,level.sprites,level.player.mo.x,level.player.mo.y,level.player.mo.z);
+      else deathTics++;
+      if((time.levelTime & 3) === 0) automap.discover(level.map,level.player);
+      messages.tick();
+      updateSpriteAnimations(1/35);hud.update(world);
+    });
+    if(finishPresentation)menu.finishPresentation();
+    if(exitRequested!==null) {
+      if(gameRules.map===9)world.get(PlayerStatus)!.didSecret=true;
+      destination=nextMap(gameRules.episode,gameRules.map,exitRequested);exitRequested=null;
+      menu.complete({didSecret:world.get(PlayerStatus)!.didSecret,episode:gameRules.episode,map:gameRules.map,next:destination,kills:level.kills,totalKills:level.totalKills,
+        items:level.items,totalItems:level.things.filter(t=>COUNTED_ITEMS.has(t.type)).length,secrets:level.secrets,totalSecrets:level.totalSecrets,time:Math.floor(time.levelTime/35)});
     }
-
-    // Run weapon system at 35Hz
-    weaponTicAccum += dt;
-    const weaponTics = Math.min( Math.floor( weaponTicAccum / TIC_SEC ), 4 );
-    weaponTicAccum -= weaponTics * TIC_SEC;
-
-    for ( let i = 0; i < weaponTics; i ++ ) {
-
-      weaponSystem.tick( world );
-      advanceEnemyTic();
-
-    }
-
-    // Apply weapon bob from player movement
-    weaponSystem.applyBob( doomPlayer.bob, world.get( Time )!.levelTime );
-
-    // Sync health: player Mobj ↔ PlayerStatus (ECS)
-    const pState = world.get( PlayerStatus );
-    if ( pState ) {
-
-      doomPlayer.mo.health = pState.health;
-
-    }
-
-    // Check for item pickups
-    checkPickups( world, spriteGroup, doomPlayer.mo.x, doomPlayer.mo.y, doomPlayer.mo.z );
-
-    // Rebuild only dirty sectors (doors/platforms/floors)
-    if ( hasDirtySectors() ) {
-
-      manager.rebuildDirtySectors( dirtySectors );
-      updateSpriteFloorHeights( spriteGroup );
-      clearDirtySectors();
-
-    }
-
-    // Update camera position for mobj sprite rotation selection
-    setCameraPosition( doomPlayer.mo.x, doomPlayer.mo.y );
-
-    // Animate textures and sprites
-    manager.updateAnimatedTextures( Math.floor( clock.elapsedTime * 35 ) );
-    updateSpriteAnimations( dt );
-    updateSpriteBillboards( spriteGroup, camera.rotation.y );
-
-    // Track sky to camera — centered on player so it appears infinitely far.
-    // Y tracks too so the horizon line stays correct relative to the eye.
-    if ( skyGroup ) {
-
-      skyGroup.position.set( camera.position.x, camera.position.y, camera.position.z );
-
-    }
-
-    // Update weapon overlay
-    weaponOverlay.update( weaponSystem, spriteFrames );
-
-    // Update HUD
-    statusBar.update( world );
-
-    // Render
-    renderer.render( scene, camera );
-
-  } );
-
+    if(deathTics>=105) {loadLevel(gameRules.episode,gameRules.map,gameRules.skill);session.open();menu.refresh();}
+    if(session.presenting && audio.state==='running')playMusic(menu.presentationMusic);
+    cameraSystem(world);
+    updateListener(camera.position.x,camera.position.y,camera.position.z,-Math.sin(camera.rotation.y),-Math.cos(camera.rotation.y));
+    weapons.applyBob(level.player.bob,time.levelTime);
+    if(dirtySectors.size) {level.manager.rebuildDirtySectors(dirtySectors);updateSpriteFloorHeights(level.sprites);clearDirtySectors();}
+    setCameraPosition(level.player.mo.x,level.player.mo.y);
+    level.manager.updateAnimatedTextures(time.levelTime);updateSpriteBillboards(level.sprites,camera.rotation.y);
+    level.sky?.position.copy(camera.position);
+    weaponOverlay.update(weapons,assets.sprites);
+    renderer.render(scene,camera);
+    automap.draw(level.map,level.player,!!world.get(PlayerStatus)!.powers.allmap);
+  });
 }
 
-main().catch( err => {
-
-  console.error( err );
-  document.getElementById( 'loading' )!.innerHTML = `<span style="color:red">${ err.message }<br><pre>${ err.stack }</pre></span>`;
-
-} );
+main().catch(error=>{
+  console.error(error);
+  document.getElementById('loading')!.textContent=`Unable to start Doom: ${error.message}`;
+});

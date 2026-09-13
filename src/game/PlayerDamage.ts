@@ -5,9 +5,14 @@ import type { PlayerStatusState } from '../ecs/traits';
 import type { DoomPlayer, DoomMapData } from '../physics/DoomMovement';
 import { findSectorAtFixed } from '../physics/DoomMovement';
 import type { Mobj } from './Mobj';
+import { requestExit } from './UseAction';
+import { gameRules } from './GameRules';
 import { P_Random } from './DoomRandom';
 import { FRACBITS } from '../math/fixed';
 import { playerPainCheck, playerKilled } from './PlayerState';
+
+let secretCallback: (() => void) | null = null;
+export function setSecretCallback(cb: () => void): void { secretCallback=cb; }
 
 // ============================================================
 // P_DamageMobj for the player — ported from p_inter.c
@@ -23,6 +28,8 @@ export function damagePlayer(
 ): void {
 
   if ( state.health <= 0 ) return;
+
+  if (gameRules.skill === 1) damage >>= 1;
 
   // God mode blocks all damage
   if ( state.godMode ) return;
@@ -150,10 +157,11 @@ export function playerInSpecialSector(
       // SECRET — one-time discovery
       // Clear the special so it only triggers once
       sector.special = 0;
-      // TODO: increment secretcount
+      secretCallback?.();
       break;
 
     case 11:
+      state.godMode = false;
       // EXIT SUPER DAMAGE — 20 damage, ignores godmode, forces exit at ≤10 HP
       if ( ! ( levelTime & 0x1F ) ) {
 
@@ -163,7 +171,7 @@ export function playerInSpecialSector(
 
       if ( state.health <= 10 ) {
 
-        // TODO: trigger level exit (G_ExitLevel)
+        requestExit();
 
       }
 

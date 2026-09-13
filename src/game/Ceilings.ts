@@ -3,7 +3,7 @@
 
 import type { Sector, Linedef, Sidedef } from '../wad';
 import { movePlane, getHighestCeilingHeight } from './SectorHelpers';
-import { addThinker, markSectorDirty } from './Thinkers';
+import { addThinker, markSectorDirty, archivedThinker, busySectors } from './Thinkers';
 import { playSoundAt } from '../sound';
 import { intToFixed } from '../math/fixed';
 
@@ -15,7 +15,7 @@ export type CeilingType =
   | 'fastCrushAndRaise'
   | 'silentCrushAndRaise';
 
-interface CeilingMove {
+export interface CeilingMove {
   sectorIdx: number;
   type: CeilingType;
   bottomHeight: number;
@@ -31,9 +31,12 @@ interface CeilingMove {
 const MAXCEILINGS = 30;
 const activeCeilings: ( CeilingMove | null )[] = new Array( MAXCEILINGS ).fill( null );
 
+export function resetCeilings(): void { activeCeilings.fill(null); }
+
 const CEILSPEED = 1; // FRACUNIT equivalent in map units
 
 function addActiveCeiling( ceiling: CeilingMove ): void {
+  busySectors.add(ceiling.sectorIdx);
 
   for ( let i = 0; i < MAXCEILINGS; i ++ ) {
 
@@ -49,6 +52,7 @@ function addActiveCeiling( ceiling: CeilingMove ): void {
 }
 
 function removeActiveCeiling( ceiling: CeilingMove ): void {
+  busySectors.delete(ceiling.sectorIdx);
 
   for ( let i = 0; i < MAXCEILINGS; i ++ ) {
 
@@ -69,7 +73,7 @@ function makeCeilingThinker( cm: CeilingMove, sectors: Sector[] ): () => boolean
   const sy = intToFixed( sectors[ cm.sectorIdx ].soundY );
   const sz = intToFixed( sectors[ cm.sectorIdx ].ceilingHeight );
 
-  return () => {
+  return archivedThinker(() => {
 
     const sector = sectors[ cm.sectorIdx ];
     markSectorDirty( cm.sectorIdx );
@@ -180,7 +184,7 @@ function makeCeilingThinker( cm: CeilingMove, sectors: Sector[] ): () => boolean
 
     return true;
 
-  };
+  }, 'ceiling', () => ({...cm, thinker: null}));
 
 }
 
@@ -193,8 +197,7 @@ function activateInStasisCeiling( tag: number, sectors: Sector[] ): void {
     if ( cm && cm.tag === tag && cm.direction === 0 ) {
 
       cm.direction = cm.oldDirection;
-      cm.thinker = makeCeilingThinker( cm, sectors );
-      addThinker( cm.thinker );
+      // The stasis thinker stays registered; resume it without duplicating it.
 
     }
 
@@ -237,7 +240,7 @@ export function evDoCeiling(
       }
 
     }
-    if ( alreadyActive ) continue;
+    if ( alreadyActive || busySectors.has(i) ) continue;
 
     activated = true;
     const sector = sectors[ i ];
@@ -326,4 +329,9 @@ export function evCeilingCrushStop(
 
   return stopped;
 
+}
+
+export function restoreCeilings(state: CeilingMove, sectors: Sector[]): void {
+  addActiveCeiling(state);
+  addThinker(makeCeilingThinker(state, sectors));
 }

@@ -5,14 +5,18 @@
 import type { Fixed } from '../math/fixed';
 import { FRACUNIT, FRACBITS, fixedMul, fixedDiv, intToFixed, fixedToFloat } from '../math/fixed';
 import type { DoomMapData } from '../physics/DoomMovement';
-import { findSectorAtFixed } from '../physics/DoomMovement';
+import { findSectorAtFixed, tryMove, specialContacts, moveOpening } from '../physics/DoomMovement';
 import type { Mobj } from './Mobj';
 import { allMobjs, spawnMobj, spawnMissile as P_SpawnMissile, setMobjState, removeMobj, setEnemyActionCallback, getMobjMapData } from './Mobj';
 import { MF_SHOOTABLE, MF_SOLID, MF_AMBUSH, MF_JUSTHIT, MF_JUSTATTACKED, MF_SKULLFLY,
-  MF_SHADOW, MF_FLOAT, MF_CORPSE, MF_MISSILE, MF_NOGRAVITY, MF_COUNTKILL } from './MobjData';
+  MF_SHADOW, MF_FLOAT, MF_INFLOAT, MF_CORPSE, MF_MISSILE, MF_NOGRAVITY, MF_COUNTKILL } from './MobjData';
 import { P_CheckSight } from './Sight';
 import { lineAttack, damageMobj, radiusAttack } from './Attack';
 import { P_Random } from './DoomRandom';
+import { gameRules } from './GameRules';
+import { evDoFloor } from './Floors';
+import { requestExit } from './UseAction';
+import { evDoDoor, evVerticalDoor } from './Doors';
 import { playSound, playSoundAt } from '../sound';
 
 // ============================================================
@@ -192,52 +196,30 @@ export function P_Move( mo: Mobj, map: DoomMapData ): boolean {
   if ( mo.moveDir === DI_NODIR ) return false;
 
   const speed = mo.info.speed;
-  const tryX = mo.x + fixedMul( speed, xspeed[ mo.moveDir ] );
-  const tryY = mo.y + fixedMul( speed, yspeed[ mo.moveDir ] );
+  // Monster speed is an integer map-unit count; direction vectors are already
+  // fixed-point. P_Move uses ordinary multiplication, unlike projectile speed.
+  const tryX = (mo.x + speed * xspeed[ mo.moveDir ]) | 0;
+  const tryY = (mo.y + speed * yspeed[ mo.moveDir ]) | 0;
 
-  // Check if the new position is valid
-  const sector = findSectorAtFixed( tryX, tryY, map );
-  if ( ! sector ) return false;
-
-  const newFloor = intToFixed( sector.floorHeight );
-  const newCeiling = intToFixed( sector.ceilingHeight );
-
-  // Can't fit
-  if ( newCeiling - newFloor < mo.height ) return false;
-
-  // Too high a step (24 map units max)
-  if ( newFloor - mo.floorz > 24 * FRACUNIT ) return false;
-
-  // Dropoff check (don't walk off tall ledges unless MF_FLOAT)
-  if ( mo.floorz - newFloor > 24 * FRACUNIT && ( mo.flags & MF_FLOAT ) === 0 ) return false;
-
-  // Move is valid — update position
-  mo.x = tryX;
-  mo.y = tryY;
-  mo.floorz = newFloor;
-  mo.ceilingz = newCeiling;
-
-  // If floating, adjust z toward target
-  if ( ( mo.flags & MF_FLOAT ) !== 0 && mo.target ) {
-
-    const targetZ = mo.target.z;
-    if ( mo.z < targetZ ) {
-
-      mo.z += 8 * FRACUNIT;
-      if ( mo.z > targetZ ) mo.z = targetZ;
-
-    } else if ( mo.z > targetZ ) {
-
-      mo.z -= 8 * FRACUNIT;
-      if ( mo.z < targetZ ) mo.z = targetZ;
-
+  if (!tryMove(mo, tryX, tryY, map)) {
+    const opening = moveOpening();
+    if ((mo.flags & MF_FLOAT) && opening.floatok) {
+      mo.z += mo.z < opening.floor ? 4 * FRACUNIT : -4 * FRACUNIT;
+      mo.flags |= MF_INFLOAT;
+      return true;
     }
-
-  } else {
-
-    mo.z = mo.floorz;
-
+    const contacts = specialContacts();
+    if (!contacts.length) return false;
+    mo.moveDir = DI_NODIR;
+    let opened = false;
+    for (const idx of contacts.reverse()) {
+      const line = map.linedefs[idx];
+      if (line.special === 1 && evVerticalDoor(line,map.linedefs,map.sidedefs,map.sectors,undefined,false)) opened = true;
+    }
+    return opened;
   }
+  mo.flags &= ~MF_INFLOAT;
+  if (!(mo.flags & MF_FLOAT)) mo.z = mo.floorz;
 
   return true;
 
@@ -370,28 +352,15 @@ export function A_Look( mo: Mobj, map: DoomMapData ): void {
   // Check if player is visible
   const canSee = P_CheckSight( mo, playerMobj, map );
 
-  if ( ( mo.flags & MF_AMBUSH ) !== 0 ) {
-
-    // Deaf monsters only react if they can see the player
-    if ( ! canSee ) return;
-
-  } else {
-
-    // Non-deaf: react if player is in sight
-    if ( ! canSee ) return;
-
-  }
-
-  // Angle check — don't see behind unless within melee range
-  const angleToPlayer = angleTo( mo.x, mo.y, playerMobj.x, playerMobj.y );
-  let delta = normalizeAngle( angleToPlayer - normalizeAngle( mo.angle ) );
-  if ( delta > Math.PI ) delta = 2 * Math.PI - delta;
-
-  if ( delta > Math.PI / 2 ) {
-
-    const dist = approxDistance( playerMobj.x - mo.x, playerMobj.y - mo.y );
-    if ( dist > MELEERANGE ) return;
-
+  const sector = findSectorAtFixed(mo.x, mo.y, map);
+  const soundTarget = sector ? sectorSoundTarget.get(map.sectors.indexOf(sector)) : null;
+  const heard = soundTarget && soundTarget.health > 0 && (!(mo.flags & MF_AMBUSH) || canSee);
+  if (!heard) {
+    if (!canSee) return;
+    const angleToPlayer = angleTo(mo.x, mo.y, playerMobj.x, playerMobj.y);
+    let delta = normalizeAngle(angleToPlayer - normalizeAngle(mo.angle));
+    if (delta > Math.PI) delta = 2 * Math.PI - delta;
+    if (delta > Math.PI / 2 && approxDistance(playerMobj.x - mo.x, playerMobj.y - mo.y) > MELEERANGE) return;
   }
 
   // Found the player — go to see state
@@ -1098,11 +1067,19 @@ export function A_Fall( mo: Mobj ): void {
 
 }
 
-export function A_BossDeath( _mo: Mobj ): void {
-
-  // Boss death triggers — simplified for now
-  // Full implementation would check episode/map and activate linedefs
-
+export function A_BossDeath(mo: Mobj): void {
+  const {episode,map:number}=gameRules;
+  const required = episode===1 && number===8 ? 'MT_BRUISER'
+    : episode===2 && number===8 ? 'MT_CYBORG'
+    : episode===3 && number===8 ? 'MT_SPIDER'
+    : episode===4 && number===6 ? 'MT_CYBORG'
+    : episode===4 && number===8 ? 'MT_SPIDER' : null;
+  if (mo.type!==required || !playerMobj || playerMobj.health<=0) return;
+  if (allMobjs.some(other=>other!==mo && other.type===mo.type && other.health>0)) return;
+  const map=getMobjMapData(); if (!map) return;
+  if (episode===1 || (episode===4 && number===8)) evDoFloor('lowerFloorToLowest',666,map.linedefs,map.sidedefs,map.sectors);
+  else if (episode===4) evDoDoor('blazeOpen',666,map.linedefs,map.sidedefs,map.sectors);
+  else requestExit();
 }
 
 export function A_Hoof( mo: Mobj ): void {
@@ -1133,57 +1110,32 @@ export function A_BabyMetal( mo: Mobj ): void {
 // Sound propagation — P_NoiseAlert
 // ============================================================
 
-let soundTraversedCount = 0;
-const sectorSoundTraversed = new Map<number, number>();
 const sectorSoundTarget = new Map<number, Mobj>();
+export function clearSoundTargets(): void { sectorSoundTarget.clear(); }
 
-function recursiveSound(
-  sectorIdx: number,
-  soundBlocks: number,
-  target: Mobj,
-  map: DoomMapData
-): void {
-
-  const prevTraversed = sectorSoundTraversed.get( sectorIdx ) ?? 0;
-
-  if ( prevTraversed === soundTraversedCount && prevTraversed <= soundBlocks + 1 ) return;
-
-  sectorSoundTraversed.set( sectorIdx, soundTraversedCount );
-  sectorSoundTarget.set( sectorIdx, target );
-
-  // Flood through two-sided linedefs touching this sector
-  for ( const ld of map.linedefs ) {
-
-    if ( ld.left < 0 ) continue; // one-sided
-
-    const frontSector = map.sidedefs[ ld.right ].sector;
-    const backSector = map.sidedefs[ ld.left ].sector;
-
-    let otherIdx = -1;
-    if ( frontSector === sectorIdx ) otherIdx = backSector;
-    else if ( backSector === sectorIdx ) otherIdx = frontSector;
-    else continue;
-
-    // Check opening
-    const front = map.sectors[ frontSector ];
-    const back = map.sectors[ backSector ];
-    const openTop = Math.min( front.ceilingHeight, back.ceilingHeight );
-    const openBottom = Math.max( front.floorHeight, back.floorHeight );
-    if ( openTop - openBottom <= 0 ) continue;
-
-    recursiveSound( otherIdx, soundBlocks, target, map );
-
+// P_RecursiveSound: a path may cross at most one sound-blocking linedef.
+// Iterative shortest-path traversal avoids recursion overflow and revisits only
+// when a route with fewer sound blocks is found.
+export function P_NoiseAlert(target: Mobj, emitter: Mobj, map: DoomMapData): void {
+  const sector = findSectorAtFixed(emitter.x, emitter.y, map);
+  if (!sector) return;
+  const queue: [number,number][] = [[map.sectors.indexOf(sector),0]];
+  const costs = new Map<number,number>();
+  for (let i=0; i<queue.length; i++) {
+    const [index, cost] = queue[i];
+    if ((costs.get(index) ?? Infinity) <= cost) continue;
+    costs.set(index,cost); sectorSoundTarget.set(index,target);
+    for (const line of map.linedefs) {
+      if (line.left < 0) continue;
+      const front=map.sidedefs[line.right].sector, back=map.sidedefs[line.left].sector;
+      const next=front===index ? back : back===index ? front : -1;
+      if (next < 0) continue;
+      const a=map.sectors[front], b=map.sectors[back];
+      if (Math.min(a.ceilingHeight,b.ceilingHeight) <= Math.max(a.floorHeight,b.floorHeight)) continue;
+      const nextCost=cost+((line.flags & 64) ? 1 : 0);
+      if (nextCost <= 1) queue.push([next,nextCost]);
+    }
   }
-
-}
-
-export function P_NoiseAlert( target: Mobj, emitter: Mobj, map: DoomMapData ): void {
-
-  if ( emitter.sectorIndex < 0 ) return;
-
-  soundTraversedCount ++;
-  recursiveSound( emitter.sectorIndex, 0, target, map );
-
 }
 
 // ============================================================
@@ -1372,7 +1324,16 @@ function handleEnemyAction( mo: Mobj, action: string ): boolean {
 // ============================================================
 
 export function initEnemyAI(): void {
+  gameTic = 0; clearSoundTargets();
 
   setEnemyActionCallback( handleEnemyAction );
 
+}
+
+export function archiveEnemyAI(): {tic: number; sounds: [number,number][]} {
+  return {tic:gameTic,sounds:[...sectorSoundTarget].map(([sector,mo])=>[sector,allMobjs.indexOf(mo)])};
+}
+export function restoreEnemyAI(state: ReturnType<typeof archiveEnemyAI>): void {
+  gameTic=state.tic;sectorSoundTarget.clear();
+  for(const [sector,index] of state.sounds)if(allMobjs[index])sectorSoundTarget.set(sector,allMobjs[index]);
 }

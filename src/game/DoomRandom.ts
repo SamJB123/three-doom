@@ -48,3 +48,8 @@ export function clearRandom(): void {
   mrndindex = 0;
 
 }
+
+export function archiveRandom(): {play: number; misc: number} {return {play:prndindex,misc:mrndindex};}
+export function restoreRandom(state: ReturnType<typeof archiveRandom>): void {
+  prndindex=state.play & 255;mrndindex=state.misc & 255;
+}

@@ -1,0 +1,36 @@
+#doom-menu { position: fixed; inset: 0; z-index: 50; display: grid; place-items: center; background: #000b; color: #eee; font: 18px monospace; overflow: auto; }
+#doom-menu[hidden], #menu-button[hidden] { display: none; }
+#doom-menu.title-screen { background-color: #000; background-position: center; background-size: auto, contain; background-repeat: no-repeat; }
+#doom-menu section { width: min(420px, 85vw); padding: 20px; text-align: center; }
+#doom-menu h1 { margin: 0 0 24px; }
+#doom-menu img { image-rendering: pixelated; max-width: 100%; }
+#doom-menu h1 img { width: 240px; }
+#doom-menu button { display: block; position: relative; width: 100%; min-height: 48px; margin: 6px 0; padding: 10px 25px; border: 2px solid transparent; color: #ffb9a3; background: #130a09e0; font: bold 20px monospace; cursor: pointer; }
+#doom-menu button img { height: 22px; width: auto; }
+#doom-menu button:focus-visible, #doom-menu button:hover { outline: none; border-color: #e2ba60; background: #3a1715; }
+#doom-menu button:focus-visible::before { content: '▶'; position: absolute; left: 7px; color: #e2ba60; }
+#doom-menu p { line-height: 1.6; text-shadow: 1px 2px #000; }
+#doom-menu .menu-hint { font-size: 13px; color: #ddd; }
+#doom-menu .menu-help { text-align: left; font-size: 16px; }
+#menu-button { position: fixed; top: max(12px, env(safe-area-inset-top)); right: max(12px, env(safe-area-inset-right)); z-index: 25; min-height: 44px; padding: 8px 16px; color: #eee; background: #160c0cd9; border: 1px solid #998877; font: 16px monospace; cursor: pointer; }
+@media (max-height: 500px) { #doom-menu h1 { margin-bottom: 8px; } #doom-menu h1 img { width: 140px; } #doom-menu button { min-height: 40px; margin: 3px 0; padding: 6px 24px; } #doom-menu section { padding: 8px; } }
+#automap { position: fixed; inset: 0; width: 100%; height: 100%; z-index: 12; pointer-events: none; }
+#automap[hidden], #automap-button[hidden] { display: none; }
+#automap-button { position: fixed; top: max(12px, env(safe-area-inset-top)); right: 110px; z-index: 25; min-height: 44px; padding: 8px 16px; color: #eee; background: #160c0cd9; border: 1px solid #998877; font: 16px monospace; }
+.doom-presentation { width: 100%; aspect-ratio: 4 / 3; image-rendering: pixelated; display: block; margin: 12px auto; }
+#doom-menu .presentation-panel { width: min(800px, 90vw); }
+#doom-menu .presentation-panel h2 { font-size: 16px; margin: 0; }
+#doom-menu .presentation-panel .doom-presentation { max-height: 72vh; width: auto; max-width: 100%; }
+#menu-button { z-index: 55; }
+#doom-menu.presentation-screen { background: #000; }
+#doom-menu .presentation-panel .doom-presentation { width: min(100%, 96vh); max-height: none; }
+.screen-reader-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+.doom-label { display: inline-block; image-rendering: pixelated; width: auto; height: 24px; max-width: 100%; vertical-align: middle; object-fit: contain; }
+.doom-menu-label { display: inline-block; image-rendering: pixelated; height: 22px; width: auto; max-width: 100%; vertical-align: middle; object-fit: contain; }
+
+#game-actions { position: fixed; top: max(12px, env(safe-area-inset-top)); right: max(12px, env(safe-area-inset-right)); display: flex; gap: 12px; align-items: center; z-index: 55; pointer-events: none; }
+#game-actions button { position: static; flex: none; pointer-events: auto; }
+#game-actions .doom-label { height: 16px; }
+#hud-message { position:fixed; top:max(4px, env(safe-area-inset-top)); left:max(4px, env(safe-area-inset-left)); width:min(640px, calc(100vw - 240px)); height:auto; image-rendering:pixelated; pointer-events:none; z-index:20; }
+#hud-message[hidden] { display:none; }
+@media (pointer:coarse) { #hud-message { top:max(84px, calc(env(safe-area-inset-top) + 72px)); width:min(640px, calc(100vw - 8px)); } }

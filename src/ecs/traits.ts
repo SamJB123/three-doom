@@ -107,6 +107,7 @@ export interface PlayerStatusState {
   armorType: number;
   ammo: Record<AmmoType, number>;
   maxAmmo: Record<AmmoType, number>;
+  didSecret: boolean;
   currentAmmo: AmmoType;
   currentWeapon: WeaponSlot;
   pendingWeapon: WeaponSlot | null;    // null = no change pending
@@ -121,10 +122,11 @@ export interface PlayerStatusState {
   noClip: boolean;                     // IDCLIP / IDSPISPOPD
 }
 
-export const PlayerStatus = trait( (): PlayerStatusState => ( {
+export const createPlayerStatus = (): PlayerStatusState => ( {
   health: 100,
   armor: 0,
   armorType: 0,
+  didSecret: false,
   ammo: { clip: 50, shell: 0, misl: 0, cell: 0 },
   maxAmmo: { clip: 200, shell: 50, misl: 50, cell: 300 },
   currentAmmo: 'clip',
@@ -149,4 +151,5 @@ export const PlayerStatus = trait( (): PlayerStatusState => ( {
   mobjState: { name: 'S_PLAY', tics: - 1 } as PlayerMobjState,
   godMode: false,
   noClip: false
-} ) );
+} );
+export const PlayerStatus = trait(createPlayerStatus);

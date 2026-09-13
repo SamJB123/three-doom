@@ -1,3 +1,7 @@
+import {PICKUP_MESSAGES} from './PickupMessages';
+import { allMobjs, removeMobj } from './Mobj';
+import { MF_SPECIAL, MF_DROPPED } from './MobjData';
+import { removeStaticSprite } from '../renderer/SpriteRenderer';
 // Item pickup system — ported from p_inter.c P_TouchSpecialThing().
 // Checks player proximity to items each tic and applies pickup effects.
 
@@ -5,9 +9,16 @@ import type { Group, Mesh } from 'three/webgpu';
 import type { World } from 'koota';
 import type { AmmoType, WeaponSlot, CardType, PowerType, PlayerStatusState } from '../ecs/traits';
 import { PlayerStatus, AMMO_TYPES, POWER_DURATIONS } from '../ecs/traits';
+import { gameRules } from './GameRules';
 import { playSound } from '../sound';
 import type { Fixed } from '../math/fixed';
 import { FRACBITS, intToFixed } from '../math/fixed';
+
+export const COUNTED_ITEMS = new Set([2013,2014,2015,2022,2023,2024,2025,2026,2045,83]);
+let messageCallback: ((text:string)=>void)|null=null;
+export function setPickupMessageCallback(callback:(text:string)=>void):void {messageCallback=callback;}
+let pickupCallback: ((type: number) => void) | null = null;
+export function setPickupCallback(cb: (type: number) => void): void { pickupCallback = cb; }
 
 const BONUSADD = 6; // tics of bonus glow per pickup
 
@@ -19,6 +30,7 @@ const PICKUP_DIST = 36 << FRACBITS;
 
 interface PickupDef {
   type: 'health' | 'armor' | 'ammo' | 'weapon' | 'key' | 'powerup';
+  alwaysCollect?: boolean;
   healthAmount?: number;
   healthMax?: number;
   armorAmount?: number;
@@ -38,10 +50,10 @@ interface PickupDef {
 const PICKUP_DEFS: Record<number, PickupDef> = {
 
   // --- Health ---
-  2014: { type: 'health', healthAmount: 1, healthMax: 200, sound: 'itemup' },
+  2014: { type: 'health', alwaysCollect:true, healthAmount: 1, healthMax: 200, sound: 'itemup' },
   2011: { type: 'health', healthAmount: 10, healthMax: 100, sound: 'itemup' },
   2012: { type: 'health', healthAmount: 25, healthMax: 100, sound: 'itemup' },
-  2013: { type: 'health', healthAmount: 100, healthMax: 200, sound: 'getpow' },
+  2013: { type: 'health', alwaysCollect:true, healthAmount: 100, healthMax: 200, sound: 'getpow' },
 
   // --- Armor ---
   2015: { type: 'armor', armorAmount: 1, armorType: 0, sound: 'itemup' },
@@ -94,7 +106,7 @@ function giveAmmo( state: PlayerStatusState, ammo: AmmoType, clips: number ): bo
 
   state.ammo[ ammo ] = Math.min(
     state.maxAmmo[ ammo ],
-    state.ammo[ ammo ] + CLIP_AMMO[ ammo ] * clips
+    state.ammo[ ammo ] + CLIP_AMMO[ ammo ] * clips * (gameRules.skill === 1 || gameRules.skill === 5 ? 2 : 1)
   );
 
   return true;
@@ -107,7 +119,7 @@ function tryPickup( def: PickupDef, state: PlayerStatusState ): boolean {
 
     case 'health': {
 
-      if ( state.health >= ( def.healthMax ?? 100 ) ) return false;
+      if ( !def.alwaysCollect && state.health >= ( def.healthMax ?? 100 ) ) return false;
       state.health = Math.min( def.healthMax ?? 100, state.health + ( def.healthAmount ?? 0 ) );
       return true;
 
@@ -117,7 +129,6 @@ function tryPickup( def: PickupDef, state: PlayerStatusState ): boolean {
 
       if ( def.armorType === 0 ) {
 
-        if ( state.armor >= 200 ) return false;
         state.armor = Math.min( 200, state.armor + ( def.armorAmount ?? 1 ) );
         if ( state.armorType === 0 ) state.armorType = 1;
         return true;
@@ -233,7 +244,27 @@ export function checkPickups(
 ): void {
 
   const state = world.get( PlayerStatus );
-  if ( ! state ) return;
+  if ( ! state || state.health <= 0 ) return;
+
+  // P_TouchSpecialThing: dropped items use the same pickup rules as map
+  // items, with a half clip or one weapon-ammo clip when MF_DROPPED is set.
+  for (const item of [...allMobjs]) {
+    if (item.removed || !(item.flags & MF_SPECIAL)) continue;
+    const def = PICKUP_DEFS[item.info.doomedNum];
+    if (!def) continue;
+    const dz = item.z-playerZ;
+    if (dz>56*65536 || dz< -8*65536) continue;
+    if (Math.abs(playerX-item.x)>=PICKUP_DIST || Math.abs(playerY-item.y)>=PICKUP_DIST) continue;
+    const pickup = item.flags & MF_DROPPED
+      ? {...def, ammoClips:def.type==='ammo' ? 0.5 : def.ammoClips, weaponAmmoClips:1} : def;
+    if (tryPickup(pickup,state)) {
+      pickupCallback?.(item.info.doomedNum);
+      messageCallback?.(PICKUP_MESSAGES[item.info.doomedNum]);
+      state.bonusCount += BONUSADD;
+      playSound(def.sound ?? 'itemup');
+      removeMobj(item);
+    }
+  }
 
   const toRemove: Mesh[] = [];
 
@@ -250,11 +281,17 @@ export function checkPickups(
     const tx = intToFixed( mesh.userData.thingX as number );
     const ty = intToFixed( mesh.userData.thingY as number );
 
+    const sector=mesh.userData.sector;
+    const itemZ=sector ? intToFixed(sector.floorHeight) : (mesh.userData.mobj?.z ?? 0);
+    const dz=itemZ-playerZ;
+    if(dz>56*65536 || dz< -8*65536) continue;
     if ( Math.abs( playerX - tx ) >= PICKUP_DIST ) continue;
     if ( Math.abs( playerY - ty ) >= PICKUP_DIST ) continue;
 
     if ( tryPickup( def, state ) ) {
 
+      pickupCallback?.(thingType);
+      messageCallback?.(PICKUP_MESSAGES[thingType]);
       state.bonusCount += BONUSADD;
       playSound( def.sound ?? 'itemup' );
       toRemove.push( mesh );
@@ -265,8 +302,7 @@ export function checkPickups(
 
   for ( const mesh of toRemove ) {
 
-    spriteGroup.remove( mesh );
-    mesh.geometry.dispose();
+    removeStaticSprite(mesh);
 
   }
 

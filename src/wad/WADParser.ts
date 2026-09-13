@@ -23,6 +23,7 @@ export function readStr( buf: Uint8Array, off: number, len: number ): string {
 
 export function parseWAD( buffer: ArrayBuffer ): WAD {
 
+  if (buffer.byteLength < 12) throw new Error('Truncated WAD header');
   const buf = new Uint8Array( buffer );
   const view = new DataView( buffer );
   const magic = String.fromCharCode( buf[ 0 ], buf[ 1 ], buf[ 2 ], buf[ 3 ] );
@@ -35,8 +36,12 @@ export function parseWAD( buffer: ArrayBuffer ): WAD {
 
   const numLumps = view.getInt32( 4, true );
   const dirOffset = view.getInt32( 8, true );
+  if (numLumps < 0 || dirOffset < 12 || dirOffset > buffer.byteLength ||
+      numLumps > Math.floor((buffer.byteLength - dirOffset) / 16)) {
+    throw new Error('Invalid WAD directory bounds');
+  }
   const lumps: Lump[] = [];
-  const lumpMap: Record<string, Lump> = {};
+  const lumpMap: Record<string, Lump> = Object.create(null);
 
   for ( let i = 0; i < numLumps; i ++ ) {
 
@@ -44,11 +49,15 @@ export function parseWAD( buffer: ArrayBuffer ): WAD {
     const filepos = view.getInt32( off, true );
     const size = view.getInt32( off + 4, true );
     const name = readStr( buf, off + 8, 8 );
+    if (filepos < 0 || size < 0 || filepos > buffer.byteLength || size > buffer.byteLength - filepos) {
+      throw new Error(`Invalid WAD lump bounds: ${name}`);
+    }
 
     const lump: Lump = { name, filepos, size, index: i };
     lumps.push( lump );
 
-    if ( ! lumpMap[ name ] ) lumpMap[ name ] = lump;
+    // W_CheckNumForName searches backward: later lumps override earlier ones.
+    lumpMap[ name ] = lump;
 
   }
 
@@ -58,7 +67,7 @@ export function parseWAD( buffer: ArrayBuffer ): WAD {
 
 export function getLump( wad: WAD, name: string ): LumpRef | null {
 
-  const l = wad.lumpMap[ name ];
+  const l = wad.lumpMap[ name.toUpperCase() ];
   if ( ! l ) return null;
   return { offset: l.filepos, size: l.size };
 
@@ -67,24 +76,14 @@ export function getLump( wad: WAD, name: string ): LumpRef | null {
 export function getMapLumps( wad: WAD, mapName: string ): MapLumps {
 
   const result: Record<string, LumpRef> = {};
-  let found = false;
-
-  for ( const lump of wad.lumps ) {
-
-    if ( lump.name === mapName ) {
-
-      found = true;
-      continue;
-
+  const marker = wad.lumpMap[mapName.toUpperCase()];
+  if (!marker) throw new Error(`Missing map: ${mapName}`);
+  for (let i = 0; i < MAP_SUB_LUMPS.length; i++) {
+    const lump = wad.lumps[marker.index + 1 + i];
+    if (!lump || lump.name !== MAP_SUB_LUMPS[i]) {
+      throw new Error(`Missing map lump: ${MAP_SUB_LUMPS[i]} in ${mapName}`);
     }
-
-    if ( found ) {
-
-      if ( ! MAP_SUB_LUMPS.includes( lump.name ) ) break;
-      result[ lump.name ] = { offset: lump.filepos, size: lump.size };
-
-    }
-
+    result[lump.name] = {offset: lump.filepos, size: lump.size};
   }
 
   function require( name: string ): LumpRef {

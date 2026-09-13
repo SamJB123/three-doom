@@ -46,7 +46,7 @@ export function buildThingSprites(
   const group = new Group();
   animatedSprites.clear();
 
-  for ( const thing of things ) {
+  for ( const [spawnIndex, thing] of things.entries() ) {
 
     if ( SKIP_TYPES.has( thing.type ) ) continue;
     if ( mobjTypes && mobjTypes.has( thing.type ) ) continue;
@@ -64,6 +64,7 @@ export function buildThingSprites(
     if ( ! sector ) continue;
 
     const mesh = createSpriteMesh( frame, thing, sector );
+    mesh.userData.spawnIndex = spawnIndex;
     mesh.userData.thingType = thing.type;
     mesh.userData.thingX = thing.x;
     mesh.userData.thingY = thing.y;
@@ -280,4 +281,47 @@ export function updateSpriteBillboards(
 
   }
 
+}
+
+export function disposeThingSprites(group: Group): void {
+  const textures = new Set<DataTexture>();
+  for (const anim of animatedSprites.values()) for (const tex of anim.textures) textures.add(tex);
+  animatedSprites.clear();
+  group.traverse(child => {
+    if (child instanceof Mesh) {
+      child.geometry.dispose();
+      const mat=child.material as MeshBasicMaterial;
+      if (mat.map) textures.add(mat.map as DataTexture);
+      mat.dispose();
+    }
+  });
+  for (const tex of textures) tex.dispose();
+  group.clear();
+}
+
+export function removeStaticSprite(mesh: Mesh): void {
+  mesh.removeFromParent();
+  const anim=animatedSprites.get(mesh);
+  const textures=new Set(anim?.textures ?? []);
+  const mat=mesh.material as MeshBasicMaterial;
+  if(mat.map)textures.add(mat.map as DataTexture);
+  for(const texture of textures)texture.dispose();
+  animatedSprites.delete(mesh);mesh.geometry.dispose();mat.dispose();
+}
+export function archiveStaticSprites(group: Group) {
+  return {fraction:ticAccumulator, sprites:group.children.filter(child=>child.userData.spawnIndex!==undefined).map(child=>{
+    const anim=animatedSprites.get(child as Mesh);
+    return {index:child.userData.spawnIndex as number,frame:anim?.frameIndex ?? 0,tics:anim?.ticCounter ?? 0};
+  })};
+}
+export function restoreStaticSprites(saved: ReturnType<typeof archiveStaticSprites>, group: Group): void {
+  ticAccumulator=saved.fraction;
+  const remaining=new Map(saved.sprites.map(s=>[s.index,s]));
+  for(const child of [...group.children]) {
+    if(child.userData.spawnIndex===undefined)continue;
+    const state=remaining.get(child.userData.spawnIndex);
+    if(!state){removeStaticSprite(child as Mesh);continue;}
+    const anim=animatedSprites.get(child as Mesh);
+    if(anim){anim.frameIndex=state.frame;anim.ticCounter=state.tics;(child as Mesh<PlaneGeometry,MeshBasicMaterial>).material.map=anim.textures[state.frame];}
+  }
 }

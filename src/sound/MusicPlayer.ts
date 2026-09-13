@@ -1,12 +1,11 @@
 // OPL3 chip emulator music player for Doom MUS tracks.
-// Uses the 'opl3' npm package which is a JavaScript port of the Yamaha YMF262
-// synthesizer chip. This produces authentic OPL FM synthesis audio matching
-// the original Doom's sound hardware.
+// Uses the browser subset of the opl3 Yamaha YMF262 emulator. See vendor
+// provenance and PCM regression evidence; original driver parity is unverified.
 
 // @ts-expect-error -- opl3 has no type declarations
-import OPL3 from 'opl3/lib/opl3.js';
+import OPL3 from '../vendor/opl3/opl3.js';
 // @ts-expect-error -- opl3 has no type declarations
-import MUSFormat from 'opl3/format/mus.js';
+import MUSFormat from '../vendor/opl3/mus.js';
 
 export class MusicPlayer {
 
@@ -58,20 +57,6 @@ export class MusicPlayer {
     const opl = new OPL3();
     const musPlayer = new MUSFormat( opl, options );
 
-    // Patch: opl3's OPLshutup uses undeclared `i`, which throws in strict mode
-    const origShutup = musPlayer.OPLshutup;
-    musPlayer.OPLshutup = function () {
-
-      for ( let i = 0; i < this.OPL3CHANNELS; i ++ ) {
-
-        this.OPLwriteChannel( 0x80, i, 0x0f, 0x0f );
-        this.OPLwriteChannel( 0x40, i, 0x3f, 0x3f );
-        this.OPLwriteValue( 0xb0, i, 0 );
-
-      }
-
-    };
-
     musPlayer.load( new Uint8Array( musData ) );
 
     this.player = musPlayer;
@@ -84,7 +69,7 @@ export class MusicPlayer {
 
     // We generate OPL samples at 49700Hz and do nearest-neighbour resampling
     // to the output sample rate. Track fractional position.
-    let oplSamplesNeeded = 0;
+    let eventFrames = 0;
     let finished = false;
 
     // Ring buffer of OPL samples for resampling
@@ -111,24 +96,17 @@ export class MusicPlayer {
         // Generate more OPL samples when we've consumed them all
         while ( oplBufPos >= oplBufLen ) {
 
-          // Advance MUS events
-          if ( ! musPlayer.update() ) {
-
-            musPlayer.rewind();
-
-            if ( ! musPlayer.update() ) {
-
-              finished = true;
-              left.fill( 0, writePos );
-              right.fill( 0, writePos );
-              return;
-
+          // A long MUS rest can exceed the ring buffer: generate it in bounded
+          // chunks without consuming the next event before its delay has elapsed.
+          if(eventFrames<=0) {
+            if(!musPlayer.update()) {
+              musPlayer.rewind();
+              if(!musPlayer.update()){finished=true;left.fill(0,writePos);right.fill(0,writePos);return;}
             }
-
+            eventFrames=Math.max(1,Math.floor(musPlayer.refresh()*OPL_RATE));
           }
-
-          const waitSecs = musPlayer.refresh();
-          const count = Math.max( 1, Math.floor( waitSecs * OPL_RATE ) );
+          const count=Math.min(eventFrames,oplBuf.length/2);
+          eventFrames-=count;
 
           // Generate OPL samples (interleaved stereo Float32)
           const chunk = new Float32Array( count * 2 );

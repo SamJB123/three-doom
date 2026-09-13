@@ -3,13 +3,13 @@
 
 import type { Linedef, Sidedef, Sector } from '../wad';
 import { movePlane } from './SectorHelpers';
-import { addThinker, markSectorDirty } from './Thinkers';
+import { addThinker, markSectorDirty, archivedThinker, busySectors } from './Thinkers';
 
 export type StairType = 'build8' | 'turbo16';
 
 const ML_TWOSIDED = 0x0004;
 
-interface StairMove {
+export interface StairMove {
   sectorIdx: number;
   direction: number;
   speed: number;
@@ -17,10 +17,11 @@ interface StairMove {
 }
 
 const activeStairSectors = new Set<number>();
+export function resetStairs(): void { activeStairSectors.clear(); }
 
 function makeStairThinker( sm: StairMove, sectors: Sector[] ): () => boolean {
 
-  return () => {
+  return archivedThinker(() => {
 
     markSectorDirty( sm.sectorIdx );
     const sector = sectors[ sm.sectorIdx ];
@@ -29,14 +30,14 @@ function makeStairThinker( sm: StairMove, sectors: Sector[] ): () => boolean {
 
     if ( res === 'pastdest' ) {
 
-      activeStairSectors.delete( sm.sectorIdx );
+      activeStairSectors.delete( sm.sectorIdx ); busySectors.delete(sm.sectorIdx);
       return false;
 
     }
 
     return true;
 
-  };
+  }, 'stair', () => sm);
 
 }
 
@@ -54,7 +55,7 @@ export function evBuildStairs(
   for ( let secNum = 0; secNum < sectors.length; secNum ++ ) {
 
     if ( sectors[ secNum ].tag !== tag ) continue;
-    if ( activeStairSectors.has( secNum ) ) continue;
+    if ( busySectors.has( secNum ) ) continue;
 
     activated = true;
 
@@ -66,7 +67,7 @@ export function evBuildStairs(
     const texture = sectors[ currentSectorIdx ].floorTex;
 
     // Spawn first step
-    activeStairSectors.add( currentSectorIdx );
+    activeStairSectors.add( currentSectorIdx ); busySectors.add(currentSectorIdx);
     addThinker( makeStairThinker( {
       sectorIdx: currentSectorIdx,
       direction: 1,
@@ -93,12 +94,12 @@ export function evBuildStairs(
         const nextSector = sectors[ backSectorIdx ];
 
         if ( nextSector.floorTex !== texture ) continue;
-        if ( activeStairSectors.has( backSectorIdx ) ) continue;
+        if ( busySectors.has( backSectorIdx ) ) continue;
 
         height += stairSize;
         currentSectorIdx = backSectorIdx;
 
-        activeStairSectors.add( currentSectorIdx );
+        activeStairSectors.add( currentSectorIdx ); busySectors.add(currentSectorIdx);
         addThinker( makeStairThinker( {
           sectorIdx: currentSectorIdx,
           direction: 1,
@@ -117,4 +118,9 @@ export function evBuildStairs(
 
   return activated;
 
+}
+
+export function restoreStairs(state: StairMove, sectors: Sector[]): void {
+  activeStairSectors.add(state.sectorIdx);busySectors.add(state.sectorIdx);
+  addThinker(makeStairThinker(state, sectors));
 }

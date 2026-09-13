@@ -9,6 +9,7 @@ import { Input } from '../ecs/traits';
 // Layout constants (percentage of viewport)
 const STICK_RADIUS = 50;      // pixels — outer ring radius
 const STICK_DEAD = 10;        // dead zone in pixels
+const ACTION_ZONE_FRACTION = 0.4;
 const MARGIN = 20;            // edge margin
 
 // Look sensitivity (scaled to match mouse look feel)
@@ -27,6 +28,7 @@ interface StickState {
 export class TouchControls {
 
   private container: HTMLDivElement;
+  private enabled = false;
 
   // Stick state
   private leftStick: StickState = { id: null, originX: 0, originY: 0, currentX: 0, currentY: 0, active: false };
@@ -70,6 +72,7 @@ export class TouchControls {
 
     // Container covers the full screen, sits above HUD so buttons are tappable
     this.container = document.createElement( 'div' );
+    this.container.id = 'touch-controls';
     this.container.style.cssText = `
       position: fixed; inset: 0; z-index: 15;
       pointer-events: none; touch-action: none;
@@ -81,10 +84,26 @@ export class TouchControls {
     this.createButtons();
     this.createHints();
     this.bindEvents();
+    this.setEnabled( false );
 
   }
 
-  setInitialYaw( yaw: number ): void {
+  setEnabled( enabled: boolean ): void {
+    this.enabled = enabled;
+    this.container.style.display = enabled ? '' : 'none';
+    this.leftStick.active = this.rightStick.active = false;
+    this.leftStick.id = this.rightStick.id = null;
+    this.fireDown = this.useDown = this.runActive = false;
+    this.weaponSelectPending = -1;
+    this.hideStick( this.leftRing, this.leftKnob );
+    this.hideStick( this.rightRing, this.rightKnob );
+    this.world.set( Input, { forward: 0, strafe: 0, vertical: 0, jump: false,
+      run: false, use: false, attack: false, weaponSelect: -1,
+      yaw: this.yaw, pitch: this.pitch } );
+  }
+
+  setInitialYaw( yaw: number, pitch = 0 ): void {
+    this.pitch = pitch;
 
     this.yaw = yaw;
 
@@ -146,7 +165,7 @@ export class TouchControls {
     useBtn.textContent = '🚪';
     useBtn.style.cssText = `
       position: fixed;
-      top: ${ MARGIN }px; left: 50%; transform: translateX(-50%);
+      top: max(${ MARGIN }px, env(safe-area-inset-top)); left: max(${ MARGIN }px, env(safe-area-inset-left));
       width: 56px; height: 56px;
       background: rgba(0,0,0,0.5);
       border: 2px solid rgba(255,255,255,0.5);
@@ -210,40 +229,20 @@ export class TouchControls {
 
   private createHints(): void {
 
-    const circleStyle = `
-      width: 26vmin; height: 26vmin;
-      border-radius: 50%;
-      background: radial-gradient(circle, rgba(255,255,255,0.08) 0%, rgba(255,255,255,0.02) 70%, transparent 100%);
-      border: 1.5px solid rgba(255,255,255,0.15);
-      display: flex; flex-direction: column; align-items: center; justify-content: center;
-      pointer-events: none; gap: 4px;
-      position: fixed;
-    `;
-
-    // Sprint zone — top of left half
-    this.leftHint = document.createElement( 'div' );
-    this.leftHint.style.cssText = circleStyle + `
-      top: 10%; left: 8%;
-      transition: opacity 0.6s;
-    `;
-    this.leftHint.innerHTML = `
-      <span style="font-size:5vmin">🏃</span>
-      <span style="color:rgba(255,255,255,0.5); font:bold 1.6vmin monospace; letter-spacing:1px;">SPRINT</span>
-    `;
-    this.container.appendChild( this.leftHint );
-
-    // Fire zone — top of right half (mirrored)
-    this.rightHint = document.createElement( 'div' );
-    this.rightHint.style.cssText = circleStyle + `
-      top: 10%; right: 8%;
-      transition: opacity 0.6s;
-    `;
-    this.rightHint.innerHTML = `
-      <span style="font-size:5vmin">🔫</span>
-      <span style="color:rgba(255,255,255,0.5); font:bold 1.6vmin monospace; letter-spacing:1px;">FIRE</span>
-    `;
-    this.container.appendChild( this.rightHint );
-
+    const makeHint=(action:'sprint'|'fire',icon:string):HTMLDivElement=>{
+      const hint=document.createElement('div');hint.dataset.touchAction=action;
+      hint.style.cssText=`position:absolute; width:50%; height:${ACTION_ZONE_FRACTION*100}%;
+        ${action==='sprint'?'top:0;left:0':'bottom:0;right:0'};
+        box-sizing:border-box; border:1px dashed rgba(255,255,255,.18);
+        background:rgba(255,255,255,.025); pointer-events:none;
+        display:flex; align-items:${action==='fire'?'flex-start':'center'}; justify-content:center;
+        ${action==='fire'?'padding-top:5vmin;':''} transition:opacity .6s;`;
+      hint.innerHTML=`<span style="text-align:center;color:rgba(255,255,255,.5);font:bold 12px monospace;">
+        <span style="font-size:5vmin">${icon}</span><br>${action.toUpperCase()}</span>`;
+      this.container.append(hint);return hint;
+    };
+    this.leftHint=makeHint('sprint','🏃');
+    this.rightHint=makeHint('fire','🔫');
   }
 
   private hideHints(): void {
@@ -261,6 +260,7 @@ export class TouchControls {
     // Touch zones: left half = movement stick, right half = look stick
     // Buttons have their own pointer-events and are handled separately
     const zone = document.createElement( 'div' );
+    zone.id='touch-input-zone';
     zone.style.cssText = `
       position: fixed; inset: 0;
       pointer-events: auto; touch-action: none;
@@ -279,14 +279,15 @@ export class TouchControls {
 
     e.preventDefault();
     this.hideHints();
-    const w = document.documentElement.clientWidth;
-    const h = document.documentElement.clientHeight;
+    const bounds = this.container.getBoundingClientRect();
+    const w = bounds.width;
+    const h = bounds.height;
 
     for ( let i = 0; i < e.changedTouches.length; i ++ ) {
 
       const t = e.changedTouches[ i ];
 
-      if ( t.clientX < w / 2 ) {
+      if ( t.clientX - bounds.left < w / 2 ) {
 
         // Left half → movement stick
         // Top 40% of left half = sprint zone: sprint is active for this touch
@@ -298,7 +299,7 @@ export class TouchControls {
           this.leftStick.currentX = t.clientX;
           this.leftStick.currentY = t.clientY;
           this.leftStick.active = true;
-          this.runActive = t.clientY < h * 0.4;
+          this.runActive = t.clientY - bounds.top < h * ACTION_ZONE_FRACTION;
           this.showStick( this.leftRing, this.leftKnob, t.clientX, t.clientY, 0, 0 );
 
         }
@@ -315,7 +316,7 @@ export class TouchControls {
           this.rightStick.currentX = t.clientX;
           this.rightStick.currentY = t.clientY;
           this.rightStick.active = true;
-          this.fireDown = t.clientY < h * 0.4;
+          this.fireDown = t.clientY - bounds.top >= h * (1-ACTION_ZONE_FRACTION);
           this.showStick( this.rightRing, this.rightKnob, t.clientX, t.clientY, 0, 0 );
 
         }
@@ -437,6 +438,8 @@ export class TouchControls {
   }
 
   update(): void {
+
+    if ( ! this.enabled ) return;
 
     // Left stick → forward/strafe
     let forward = 0;

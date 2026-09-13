@@ -2,9 +2,10 @@
 // Ported from p_plats.c
 
 import type { Linedef, Sidedef, Sector } from '../wad';
-import { movePlane, getLowestFloorHeight, getHighestFloorHeight } from './SectorHelpers';
-import { addThinker, markSectorDirty } from './Thinkers';
+import { movePlane, getLowestFloorHeight, getHighestFloorHeight, getNextHighestFloor } from './SectorHelpers';
+import { addThinker, markSectorDirty, archivedThinker, busySectors } from './Thinkers';
 import { playSoundAt } from '../sound';
+import { P_Random } from './DoomRandom';
 import { intToFixed } from '../math/fixed';
 
 // p_spec.h constants
@@ -18,9 +19,9 @@ export type PlatType =
   | 'raiseAndChange'
   | 'raiseToNearestAndChange';
 
-type PlatStatus = 'up' | 'down' | 'waiting';
+type PlatStatus = 'up' | 'down' | 'waiting' | 'stasis';
 
-interface Plat {
+export interface Plat {
   sectorIdx: number;
   type: PlatType;
   speed: number;
@@ -30,22 +31,26 @@ interface Plat {
   count: number;
   status: PlatStatus;
   crush: boolean;
+  ticCount?: number;
+  tag?: number;
+  oldStatus?: PlatStatus;
 }
 
-const activePlatSectors = new Set<number>();
+const activePlatSectors = new Map<number,Plat>();
+export function resetPlatforms(): void { activePlatSectors.clear(); }
 
 // T_PlatRaise — runs every tic for an active platform
 // Ported from p_plats.c lines 52-131
 function makePlatThinker( plat: Plat, sectors: Sector[] ): () => boolean {
 
-  let ticCount = 0;
+
   const sx = intToFixed( sectors[ plat.sectorIdx ].soundX );
   const sy = intToFixed( sectors[ plat.sectorIdx ].soundY );
   const sz = intToFixed( sectors[ plat.sectorIdx ].floorHeight );
 
-  return () => {
+  return archivedThinker(() => {
 
-    ticCount ++;
+    plat.ticCount = (plat.ticCount ?? 0) + 1;
 
     const sector = sectors[ plat.sectorIdx ];
 
@@ -58,7 +63,7 @@ function makePlatThinker( plat: Plat, sectors: Sector[] ): () => boolean {
         // raiseAndChange / raiseToNearestAndChange play sfx_stnmov every 8 tics
         if ( plat.type === 'raiseAndChange' || plat.type === 'raiseToNearestAndChange' ) {
 
-          if ( ! ( ticCount & 7 ) ) playSoundAt( 'stnmov', sx, sy, sz );
+          if ( ! ( plat.ticCount & 7 ) ) playSoundAt( 'stnmov', sx, sy, sz );
 
         }
 
@@ -84,7 +89,7 @@ function makePlatThinker( plat: Plat, sectors: Sector[] ): () => boolean {
             case 'downWaitUpStay':
             case 'raiseAndChange':
             case 'raiseToNearestAndChange':
-              activePlatSectors.delete( plat.sectorIdx );
+              activePlatSectors.delete( plat.sectorIdx ); busySectors.delete(plat.sectorIdx);
               return false; // done
 
             default:
@@ -134,7 +139,7 @@ function makePlatThinker( plat: Plat, sectors: Sector[] ): () => boolean {
 
     return true;
 
-  };
+  }, 'platform', () => plat);
 
 }
 
@@ -146,17 +151,21 @@ export function evDoPlat(
   amount: number,
   linedefs: Linedef[],
   sidedefs: Sidedef[],
-  sectors: Sector[]
+  sectors: Sector[],
+  trigger?: Linedef
 ): boolean {
 
   let activated = false;
+  if(type==='perpetualRaise')for(const plat of activePlatSectors.values()) {
+    if(plat.tag===tag && plat.status==='stasis') {plat.status=plat.oldStatus ?? 'up';activated=true;}
+  }
 
   for ( let i = 0; i < sectors.length; i ++ ) {
 
     if ( sectors[ i ].tag !== tag ) continue;
-    if ( activePlatSectors.has( i ) ) continue;
+    if ( busySectors.has( i ) ) continue;
 
-    activePlatSectors.add( i );
+
     activated = true;
 
     const sector = sectors[ i ];
@@ -165,7 +174,7 @@ export function evDoPlat(
     let low = sector.floorHeight;
     let high = sector.floorHeight;
     let status: PlatStatus = 'down';
-    const wait = PLATWAIT * 35;
+    let wait = PLATWAIT * 35;
 
     switch ( type ) {
 
@@ -191,18 +200,22 @@ export function evDoPlat(
         if ( low > sector.floorHeight ) low = sector.floorHeight;
         high = getHighestFloorHeight( i, linedefs, sidedefs, sectors );
         if ( high < sector.floorHeight ) high = sector.floorHeight;
-        status = Math.random() < 0.5 ? 'up' : 'down';
+        status = (P_Random() & 1) === 0 ? 'up' : 'down';
         break;
 
       case 'raiseAndChange':
         speed = PLATSPEED / 2;
         high = sector.floorHeight + amount;
+        wait=0;
+        if(trigger)sector.floorTex=sectors[sidedefs[trigger.right].sector].floorTex;
         status = 'up';
         break;
 
       case 'raiseToNearestAndChange':
         speed = PLATSPEED / 2;
-        high = getHighestFloorHeight( i, linedefs, sidedefs, sectors );
+        high = getNextHighestFloor( i, linedefs, sidedefs, sectors );
+        wait=0;sector.special=0;
+        if(trigger)sector.floorTex=sectors[sidedefs[trigger.right].sector].floorTex;
         status = 'up';
         break;
 
@@ -229,7 +242,7 @@ export function evDoPlat(
     }
 
     const plat: Plat = {
-      sectorIdx: i,
+      sectorIdx: i,tag,
       type,
       speed,
       low,
@@ -240,10 +253,22 @@ export function evDoPlat(
       crush: false
     };
 
+    activePlatSectors.set(i,plat);busySectors.add(i);
     addThinker( makePlatThinker( plat, sectors ) );
 
   }
 
   return activated;
 
+}
+
+export function restorePlatforms(state: Plat, sectors: Sector[]): void {
+  activePlatSectors.set(state.sectorIdx,state);busySectors.add(state.sectorIdx);
+  addThinker(makePlatThinker(state, sectors));
+}
+
+export function evStopPlat(tag: number): void {
+  for(const plat of activePlatSectors.values())if(plat.tag===tag && plat.status!=='stasis'){
+    plat.oldStatus=plat.status;plat.status='stasis';
+  }
 }

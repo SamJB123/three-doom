@@ -1,0 +1,9 @@
+{
+  "opl3": "0.4.3",
+  "wad-genmidi": "0.1.0",
+  "sha256": {
+    "node_modules/opl3/lib/opl3.js": "74dee027c6e2ba248d06e88a60b6756316280ee3a7563b6c7b42d088e26e8ada",
+    "node_modules/opl3/format/mus.js": "df489950795b6793324ba0931ae4aaff6d40a117e4915d49b35979bca754fd63",
+    "node_modules/wad-genmidi/genmidi.js": "425e61d11fc989e73ee51c49d436264b68488d1e82ef1b1f08cdb08e9b4bb8d7"
+  }
+}

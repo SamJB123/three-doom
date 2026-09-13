@@ -1,6 +1,6 @@
 import {
   DataTexture, RGBAFormat, NearestFilter, RepeatWrapping,
-  MeshBasicMaterial, Color, DoubleSide
+  MeshBasicMaterial, Color, DoubleSide, FrontSide
 } from 'three/webgpu';
 import type { TextureData, Palette } from '../wad/types';
 import { lightLevelToColormapIndex } from '../wad/ColormapParser';
@@ -55,6 +55,15 @@ export class TextureManager {
 
   }
 
+  dispose(): void {
+    const materials=new Set([...this.wallCache.values(),...this.flatCache.values()]);
+    const textures=new Set<DataTexture>();
+    for (const material of materials) { if (material.map) textures.add(material.map as DataTexture); material.dispose(); }
+    for (const entry of this.animatedFlats) for (const texture of entry.textures) textures.add(texture);
+    for (const texture of textures) texture.dispose();
+    this.wallCache.clear(); this.flatCache.clear(); this.animatedFlats.length=0;
+  }
+
   private makeColormappedTexture( texData: TextureData, lightLevel: number ): DataTexture {
 
     const cmIndex = lightLevelToColormapIndex( lightLevel );
@@ -85,11 +94,11 @@ export class TextureManager {
 
   }
 
-  getWallMaterial( texName: string, lightLevel: number ): MeshBasicMaterial | null {
+  getWallMaterial( texName: string, lightLevel: number, masked = false ): MeshBasicMaterial | null {
 
     if ( ! texName || texName === '-' ) return null;
 
-    const key = texName + '_' + lightLevel;
+    const key = texName + '_' + lightLevel + '_' + masked;
     const cached = this.wallCache.get( key );
     if ( cached ) return cached;
 
@@ -101,7 +110,7 @@ export class TextureManager {
       const brightness = 1 - cmIndex / 31;
       const mat = new MeshBasicMaterial( {
         color: new Color( brightness * 0.5, brightness * 0.4, brightness * 0.3 ),
-        side: DoubleSide
+        side: FrontSide
       } );
       this.wallCache.set( key, mat );
       return mat;
@@ -111,8 +120,9 @@ export class TextureManager {
     const tex = this.makeColormappedTexture( texData, lightLevel );
     const mat = new MeshBasicMaterial( {
       map: tex,
-      side: DoubleSide,
-      transparent: false
+      side: FrontSide,
+      transparent: false,
+      alphaTest: masked ? 0.5 : 0
     } );
     this.wallCache.set( key, mat );
     return mat;

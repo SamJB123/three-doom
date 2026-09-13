@@ -2,3 +2,7 @@
 /extracted
 /node_modules
 *.wad
+
+/test-results
+/playwright-report
+/artifacts

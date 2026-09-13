@@ -3,52 +3,19 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-<title>Doom E1M1 - Three.js</title>
+<title>Doom — Three.js</title>
 <style>
 html, body { margin: 0; padding: 0; background: #000; overflow: hidden; width: 100%; height: 100svh; height: 100vh; /* fallback */ }
 @supports (height: 100svh) { html, body { height: 100svh; } }
 body { display: flex; flex-direction: column; }
 canvas { display: block; }
 #game { flex: 1; position: relative; overflow: hidden; min-height: 0; }
-#info {
-  position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
-  color: #fff; font: 14px monospace; background: rgba(0,0,0,0.85); z-index: 50;
-  transition: opacity 0.4s;
-}
-#info.hidden { opacity: 0; pointer-events: none; }
-#info-inner { text-align: center; max-width: 420px; }
-#info-inner h1 { font-size: 22px; margin: 0 0 16px; color: #ff4444; letter-spacing: 2px; }
-#info-inner table { margin: 0 auto 18px; border-collapse: collapse; }
-#info-inner td { padding: 4px 10px; text-align: left; }
-#info-inner td:first-child { color: #ff8; text-align: right; }
-#info-inner .prompt { color: #aaa; font-size: 13px; }
-#loading { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; color: #fff; font: 24px monospace; background: #000; z-index: 20; }
+#loading { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; color: #fff; font: 24px monospace; background: #000; z-index: 60; }
 </style>
 </head>
 <body>
 <div id="game"></div>
 <div id="loading">Loading WAD...</div>
-<div id="info">
-  <div id="info-inner">
-    <h1>DOOM &mdash; THREE.JS</h1>
-    <table>
-      <tr class="desktop-only"><td>WASD / Arrows</td><td>Move</td></tr>
-      <tr class="desktop-only"><td>Mouse</td><td>Look</td></tr>
-      <tr class="desktop-only"><td>Left Click</td><td>Attack</td></tr>
-      <tr class="desktop-only"><td>E / F</td><td>Use (open doors)</td></tr>
-      <tr class="desktop-only"><td>Shift</td><td>Run</td></tr>
-      <tr class="desktop-only"><td>1-7</td><td>Select weapon</td></tr>
-      <tr class="touch-only"><td>Left side</td><td>Drag to move</td></tr>
-      <tr class="touch-only"><td>Left side (upper)</td><td>Drag to sprint + move</td></tr>
-      <tr class="touch-only"><td>Right side</td><td>Drag to look</td></tr>
-      <tr class="touch-only"><td>Right side (lower)</td><td>Drag to look + fire</td></tr>
-      <tr class="touch-only"><td>🚪 (top center)</td><td>Use / open doors</td></tr>
-      <tr class="touch-only"><td>◀ ▶ (status bar)</td><td>Switch weapon</td></tr>
-    </table>
-    <p class="prompt desktop-only">Click to play</p>
-    <p class="prompt touch-only">Tap to play</p>
-  </div>
-</div>
 <script type="module" src="/src/main.ts"></script>
 </body>
 </html>

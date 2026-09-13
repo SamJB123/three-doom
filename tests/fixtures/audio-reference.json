@@ -1,0 +1,12 @@
+{
+  "source": "opl3@0.4.3 / wad-genmidi@0.1.0",
+  "seconds": 1,
+  "rate": 49700,
+  "wad": "6fdf361847b46228cfebd9f3af09cd844282ac75f3edbb61ca4cb27103ce2e7f",
+  "tracks": {
+    "D_E1M1": "e3e3f6690f1eb2a88593f61f55b25c11bd5060b55e50ce921a6a48f9b22b7a87",
+    "D_INTER": "92828b62e3982c02df3b92696f2875ca4f0cdbfcbc00fbb09c9b0d485fd5ade2",
+    "D_VICTOR": "d5141a5a2cb1f24e3330634d17a149e1b1009a8934645cb0bb3a7a4258931c34",
+    "D_BUNNY": "651f64e1c5efcc7a999e4c179c7dd36236936ba78e1219c5b9ea2669725305de"
+  }
+}

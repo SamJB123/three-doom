@@ -1,10 +1,13 @@
 // Doom teleporter system — ported from p_telept.c / p_spec.c EV_Teleport.
 // Moves a thing to the teleport destination in the tagged sector.
 
-import type { DoomMapData, DoomPlayer } from '../physics/DoomMovement';
+import { findSectorAt, type DoomMapData, type DoomPlayer } from '../physics/DoomMovement';
 import type { Linedef, Thing } from '../wad';
 import { intToFixed } from '../math/fixed';
-import { playSound } from '../sound';
+import { playSoundAt } from '../sound';
+import { allMobjs, spawnMobj, type Mobj } from './Mobj';
+import { damageMobj } from './Attack';
+import { MF_SHOOTABLE } from './MobjData';
 
 const TELEPORT_DOOMEDNUM = 14; // Teleport destination thing type
 
@@ -35,11 +38,13 @@ export function consumeTeleport(): { angle: number; reactionTime: number } | nul
 export function evTeleport(
   line: Linedef,
   side: number,
-  player: DoomPlayer,
+  actor: DoomPlayer | Mobj,
   map: DoomMapData,
   things: Thing[]
 ): boolean {
 
+  const player = 'mo' in actor ? actor : null;
+  const mover = player ? player.mo : actor as Mobj;
   // Don't teleport from the back side
   if ( side === 1 ) return false;
 
@@ -57,7 +62,7 @@ export function evTeleport(
 
       // Check if this thing is in the target sector — use the BSP to find
       // which sector the thing position falls in
-      const thingSectorIdx = findSectorAtInt( thing.x, thing.y, map );
+      const thingSectorIdx = map.sectors.indexOf(findSectorAt(thing.x, thing.y, map)!);
       if ( thingSectorIdx !== si ) continue;
 
       // Found the destination — teleport the player
@@ -65,27 +70,43 @@ export function evTeleport(
       const destY = intToFixed( thing.y );
       const destFloorZ = intToFixed( map.sectors[ si ].floorHeight );
 
+      const old = {x:mover.x,y:mover.y,z:mover.z};
+      // PIT_StompThing: player telefrags shootable occupants regardless of height.
+      for (const mo of [...allMobjs]) {
+        if (mo === mover || !(mo.flags & MF_SHOOTABLE)) continue;
+        const radius = mo.radius + mover.radius;
+        if (Math.abs(mo.x-destX) < radius && Math.abs(mo.y-destY) < radius) {
+          if(!player)return false; // Ultimate Doom monsters cannot telefrag.
+          damageMobj(mo, mover, mover, 10000);
+        }
+      }
       // Set player position
-      player.mo.x = destX;
-      player.mo.y = destY;
-      player.mo.z = destFloorZ;
-      player.mo.floorz = destFloorZ;
+      mover.x = destX;
+      mover.y = destY;
+      mover.z = destFloorZ;
+      mover.floorz = destFloorZ;
+      mover.ceilingz = intToFixed(map.sectors[si].ceilingHeight);
+      mover.sectorIndex = si;
+      mover.angle = Math.floor(thing.angle / 45) * Math.PI / 4;
+      if(player)mover.reactionTime = 18;
+      mover.momz = 0;
 
       // Zero momentum
-      player.mo.momx = 0;
-      player.mo.momy = 0;
+      mover.momx = 0;
+      mover.momy = 0;
 
       // Update viewz
-      player.viewz = destFloorZ + player.viewheight;
+      if(player)player.viewz = destFloorZ + player.viewheight;
 
       // Store teleport angle for camera sync and set reaction time
-      pendingTeleportAngle = thing.angle;
-      pendingTeleportReaction = 18;
+      if(player){pendingTeleportAngle = Math.floor(thing.angle / 45) * 45;pendingTeleportReaction = 18;}
 
-      // Play teleport sound
-      playSound( 'telept' );
-
-      // TODO: spawn MT_TFOG at old and new positions once mobj spawning is wired
+      spawnMobj(old.x,old.y,old.z,'MT_TFOG');
+      playSoundAt('telept',old.x,old.y,old.z);
+      const fogX = destX + intToFixed(20 * Math.cos(mover.angle));
+      const fogY = destY + intToFixed(20 * Math.sin(mover.angle));
+      spawnMobj(fogX,fogY,destFloorZ,'MT_TFOG');
+      playSoundAt('telept',fogX,fogY,destFloorZ);
 
       return true;
 
@@ -94,56 +115,5 @@ export function evTeleport(
   }
 
   return false;
-
-}
-
-// ============================================================
-// Simple BSP point-in-sector lookup (integer coords)
-// ============================================================
-
-function findSectorAtInt( x: number, y: number, map: DoomMapData ): number {
-
-  if ( map.nodes.length === 0 ) {
-
-    // Degenerate map — single subsector
-    if ( map.subsectors.length > 0 ) {
-
-      const seg = map.segs[ map.subsectors[ 0 ].firstSeg ];
-      if ( seg ) {
-
-        const ld = map.linedefs[ seg.linedef ];
-        return map.sidedefs[ ld.right ].sector;
-
-      }
-
-    }
-    return 0;
-
-  }
-
-  let nodeIdx = map.nodes.length - 1;
-
-  while ( ! ( nodeIdx & 0x8000 ) ) {
-
-    const node = map.nodes[ nodeIdx ];
-    const dx = x - node.x;
-    const dy = y - node.y;
-
-    // Which side of the partition line?
-    const side = ( dy * node.dx - dx * node.dy ) > 0 ? 1 : 0;
-    nodeIdx = side === 0 ? node.rightChild : node.leftChild;
-
-  }
-
-  // Leaf — subsector
-  const subIdx = nodeIdx & 0x7FFF;
-  const sub = map.subsectors[ subIdx ];
-  if ( ! sub ) return 0;
-
-  const seg = map.segs[ sub.firstSeg ];
-  if ( ! seg ) return 0;
-
-  const ld = map.linedefs[ seg.linedef ];
-  return map.sidedefs[ ld.right ].sector;
 
 }

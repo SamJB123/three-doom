@@ -40,7 +40,7 @@ const NF_SUBSECTOR = 0x8000;
 // The player's mo is a real Mobj so enemies can target it directly.
 export type { Mobj as DoomMobj } from '../game/Mobj';
 import type { Mobj } from '../game/Mobj';
-import { MOBJ_TYPES } from '../game/MobjData';
+import { MF_SOLID, MF_NOCLIP, MF_MISSILE, MF_SKULLFLY, MF_FLOAT, MF_DROPOFF, MF_TELEPORT, MOBJ_TYPES } from '../game/MobjData';
 
 export interface DoomPlayer {
   mo: Mobj;
@@ -60,17 +60,21 @@ export interface DoomMapData {
   subsectors: Subsector[];
   nodes: BspNode[];
   blockmap: Blockmap;
+  mobjs?: Mobj[];
 }
 
 // Temporary collision state (fixed-point)
 let tmfloorz: Fixed = 0;
 let tmceilingz: Fixed = 0;
 let tmdropoffz: Fixed = 0;
+let floatok = false;
+export function moveOpening(): {floatok: boolean; floor: Fixed} { return {floatok, floor: tmfloorz}; }
 
 const spechit: number[] = [];
-let crossSpecialCallback: ( ( lineIdx: number ) => void ) | null = null;
+export function specialContacts(): number[] { return [...spechit]; }
+let crossSpecialCallback: ( ( lineIdx: number, oldSide: number, mo: Mobj ) => void ) | null = null;
 
-export function setCrossSpecialCallback( cb: ( lineIdx: number ) => void ): void {
+export function setCrossSpecialCallback( cb: ( lineIdx: number, oldSide: number, mo: Mobj ) => void ): void {
 
   crossSpecialCallback = cb;
 
@@ -141,7 +145,7 @@ export function findSectorAtFixed(
 // Vertex coords are converted from WAD integers at point of use
 // ============================================================
 
-function pointOnLineSide(
+export function pointOnLineSide(
   x: Fixed, y: Fixed,
   v1: Vertex, v2: Vertex
 ): number {
@@ -151,7 +155,9 @@ function pointOnLineSide(
   const dx = intToFixed( v2.x ) - v1x;
   const dy = intToFixed( v2.y ) - v1y;
   const cross = ( ( x - v1x ) / FRACUNIT ) * dy - ( ( y - v1y ) / FRACUNIT ) * dx;
-  return cross <= 0 ? 0 : 1;
+  if (dx === 0) return x <= v1x ? Number(dy > 0) : Number(dy < 0);
+  if (dy === 0) return y <= v1y ? Number(dx < 0) : Number(dx > 0);
+  return cross > 0 ? 0 : 1;
 
 }
 
@@ -160,57 +166,11 @@ function boxOnLineSide(
   v1: Vertex, v2: Vertex
 ): number {
 
-  const v1x = intToFixed( v1.x );
-  const v1y = intToFixed( v1.y );
-  const dx = intToFixed( v2.x ) - v1x;
-  const dy = intToFixed( v2.y ) - v1y;
-
-  let p1: number;
-  let p2: number;
-
-  if ( dx === 0 ) {
-
-    if ( dy > 0 ) {
-
-      p1 = right > v1x ? 0 : 1;
-      p2 = left > v1x ? 0 : 1;
-
-    } else {
-
-      p1 = left > v1x ? 0 : 1;
-      p2 = right > v1x ? 0 : 1;
-
-    }
-
-  } else if ( dy === 0 ) {
-
-    if ( dx > 0 ) {
-
-      p1 = top > v1y ? 0 : 1;
-      p2 = bottom > v1y ? 0 : 1;
-
-    } else {
-
-      p1 = bottom > v1y ? 0 : 1;
-      p2 = top > v1y ? 0 : 1;
-
-    }
-
-  } else {
-
-    const cx1 = dx > 0 ? left : right;
-    const cy1 = dy > 0 ? bottom : top;
-    const cx2 = dx > 0 ? right : left;
-    const cy2 = dy > 0 ? top : bottom;
-
-    // Scale down to avoid overflow in cross product
-    p1 = ( ( cx1 - v1x ) / FRACUNIT ) * dy - ( ( cy1 - v1y ) / FRACUNIT ) * dx <= 0 ? 0 : 1;
-    p2 = ( ( cx2 - v1x ) / FRACUNIT ) * dy - ( ( cy2 - v1y ) / FRACUNIT ) * dx <= 0 ? 0 : 1;
-
-  }
-
-  if ( p1 === p2 ) return p1;
-  return - 1;
+  const sides = [
+    pointOnLineSide(left,bottom,v1,v2), pointOnLineSide(left,top,v1,v2),
+    pointOnLineSide(right,bottom,v1,v2), pointOnLineSide(right,top,v1,v2)
+  ];
+  return sides.every(side => side === sides[0]) ? sides[0] : -1;
 
 }
 
@@ -258,7 +218,7 @@ function pitCheckLine(
   sidedefs: Sidedef[],
   sectors: Sector[],
   bbox: { left: Fixed; right: Fixed; top: Fixed; bottom: Fixed },
-  mobjHeight: Fixed
+  mo: Mobj
 ): boolean {
 
   const v1 = vertexes[ ld.v1 ];
@@ -287,7 +247,10 @@ function pitCheckLine(
 
   const opening = lineOpening( ld, sidedefs, sectors );
 
-  if ( opening.openRange < mobjHeight ) return false;
+  if ( !(mo.flags & MF_MISSILE) ) {
+    if ( ld.flags & 1 ) return false;
+    if ( mo.type !== 'MT_PLAYER' && (ld.flags & 2) ) return false;
+  }
 
   if ( opening.openTop < tmceilingz ) tmceilingz = opening.openTop;
   if ( opening.openBottom > tmfloorz ) tmfloorz = opening.openBottom;
@@ -306,7 +269,8 @@ function pitCheckLine(
 export function checkPosition(
   mo: Mobj,
   x: Fixed, y: Fixed,
-  map: DoomMapData
+  map: DoomMapData,
+  ignoreThings = false
 ): boolean {
 
   const bbox = {
@@ -332,6 +296,16 @@ export function checkPosition(
 
   tmdropoffz = tmfloorz;
   spechit.length = 0;
+  if ( mo.flags & MF_NOCLIP ) return true;
+  // PIT_CheckThing: ordinary actors are infinitely tall in vanilla Doom.
+  // Missile/skull damage is resolved by the mobj movement path.
+  if ( !ignoreThings && !(mo.flags & (MF_MISSILE | MF_SKULLFLY)) ) {
+    for ( const other of map.mobjs ?? [] ) {
+      if ( other === mo || other.removed || !(other.flags & MF_SOLID) ) continue;
+      const distance = other.radius + mo.radius;
+      if ( Math.abs(other.x - x) < distance && Math.abs(other.y - y) < distance ) return false;
+    }
+  }
 
   // Convert fixed bbox to integer for blockmap lookup
   const nearby = getLinedefsInBounds(
@@ -344,7 +318,7 @@ export function checkPosition(
 
     if ( ! pitCheckLine(
       map.linedefs[ idx ], idx, map.vertexes, map.sidedefs, map.sectors,
-      bbox, mo.height
+      bbox, mo
     ) ) {
 
       return false;
@@ -357,6 +331,17 @@ export function checkPosition(
 
 }
 
+/** P_ThingHeightClip: preserve floor contact when a sector moves. */
+export function clipThingHeight( mo: Mobj, map: DoomMapData ): boolean {
+  const onFloor = mo.z === mo.floorz;
+  checkPosition( mo, mo.x, mo.y, map, true );
+  mo.floorz = tmfloorz;
+  mo.ceilingz = tmceilingz;
+  if ( onFloor ) mo.z = mo.floorz;
+  else if ( mo.z + mo.height > mo.ceilingz ) mo.z = mo.ceilingz - mo.height;
+  return mo.ceilingz - mo.floorz >= mo.height;
+}
+
 // ============================================================
 // P_TryMove
 // ============================================================
@@ -367,26 +352,33 @@ export function tryMove(
   map: DoomMapData
 ): boolean {
 
+  floatok = false;
   if ( ! checkPosition( mo, x, y, map ) ) return false;
 
-  if ( tmceilingz - tmfloorz < mo.height ) return false;
-  if ( tmceilingz - mo.z < mo.height ) return false;
-  if ( tmfloorz - mo.z > MAXSTEP ) return false;
-  if ( tmfloorz - tmdropoffz > MAXSTEP ) return false;
+  if ( !(mo.flags & MF_NOCLIP) ) {
+    if ( tmceilingz - tmfloorz < mo.height ) return false;
+    floatok = true;
+    if ( !(mo.flags & MF_TELEPORT) && tmceilingz - mo.z < mo.height ) return false;
+    if ( !(mo.flags & MF_TELEPORT) && tmfloorz - mo.z > MAXSTEP ) return false;
+    if ( !(mo.flags & (MF_DROPOFF | MF_FLOAT)) && tmfloorz - tmdropoffz > MAXSTEP ) return false;
+  }
+  const oldX = mo.x, oldY = mo.y;
 
   mo.floorz = tmfloorz;
   mo.ceilingz = tmceilingz;
   mo.x = x;
   mo.y = y;
 
-  if ( crossSpecialCallback ) {
-
-    for ( const ldIdx of spechit ) {
-
-      crossSpecialCallback( ldIdx );
-
+  const sector = findSectorAtFixed( x, y, map );
+  mo.sectorIndex = sector ? map.sectors.indexOf( sector ) : -1;
+  if ( crossSpecialCallback && !(mo.flags & (MF_NOCLIP | MF_TELEPORT | MF_MISSILE)) ) {
+    // Copy: teleport/other nested position checks may overwrite spechit.
+    for ( const ldIdx of [...spechit].reverse() ) {
+      const ld = map.linedefs[ldIdx];
+      const a = map.vertexes[ld.v1], b = map.vertexes[ld.v2];
+      const oldSide = pointOnLineSide(oldX, oldY, a, b);
+      if ( oldSide !== pointOnLineSide(x, y, a, b) ) crossSpecialCallback(ldIdx, oldSide, mo);
     }
-
   }
 
   return true;
@@ -402,24 +394,40 @@ export function slideMove(
   map: DoomMapData
 ): void {
 
-  if ( tryMove( mo, mo.x + mo.momx, mo.y + mo.momy, map ) ) return;
-
-  if ( mo.momx !== 0 && tryMove( mo, mo.x + mo.momx, mo.y, map ) ) {
-
-    mo.momy = 0;
-    return;
-
+  // P_SlideMove: trace the three leading corners, move up to the first wall,
+  // then project the remaining momentum along it. Float projection is a
+  // renderer-independent approximation of Doom's fine-angle table projection.
+  for (let attempt=0; attempt<3; attempt++) {
+    const leadX=mo.x+(mo.momx>0 ? mo.radius : -mo.radius), trailX=mo.x-(mo.momx>0 ? mo.radius : -mo.radius);
+    const leadY=mo.y+(mo.momy>0 ? mo.radius : -mo.radius), trailY=mo.y-(mo.momy>0 ? mo.radius : -mo.radius);
+    let best=1, hit: Linedef | null=null;
+    for (const [x,y] of [[leadX,leadY],[trailX,leadY],[leadX,trailY]]) {
+      for (const line of map.linedefs) {
+        const a=map.vertexes[line.v1], b=map.vertexes[line.v2];
+        let blocking=line.left<0 || !!(line.flags&1);
+        if (!blocking) {
+          const opening=lineOpening(line,map.sidedefs,map.sectors);
+          blocking=opening.openRange<mo.height || opening.openTop-mo.z<mo.height || opening.openBottom-mo.z>MAXSTEP;
+        }
+        if (!blocking) continue;
+        const ax=a.x*FRACUNIT, ay=a.y*FRACUNIT, dx=(b.x-a.x)*FRACUNIT, dy=(b.y-a.y)*FRACUNIT;
+        const den=mo.momx*dy-mo.momy*dx;
+        if (!den) continue;
+        const t=((ax-x)*dy-(ay-y)*dx)/den, u=((ax-x)*mo.momy-(ay-y)*mo.momx)/den;
+        if (t>=0 && t<best && u>=0 && u<=1) { best=t; hit=line; }
+      }
+    }
+    if (!hit) break;
+    const approach=Math.max(0,best-1/32);
+    if (approach && !tryMove(mo,mo.x+Math.trunc(mo.momx*approach),mo.y+Math.trunc(mo.momy*approach),map)) break;
+    const a=map.vertexes[hit.v1], b=map.vertexes[hit.v2], dx=b.x-a.x, dy=b.y-a.y;
+    const projection=(mo.momx*dx+mo.momy*dy)*(1-best)/(dx*dx+dy*dy);
+    mo.momx=Math.trunc(dx*projection); mo.momy=Math.trunc(dy*projection);
+    if (tryMove(mo,mo.x+mo.momx,mo.y+mo.momy,map)) return;
   }
-
-  if ( mo.momy !== 0 && tryMove( mo, mo.x, mo.y + mo.momy, map ) ) {
-
-    mo.momx = 0;
-    return;
-
-  }
-
-  mo.momx = 0;
-  mo.momy = 0;
+  if (mo.momy && tryMove(mo,mo.x,mo.y+mo.momy,map)) { mo.momx=0; return; }
+  if (mo.momx && tryMove(mo,mo.x+mo.momx,mo.y,map)) { mo.momy=0; return; }
+  mo.momx=mo.momy=0;
 
 }
 

@@ -9,15 +9,17 @@ export const FRACUNIT = 1 << FRACBITS; // 65536
 
 /** Multiply two fixed-point values: (a * b) >> 16 */
 export function fixedMul( a: Fixed, b: Fixed ): Fixed {
-  return ( a * b / FRACUNIT ) | 0;
+  // Split into signed high/unsigned low halves: exact 64-bit product >> 16
+  // modulo 32 bits, without losing precision in a JS double product.
+  return (Math.imul(a >> 16, b) + Math.imul(a & 0xffff, b >> 16)
+    + Math.floor((a & 0xffff) * (b & 0xffff) / FRACUNIT)) | 0;
 }
 
 /** Divide two fixed-point values: (a << 16) / b */
 export function fixedDiv( a: Fixed, b: Fixed ): Fixed {
-  if ( Math.abs( b ) === 0 ) return 0;
   // Check for overflow: if |a| >> 14 > |b|, result would overflow 32-bit
-  if ( ( Math.abs( a ) >> 14 ) >= Math.abs( b ) ) {
-    return a < 0 !== b < 0 ? - 0x7FFFFFFF : 0x7FFFFFFF;
+  if ( Math.floor( Math.abs( a ) / 16384 ) >= Math.abs( b ) ) {
+    return a < 0 !== b < 0 ? - 0x80000000 : 0x7FFFFFFF;
   }
   return ( ( a * FRACUNIT ) / b ) | 0;
 }
