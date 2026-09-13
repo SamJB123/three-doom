@@ -163,10 +163,14 @@ export function pointOnLineSide(
   const v1y = intToFixed( v1.y );
   const dx = intToFixed( v2.x ) - v1x;
   const dy = intToFixed( v2.y ) - v1y;
-  const cross = ( ( x - v1x ) / FRACUNIT ) * dy - ( ( y - v1y ) / FRACUNIT ) * dx;
+
   if (dx === 0) return x <= v1x ? Number(dy > 0) : Number(dy < 0);
   if (dy === 0) return y <= v1y ? Number(dx < 0) : Number(dx > 0);
-  return cross > 0 ? 0 : 1;
+  // P_PointOnLineSide rounds each FixedMul before comparing. A floating
+  // determinant changes close-to-wall decisions and the slide fallback.
+  const left=fixedMul(dy>>FRACBITS,(x-v1x)|0);
+  const right=fixedMul((y-v1y)|0,dx>>FRACBITS);
+  return right<left?0:1;
 
 }
 

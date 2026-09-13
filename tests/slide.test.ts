@@ -29,3 +29,16 @@ test('P_MobjThinker retains the collision floor while an actor straddles a desce
   runThinkers();assert.equal(actor.floorz,0);assert.equal(actor.z,0);assert.equal(actor.momz,0);
   resetThinkers();allMobjs.length=0;
 });
+
+test('diagonal wall contact rounds side products before choosing the slide fallback',async()=>{
+  const {createPlayer,xyMovement}=await import('../src/physics/DoomMovement');
+  const {dividedMap}=await import('./fixtures/maps');
+  // Reduced from E3M5/DEMO3 tic 2785. Original P_XYMovement keeps X and
+  // accepts the Y-only fallback. Floating side tests incorrectly slide both.
+  const map=dividedMap();map.nodes=[];map.subsectors=[{firstSeg:0,numSegs:1}];
+  map.vertexes=[{x:-448,y:384},{x:-704,y:448}];map.linedefs=[{...map.linedefs[0],left:-1,flags:1}];
+  map.blockmap={originX:-1024,originY:0,columns:8,rows:8,blockSize:128,lists:Array.from({length:64},()=>[0])};
+  const player=createPlayer(0,0,0);Object.assign(player.mo,{x:-40654136,y:29300249,momx:-22616,momy:4868});
+  xyMovement(player.mo,map,true);
+  assert.deepEqual([player.mo.x,player.mo.y,player.mo.momx,player.mo.momy],[-40654136,29305117,-20496,4411]);
+});

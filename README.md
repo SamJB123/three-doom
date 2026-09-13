@@ -41,6 +41,8 @@ npm run verify:audio
 npm run build
 npx playwright install chromium
 npm run test:e2e
+# Complete recorded-input diagnostics with bundled Chromium:
+npm run test:replay
 ```
 
 GitHub Actions runs the code checks on pushes and pull requests. WAD and browser checks run locally with your supplied assets.

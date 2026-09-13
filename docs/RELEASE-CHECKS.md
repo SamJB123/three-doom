@@ -53,10 +53,11 @@ PLAYWRIGHT_BROWSER=webkit npm run test:e2e -- --grep 'mobile|touch menu'
 For complete diagnostic recordings:
 
 ```sh
-PLAYWRIGHT_CHANNEL=chrome DOOM_TRACE_DEMOS=DEMO1,DEMO2,DEMO3,DEMO4 DOOM_TRACE_TICS=4000 DOOM_TRACE_SPEED=8 npm run test:e2e -- --grep 'original IWAD demo'
+npx playwright install chromium
+npm run test:replay
 npm run verify:world -- 4000
 ```
 
 The speed option scales only the test clock input; simulation still advances in discrete tics. The second run uses a different frame schedule and includes pause. Developer playback retains a partial trace and reports failure if divergent gameplay reaches rebirth or a level exit before the recording ends. Such a failure must not be counted as a completed recording. Refresh captures after code changes before running the C gate.
 
-Long DEMO3 captures currently expose a test-worker shutdown stall after successful assertions. Shorter runs exit normally. Compression reduces protocol payload but has not fixed cleanup; resolve this before treating long replay commands as clean release gates.
+Long replay diagnostics now use `npm run test:replay -- DEMO3` (omit demo names for all four), which explicitly selects Playwright's bundled Chromium rather than inheriting PLAYWRIGHT_CHANNEL. The complete DEMO3 run exits cleanly on that browser. Installed macOS Chrome 152 leaves an orphaned Crashpad helper holding the worker's stderr pipe after browser exit; testing flags did not prevent it. This remains an installed-Chrome diagnostic limitation, not a game playback failure. Ordinary installed-Chrome browser checks remain separate. No blanket process-killing workaround is built into the runner.

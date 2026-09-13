@@ -80,3 +80,14 @@ test('locked manual doors and tagged objects report original key colors only on 
   }
   resetThinkers();resetDoors();setDoorMessageCallback(()=>{});
 });
+
+
+test('P_GivePower sets partial-invisibility actor flags during the pickup itself',async()=>{
+  const {createPlayer}=await import('../src/physics/DoomMovement');
+  const {MF_SHADOW}=await import('../src/game/MobjData');
+  const world=createWorld(PlayerStatus),player=createPlayer(0,0,0).mo,group=new Group();group.add(item(2024));
+  assert.equal(player.flags&MF_SHADOW,0);
+  checkPickups(world,group,0,0,0,player);
+  assert(world.get(PlayerStatus)!.powers.invisibility>0);assert.equal(player.flags&MF_SHADOW,MF_SHADOW);
+  assert.equal(group.children.length,0);world.destroy();
+});

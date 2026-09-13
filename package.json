@@ -18,7 +18,8 @@
     "verify:audio": "tsx scripts/verify-audio.ts",
     "reference:world": "node scripts/reference-world.mjs",
     "compare:world": "tsx scripts/compare-world.ts --check",
-    "verify:world": "node scripts/verify-world.mjs"
+    "verify:world": "node scripts/verify-world.mjs",
+    "test:replay": "node scripts/test-replay.mjs"
   },
   "dependencies": {
     "crashcat": "^0.0.2",

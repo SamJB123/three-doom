@@ -64,8 +64,8 @@ User direction: finish known implementation gaps before broad verification. Each
 | 3 | UI-01 | Automap vertical visibility clipping | Removed as a mistaken requirement: `R_StoreWallRange` sets ML_MAPPED before vertical column clipping |
 | 4 | SAVE-01 | Reject malformed saved state enums/booleans before restoring runtime thinkers and weapons | Implemented; malformed state enums/flags rejected before restoration; focused checks pass |
 | 5 | UI-02 | Title/demo transitions do not yet reproduce the original wipe lifecycle | Implemented; title/demo melt lifecycle connected; focused checks pass |
-| 6 | LOOP-02 | Diagnose and repair the already recorded simulation differences; do not expand trace lengths as an end in itself | Open; historical DEMO1 RNG 463, DEMO2 angle 2271, DEMO3 blood height 2036, DEMO4 enemy wake 368. Bullet side probes are implemented; that comparison needs refreshing before claiming an unresolved cause |
-| 7 | BUILD-01 | Resolve long diagnostic worker shutdown stall | Open; tooling defect, not a production attract-cycle failure |
+| 6 | LOOP-02 | Diagnose and repair the already recorded simulation differences; do not expand trace lengths as an end in itself | Open; historical DEMO1 RNG 463, DEMO2 angle 2271, DEMO4 enemy wake 368. DEMO3 blood-height 2036 is resolved; fixed-point wall contact resolves movement 2785. Next captured difference was pickup shadow flag 3001, now fixed behaviorally; refreshed comparison pending |
+| 7 | BUILD-01 | Resolve long diagnostic worker shutdown stall | Bundled Chromium completes long capture and shutdown; `test:replay` pins that diagnostic path. Installed macOS Chrome retains a documented Crashpad teardown limitation |
 
 Three.js rasterization, free-look sky pole handling, the requested continuous scrolling-loop UV adjustment, original DOS executable/save-format compatibility and multiplayer are explicitly distinct from missing single-player implementation. Preserve those distinctions when auditing gaps.
 

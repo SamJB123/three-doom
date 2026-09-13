@@ -137,3 +137,10 @@ Shader depth is converted from Three.js units back to map units. Projection is n
 ## Automap requirement correction
 
 The proposed vertical-visibility discovery requirement was incorrect. In the supplied `r_segs.c`, `R_StoreWallRange` sets `linedef->flags |= ML_MAPPED` at entry, before `R_RenderSegLoop` applies ceilingclip/floorclip. `R_ClipPassWallSegment` supplies horizontally exposed spans without vertical visibility tests. The port should retain that ordering instead of suppressing lines solely because they are vertically occluded. Existing continuous-angle spans and Three.js FOV are still adaptations of the original integer screen columns; this correction does not claim pixel-level discovery equality.
+
+
+## Updated DEMO3 and diagnostic shutdown evidence
+
+The refreshed complete DEMO3 trace confirms the previous bullet-height discrepancy is resolved. Correcting `P_PointOnLineSide`'s FixedMul rounding advances agreement through tic 3000; the next captured difference is MF_SHADOW on the invisibility pickup tic. Immediate pickup flag application is now implemented with a regression, but the post-change C comparison is pending.
+
+Long-worker teardown was traced to the installed branded Chrome's surviving Crashpad stderr pipe. The same complete replay exits cleanly with bundled Chromium. `npm run test:replay` explicitly uses that browser, even if PLAYWRIGHT_CHANNEL is set; it retains ordinary Playwright failure handling and does not kill arbitrary processes or convert forced termination into success. Installed-Chrome long-diagnostic teardown remains an environment limitation.

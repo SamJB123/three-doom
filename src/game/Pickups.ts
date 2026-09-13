@@ -1,6 +1,6 @@
 import {PICKUP_MESSAGES} from './PickupMessages';
-import { allMobjs, removeMobj } from './Mobj';
-import { MF_SPECIAL, MF_DROPPED } from './MobjData';
+import { allMobjs, removeMobj, type Mobj } from './Mobj';
+import { MF_SPECIAL, MF_DROPPED, MF_SHADOW } from './MobjData';
 import { removeStaticSprite } from '../renderer/SpriteRenderer';
 // Item pickup system — ported from p_inter.c P_TouchSpecialThing().
 // Checks player proximity to items each tic and applies pickup effects.
@@ -251,7 +251,8 @@ export function checkPickups(
   spriteGroup: Group,
   playerX: Fixed,
   playerY: Fixed,
-  playerZ: Fixed
+  playerZ: Fixed,
+  player?: Mobj
 ): void {
 
   const state = world.get( PlayerStatus );
@@ -270,6 +271,7 @@ export function checkPickups(
       ? {...def, ammoClips:def.type==='ammo' ? 0.5 : def.ammoClips, weaponAmmoClips:1} : def;
     const notify = def.type !== 'key' || !state.cards[def.card!];
     if (tryPickup(pickup,state)) {
+      if(player&&def.power==='invisibility')player.flags|=MF_SHADOW;
       pickupCallback?.(item.info.doomedNum);
       if (notify) messageCallback?.(PICKUP_MESSAGES[item.info.doomedNum]);
       state.bonusCount += BONUSADD;
@@ -302,6 +304,8 @@ export function checkPickups(
 
     const notify = def.type !== 'key' || !state.cards[def.card!];
     if ( tryPickup( def, state ) ) {
+      // P_GivePower changes the actor before later thinkers can aim at it.
+      if(player&&def.power==='invisibility')player.flags|=MF_SHADOW;
 
       pickupCallback?.(thingType);
       if (notify) messageCallback?.(PICKUP_MESSAGES[thingType]);

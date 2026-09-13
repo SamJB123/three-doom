@@ -92,7 +92,7 @@ async function main(): Promise<void> {
   setPlayerThinkerCallback(()=>{
     playerMobjTickSystem(world);
     const state=world.get(PlayerStatus)!;
-    if(state.playerState!=='PST_DEAD')checkPickups(world,level.sprites,level.player.mo.x,level.player.mo.y,level.player.mo.z);
+    if(state.playerState!=='PST_DEAD')checkPickups(world,level.sprites,level.player.mo.x,level.player.mo.y,level.player.mo.z,level.player.mo);
     if(state.playerState==='PST_LIVE')level.player.mo.health=state.health;
   });
   world.set(Camera,{camera}); world.spawn(IsPlayer,Position);
