@@ -1,3 +1,4 @@
+import {lightingIndex,spriteColors} from '../renderer/DoomLighting';
 // Renders the current weapon sprite as a 2D canvas overlay.
 // Ported from R_DrawPSprite / R_DrawPlayerSprites in r_things.c.
 
@@ -40,9 +41,10 @@ export class WeaponOverlay {
   }
 
   /** Pre-render a sprite frame to a canvas for fast drawing */
-  private getFrameCanvas( name: string, sprites: Record<string, SpriteFrame> ): HTMLCanvasElement | null {
+  private getFrameCanvas( name: string, sprites: Record<string, SpriteFrame>, index:number ): HTMLCanvasElement | null {
 
-    const cached = this.frameCache.get( name );
+    const key=name+':'+index;
+    const cached = this.frameCache.get( key );
     if ( cached ) return cached;
 
     const frame = sprites[ name ];
@@ -53,40 +55,41 @@ export class WeaponOverlay {
     c.height = frame.height;
     const ctx2 = c.getContext( '2d' )!;
     const imgData = ctx2.createImageData( frame.width, frame.height );
-    imgData.data.set( frame.rgba );
+    imgData.data.set( spriteColors(frame,index) );
     ctx2.putImageData( imgData, 0, 0 );
 
-    this.frameCache.set( name, c );
+    this.frameCache.set( key, c );
+    if(this.frameCache.size>64)this.frameCache.delete(this.frameCache.keys().next().value!);
     return c;
 
   }
 
   /** Render current weapon sprite */
-  update( weapons: WeaponSystem, sprites: Record<string, SpriteFrame> ): void {
+  update( weapons: WeaponSystem, sprites: Record<string, SpriteFrame>,light=255 ): void {
 
     const ctx = this.ctx;
     ctx.clearRect( 0, 0, DOOM_W, DOOM_H );
 
     // Draw main weapon sprite
     const wpn = weapons.getWeaponSprite();
-    if ( wpn ) this.drawPsprite( wpn, sprites );
+    if ( wpn ) this.drawPsprite( wpn, sprites,light );
 
     // Draw muzzle flash on top
     const flash = weapons.getFlashSprite();
-    if ( flash ) this.drawPsprite( flash, sprites );
+    if ( flash ) this.drawPsprite( flash, sprites,light );
 
   }
 
   private drawPsprite(
     info: { sprite: string; frame: number; bright: boolean; sx: number; sy: number },
-    sprites: Record<string, SpriteFrame>
+    sprites: Record<string, SpriteFrame>,light:number
   ): void {
 
     // Build lump name: PREFIX + frame letter + '0' (rotation 0)
     const frameLetter = String.fromCharCode( 65 + info.frame );
     const lumpName = info.sprite + frameLetter + '0';
 
-    const frameCanvas = this.getFrameCanvas( lumpName, sprites );
+    const frameCanvas = this.getFrameCanvas( lumpName, sprites,lightingIndex(light,info.bright) );
     if ( ! frameCanvas ) return;
 
     const frame = sprites[ lumpName ];

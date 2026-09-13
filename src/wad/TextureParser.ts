@@ -306,7 +306,7 @@ export function parseSprites( wad: WAD, palette: Palette ): Record<string, Sprit
 
     }
 
-    sprites[ lump.name ] = { width, height, leftOffset, topOffset, rgba };
+    sprites[ lump.name ] = { width, height, leftOffset, topOffset, rgba, indices:Uint8Array.from(pixels,value=>Math.max(0,value)) };
 
   }
 

@@ -1,6 +1,7 @@
+import {indexedTexture,litMaterial,createColorAtlas} from './DoomLighting';
 import {
   DataTexture, RGBAFormat, NearestFilter, RepeatWrapping,
-  MeshBasicMaterial, Color, DoubleSide, FrontSide
+  MeshBasicMaterial, MeshBasicNodeMaterial, Color, DoubleSide, FrontSide
 } from 'three/webgpu';
 import type { TextureData, Palette } from '../wad/types';
 import { lightLevelToColormapIndex } from '../wad/ColormapParser';
@@ -8,7 +9,7 @@ import { lightLevelToColormapIndex } from '../wad/ColormapParser';
 import {textureAnimations,animationFrame,type TextureAnimation} from './TextureAnimations';
 
 interface AnimatedEntry {
-  material: MeshBasicMaterial;
+  material: MeshBasicMaterial | MeshBasicNodeMaterial;
   textures: DataTexture[];  // pre-built textures for each frame in the sequence
   animation: TextureAnimation;
   lastFrame: number;        // last frame index applied (avoid redundant swaps)
@@ -16,13 +17,14 @@ interface AnimatedEntry {
 
 export class TextureManager {
 
-  private wallCache = new Map<string, MeshBasicMaterial>();
-  private flatCache = new Map<string, MeshBasicMaterial>();
+  private wallCache = new Map<string, MeshBasicMaterial | MeshBasicNodeMaterial>();
+  private flatCache = new Map<string, MeshBasicMaterial | MeshBasicNodeMaterial>();
   private animated: AnimatedEntry[] = [];
   private flatAnimations:Map<string,TextureAnimation>;
   private wallAnimations:Map<string,TextureAnimation>;
   private completedTics=0;
 
+  private colorAtlas:DataTexture;
   readonly wallTextures: Record<string, TextureData>;
 
   constructor(
@@ -32,6 +34,7 @@ export class TextureManager {
     private palette: Palette
   ) {
 
+    this.colorAtlas=createColorAtlas(palette,colormap);
     this.wallTextures = wallTextures;
     this.flatAnimations=textureAnimations(Object.keys(flats),false);
     this.wallAnimations=textureAnimations(Object.keys(wallTextures),true);
@@ -39,6 +42,7 @@ export class TextureManager {
   }
 
   dispose(): void {
+    this.colorAtlas.dispose();
     const materials=new Set([...this.wallCache.values(),...this.flatCache.values()]);
     const textures=new Set<DataTexture>();
     for (const material of materials) { if (material.map) textures.add(material.map as DataTexture); material.dispose(); }
@@ -49,6 +53,7 @@ export class TextureManager {
 
   private makeColormappedTexture( texData: TextureData, lightLevel: number ): DataTexture {
 
+    const indexed=indexedTexture(texData,true);if(indexed)return indexed;
     const cmIndex = lightLevelToColormapIndex( lightLevel );
     const table = this.colormap[ cmIndex ];
     const { width, height, indices } = texData;
@@ -77,7 +82,7 @@ export class TextureManager {
 
   }
 
-  getWallMaterial( texName: string, lightLevel: number, masked = false ): MeshBasicMaterial | null {
+  getWallMaterial( texName: string, lightLevel: number, masked = false ): MeshBasicMaterial | MeshBasicNodeMaterial | null {
 
     if ( ! texName || texName === '-' ) return null;
 
@@ -101,19 +106,19 @@ export class TextureManager {
     }
 
     const tex = this.makeColormappedTexture( texData, lightLevel );
-    const mat = new MeshBasicMaterial( {
+    const mat = litMaterial( {
       map: tex,
       side: FrontSide,
       transparent: false,
       alphaTest: masked ? 0.5 : 0
-    } );
+    },lightLevel,false,this.colorAtlas );
     this.wallCache.set( key, mat );
     this.registerAnimation(mat,texName,lightLevel,true);
     return mat;
 
   }
 
-  getFlatMaterial( texName: string, lightLevel: number ): MeshBasicMaterial | null {
+  getFlatMaterial( texName: string, lightLevel: number ): MeshBasicMaterial | MeshBasicNodeMaterial | null {
 
     if ( ! texName || texName === '-' ) return null;
 
@@ -137,10 +142,10 @@ export class TextureManager {
     }
 
     const tex = this.makeColormappedTexture( texData, lightLevel );
-    const mat = new MeshBasicMaterial( {
+    const mat = litMaterial( {
       map: tex,
       side: DoubleSide
-    } );
+    },lightLevel,false,this.colorAtlas );
     this.flatCache.set( key, mat );
 
     this.registerAnimation(mat,texName,lightLevel,false);
@@ -149,7 +154,7 @@ export class TextureManager {
 
   }
 
-  private registerAnimation(material:MeshBasicMaterial,name:string,light:number,wall:boolean):void {
+  private registerAnimation(material:MeshBasicMaterial | MeshBasicNodeMaterial,name:string,light:number,wall:boolean):void {
     const animation=(wall?this.wallAnimations:this.flatAnimations).get(name);
     if(!animation)return;
     const source=wall?this.wallTextures:this.flats;

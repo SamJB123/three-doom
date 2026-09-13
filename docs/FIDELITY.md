@@ -117,3 +117,11 @@ Checking damaging-floor contact against the centre sector floor extends DEMO3 ag
 Preserving actor angle and weapon/Use aim during teleport reaction time advances DEMO3 agreement through 993 tics. Tic 994 exposes an extra Baron facing action; the 1500-tic port replay passes repeatability but not C parity.
 
 Removing the extra final Baron facing action extends complete DEMO3 agreement through 2035 tics; blood height first differs at 2036. Shadow-facing and missile aim RNG have separate behavioral regressions. Full replay assertions pass, but a long-run worker cleanup stall remains unresolved and required stopping the completed worker. Compressed transport preserves the raw comparison input; it is not a cleanup fix.
+
+## Connected presentation updates
+
+The retail `D_DoAdvanceDemo` title/credit/four-demo sequence is now production-accessible through Watch demos, with the initially visible menu retained. It runs on TicClock and pauses for menus. All four recordings play through in the browser; their combat is not claimed identical to original C.
+
+`ST_updateFaceWidget` priorities, attacker-facing, sustained-fire delay and reset are covered by behavioral tests and connected HUD checks. `ST_doPaletteStuff` selects the original PLAYPAL transforms. Captured 256-color swatches under damage, bonus and suit transforms match the supplied palettes within one RGB byte in Chrome and WebKit; interpolation for Three.js antialiasing is a presentation adaptation.
+
+Indexed world/sprite textures now preserve source palette indices, with COLORMAP lookup in shaders. `P_PlayerThink` invulnerability/infrared priority and expiry blink select rows 32 and 1, including full-bright actors and the weapon overlay. `A_Light0/1/2` drive shared muzzle-light uniforms and are saved/restored. Color lookup uses sRGB conversion explicitly; original palette colors are not treated as linear intensities. Browser synthetic planes compare all 256 colors for ordinary/flash/power/blink/full-bright cases on the default renderer and forced WebGL path. This verifies palette/colormap lookup, not original screen-column distance attenuation: sector-to-light lookup and flash brightness still use the port's existing approximate sector-light scale. Source distance falloff, horizontal/vertical wall shading and complete screenshot comparison remain open.

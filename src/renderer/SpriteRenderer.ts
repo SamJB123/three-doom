@@ -1,3 +1,4 @@
+import {indexedTexture,litMaterial,updateMaterialLight} from './DoomLighting';
 import {
   Group, Mesh, PlaneGeometry, MeshBasicMaterial,
   DataTexture, RGBAFormat, NearestFilter, DoubleSide
@@ -87,7 +88,7 @@ export function buildThingSprites(
 
         if ( f ) {
 
-          const tex = new DataTexture( f.rgba, f.width, f.height, RGBAFormat );
+          const tex = indexedTexture(f)??new DataTexture( f.rgba, f.width, f.height, RGBAFormat );
           tex.magFilter = NearestFilter;
           tex.minFilter = NearestFilter;
           tex.needsUpdate = true;
@@ -126,12 +127,12 @@ function createSpriteMesh(
   const { width, height, leftOffset, topOffset, rgba } = frame;
 
   // Texture
-  const tex = new DataTexture( rgba, width, height, RGBAFormat );
+  const tex = indexedTexture(frame)??new DataTexture( rgba, width, height, RGBAFormat );
   tex.magFilter = NearestFilter;
   tex.minFilter = NearestFilter;
   tex.needsUpdate = true;
 
-  const mat = new MeshBasicMaterial( {
+  const mat = litMaterial( {
     map: tex,
     side: DoubleSide,
     transparent: true,
@@ -140,7 +141,7 @@ function createSpriteMesh(
     polygonOffset: true,
     polygonOffsetFactor: - 1,
     polygonOffsetUnits: - 1
-  } );
+  },sector.lightLevel );
 
   // Quad dimensions in world space
   const w = width * SCALE;
@@ -278,6 +279,7 @@ export function updateSpriteBillboards(
   for ( const child of spriteGroup.children ) {
 
     child.rotation.y = cameraYaw;
+    if(child instanceof Mesh&&child.userData.sector)updateMaterialLight(child.material as MeshBasicMaterial,child.userData.sector.lightLevel);
 
   }
 

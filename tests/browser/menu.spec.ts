@@ -734,3 +734,38 @@ test('PLAYPAL damage, bonus and suit transforms cover world, weapon and HUD with
     expect(maxError).toBeLessThanOrEqual(1);
   }
 });
+
+test('indexed shaders render original power colormaps and muzzle lighting on both renderer backends',async({page})=>{
+  await ready(page);
+  const results=await page.evaluate(async()=>{
+    const {parseWAD,parsePalette,parseColormap}=await import('/src/wad/index.ts');
+    const {TextureManager}=await import('/src/renderer/TextureManager.ts');
+    const {updateDoomLighting,lightingIndex,updateMaterialLight}=await import('/src/renderer/DoomLighting.ts');
+    const {createPlayerStatus}=await import('/src/ecs/traits.ts');
+    const {WebGPURenderer,Scene,OrthographicCamera,Mesh,PlaneGeometry}=await import('/tests/browser/three.ts');
+    const wad=parseWAD(await(await fetch('/doomu.wad')).arrayBuffer()),palette=parsePalette(wad),tables=parseColormap(wad);
+    const rgba=new Uint8Array(256*4),indices=Uint8Array.from({length:256},(_,i)=>i);
+    for(let i=0;i<256;i++)rgba.set([palette[i*3],palette[i*3+1],palette[i*3+2],255],i*4);
+    const manager=new TextureManager({TEST:{width:256,height:1,rgba,indices}},{},tables,palette);
+    const material=manager.getWallMaterial('TEST',128)!;
+    const scene=new Scene(),geometry=new PlaneGeometry(256,8);scene.add(new Mesh(geometry,material));
+    const camera=new OrthographicCamera(-128,128,4,-4,.1,10);camera.position.z=1;
+    const copy=document.createElement('canvas');copy.width=256;copy.height=8;const ctx=copy.getContext('2d')!;
+    const errors=[],renderers=[];
+    for(const forceWebGL of [false,true]){
+      const renderer=new WebGPURenderer({forceWebGL,antialias:false});renderer.setSize(256,8);await renderer.init();
+      for(const [inv,infra,extra,bright] of [[0,0,0,false],[0,0,2,false],[200,0,0,false],[0,200,0,false],[128,200,2,false],[200,0,0,true],[0,0,0,true]] as const){
+        await new Promise<void>(resolve=>requestAnimationFrame(()=>resolve()));
+        const state=createPlayerStatus();state.powers.invulnerability=inv;state.powers.infrared=infra;updateDoomLighting(state,extra);
+        updateMaterialLight(material,128,bright);const row=lightingIndex(128,bright);renderer.render(scene,camera);
+        await renderer.backend.device?.queue.onSubmittedWorkDone();ctx.drawImage(renderer.domElement,0,0);
+        const actual=ctx.getImageData(0,4,256,1).data;let maxError=0;
+        for(let i=0;i<256;i++)for(let c=0;c<3;c++)maxError=Math.max(maxError,Math.abs(actual[i*4+c]-palette[tables[row][i]*3+c]));
+        errors.push({forceWebGL,row,bright,maxError,sample:Array.from(actual.slice(400,403)),expected:Array.from(palette.slice(tables[row][100]*3,tables[row][100]*3+3))});
+      }
+      renderers.push(renderer);
+    }
+    geometry.dispose();manager.dispose();for(const renderer of renderers)renderer.dispose();updateDoomLighting(createPlayerStatus(),0);return errors;
+  });
+  expect(results).toHaveLength(14);for(const error of results)expect(error.maxError,JSON.stringify(results)).toBeLessThanOrEqual(1);
+});

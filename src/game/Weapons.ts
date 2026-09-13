@@ -216,9 +216,10 @@ export class WeaponSystem {
     { state: null, tics: 0, sx: 0, sy: WEAPONTOP },   // ps_flash
   ];
 
-  archive() {return structuredClone({psprites:this.psprites,attackDown:this.attackDown,refire:this.refire,lastAngle:this.lastAngle});}
+  extraLight=0;
+  archive() {return structuredClone({extraLight:this.extraLight,psprites:this.psprites,attackDown:this.attackDown,refire:this.refire,lastAngle:this.lastAngle});}
   restore(saved: ReturnType<WeaponSystem['archive']>): void {
-    this.psprites=structuredClone(saved.psprites);this.attackDown=saved.attackDown;this.refire=Number(saved.refire);this.lastAngle=saved.lastAngle;
+    this.extraLight=saved.extraLight??0;this.psprites=structuredClone(saved.psprites);this.attackDown=saved.attackDown;this.refire=Number(saved.refire);this.lastAngle=saved.lastAngle;
   }
   private attackDown = false;
   private attackHeld = false;
@@ -473,9 +474,9 @@ export class WeaponSystem {
       case 'A_Punch':       this.A_Punch( state ); break;
       case 'A_Saw':         this.A_Saw( state ); break;
       case 'A_GunFlash':    this.A_GunFlash( state ); break;
-      case 'A_Light0':      break; // extralight = 0 (lighting, not yet used)
-      case 'A_Light1':      break; // extralight = 1
-      case 'A_Light2':      break; // extralight = 2
+      case 'A_Light0':      this.extraLight=0;break;
+      case 'A_Light1':      this.extraLight=1;break;
+      case 'A_Light2':      this.extraLight=2;break;
       case 'A_BFGsound':    playSound( 'bfg' ); break;
       case 'A_CheckReload': this.checkAmmo( state ); break;
       case 'A_OpenShotgun2':  playSound( 'dbopn' ); break;

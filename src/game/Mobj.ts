@@ -1,3 +1,4 @@
+import {indexedTexture,litMaterial,updateMaterialLight} from '../renderer/DoomLighting';
 import {linkThing,restoreThingLinks,thingsInBounds} from '../physics/ThingLinks';
 import {stopSound} from '../sound/SoundManager';
 import {fineSin,fineCos,pointToRadians} from '../math/angles';
@@ -868,7 +869,7 @@ function getTexture( lumpName: string ): DataTexture | null {
   const frame = spriteFrames[ lumpName ];
   if ( ! frame ) return null;
 
-  const tex = new DataTexture( frame.rgba, frame.width, frame.height, RGBAFormat );
+  const tex = indexedTexture(frame)??new DataTexture( frame.rgba, frame.width, frame.height, RGBAFormat );
   tex.magFilter = NearestFilter;
   tex.minFilter = NearestFilter;
   tex.needsUpdate = true;
@@ -969,7 +970,7 @@ function createMobjSprite( mo: Mobj ): void {
   const tex = getTexture( lumpName );
   if ( ! tex ) return;
 
-  const mat = new MeshBasicMaterial( {
+  const mat = litMaterial( {
     map: tex,
     side: DoubleSide,
     transparent: true,
@@ -978,7 +979,7 @@ function createMobjSprite( mo: Mobj ): void {
     polygonOffset: true,
     polygonOffsetFactor: - 1,
     polygonOffsetUnits: - 1,
-  } );
+  },mapData?.sectors[mo.sectorIndex]?.lightLevel??255,st.bright );
 
   const w = frame.width * SCALE;
   const h = frame.height * SCALE;
@@ -1036,6 +1037,7 @@ function updateMobjSprite( mo: Mobj ): void {
   if ( ! tex ) return;
 
   const mat = mo.mesh.material as MeshBasicMaterial;
+  updateMaterialLight(mat,mapData?.sectors[mo.sectorIndex]?.lightLevel??255,st.bright);
   const prevFlip = mo.mesh.userData.flipped ?? false;
 
   if ( mat.map !== tex || flip !== prevFlip ) {

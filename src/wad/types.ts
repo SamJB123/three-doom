@@ -120,6 +120,7 @@ export interface BspNode {
 }
 
 export interface SpriteFrame {
+  indices?:Uint8Array; // original palette indices, preserving COLORMAP effects
   width: number;
   height: number;
   leftOffset: number;   // pixels to the left of the center

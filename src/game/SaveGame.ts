@@ -65,6 +65,7 @@ export function decodeSave(text:string,wad:string): SaveGame {
   if(!Array.isArray(save.automap.seen)||save.automap.seen.some(i=>!integer(i,0,w.lines.length-1))||!Array.isArray(save.automap.marks)||!save.automap.center||!Number.isFinite(save.automap.zoom))invalid();
   for(const point of [save.automap.center,...save.automap.marks])if(!Number.isFinite(point.x)||!Number.isFinite(point.y))invalid();
   for(const sprite of save.sprites.sprites)if(!integer(sprite.index,0,100000)||!integer(sprite.frame,0,100)||!Number.isFinite(sprite.tics))invalid();
+  if(save.weapons.extraLight!==undefined&&!integer(save.weapons.extraLight,0,2))invalid();
   for(const psp of save.weapons.psprites)if(!(psp.state===null||typeof psp.state==='string')||![psp.tics,psp.sx,psp.sy].every(Number.isFinite))invalid();
   for(const [sector,index] of w.ai.sounds)if(!integer(sector,0,w.sectors.length-1)||!integer(index,-1,w.actors.length-1))invalid();
   for(const button of w.use.buttons)if(!integer(button.side,0,w.sides.length-1)||!['upper','middle','lower'].includes(button.position)||!integer(button.timer,1,35)||typeof button.originalTex!=='string')invalid();

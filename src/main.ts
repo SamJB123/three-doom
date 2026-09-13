@@ -1,3 +1,4 @@
+import {initDoomLighting,updateDoomLighting} from './renderer/DoomLighting';
 import {AttractSequence} from './game/AttractSequence';
 import {readDemo,demoInput,type Demo} from './game/Demo';
 import {archiveRandom} from './game/DoomRandom';
@@ -57,6 +58,7 @@ async function main(): Promise<void> {
   const palette=parsePalette(wad);
   const assets={palette, colormap:parseColormap(wad), flats:parseFlats(wad,palette),
     textures:parseTextures(wad,palette), sprites:parseSprites(wad,palette)};
+  initDoomLighting(palette,assets.colormap);
   const audio=new AudioContext();
   initSoundManager(audio,await parseSounds(wad,audio));
   const music=new MusicPlayer(audio);
@@ -344,7 +346,8 @@ async function main(): Promise<void> {
     setCameraPosition(level.player.mo.x,level.player.mo.y);
     level.manager.updateAnimatedTextures(time.levelTime);updateSpriteBillboards(level.sprites,camera.rotation.y);
     level.sky?.position.copy(camera.position);
-    weaponOverlay.update(weapons,assets.sprites);
+    updateDoomLighting(world.get(PlayerStatus)!,weapons.extraLight);
+    weaponOverlay.update(weapons,assets.sprites,level.map.sectors[level.player.mo.sectorIndex]?.lightLevel??255);
     renderer.render(scene,camera);
     automap.draw(level.map,level.player,!!world.get(PlayerStatus)!.powers.allmap);
     if(wipe.pending)wipe.finishCapture(captureScreen());
