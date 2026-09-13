@@ -1,4 +1,26 @@
-# Three Doom
+<p align="center">
+  <img src="public/logo.png" alt="Three Doom — a red, horned demon built from triangles" width="224">
+</p>
+
+<h1 align="center">Three Doom</h1>
+
+<p align="center">
+  <strong>Doom. In your browser.</strong><br>
+  Original worlds. TypeScript simulation. Three.js rendering.
+</p>
+
+<p align="center">
+  <strong>4 episodes</strong> &nbsp;·&nbsp; <strong>36 maps</strong> &nbsp;·&nbsp; <strong>Desktop&nbsp;&amp;&nbsp;touch</strong>
+</p>
+
+<p align="center">
+  <a href="#run-locally">Get&nbsp;started</a> &nbsp;·&nbsp;
+  <a href="#desktop-controls">Desktop&nbsp;controls</a> &nbsp;·&nbsp;
+  <a href="#touch-controls">Touch&nbsp;controls</a> &nbsp;·&nbsp;
+  <a href="docs/ROADMAP.md">Roadmap</a>
+</p>
+
+---
 
 A playable Ultimate Doom single-player port in TypeScript, with Three.js rendering and the original WAD artwork and music. Play all four episodes on desktop or with touch controls on mobile.
 

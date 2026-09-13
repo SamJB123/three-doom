@@ -516,3 +516,10 @@ The first native-GPU run measured p95 9.6 ms, p99 10.2 ms, 1,257,296 bytes retai
 Final native desktop measurements pass their budgets: bundled Chromium 153.0.8010.12 on Apple M5 Max/Metal, 960×720 DPR1, 120 seconds/14,246 frames, p50 8.3 ms, p95 9.6 ms, p99 10.2 ms, maximum actual-gameplay backlog 0.0261 s, 712,368 bytes retained heap growth and zero retained DOM nodes over nine post-warm-up map loads. Raw presentation-clock backlog remains visible at 0.3432 s. Visible full Chromium also needed its socket-identified Crashpad helpers stopped after browser exit; measurement success does not close unattended teardown. No automatic process-killing workaround was added.
 
 Final post-cleanup validation: typecheck, all 182 unit tests and production build pass. Seven installed-Chrome browser checks pass in 2.7 minutes with a clean exit: all 36 normal/secret/finale lifecycle routes, persistent saves, all four recorded-encounter menu restores, both renderer lighting backends, touch menu/layout and desktop Escape/Tab with hidden action buttons. No further gameplay logic changes were made after the complete recorded C comparisons. Next work remains the scoped release evidence listed above, not another extension of recording lengths.
+
+
+## 2026-09-13 — README logo and presentation
+
+**BUILD-01 documentation.** Added the existing `public/logo.png` to a centred README header with descriptive alt text, a short tagline, episode/map/platform highlights and quick links to setup, desktop/touch controls and the roadmap. Uses GitHub-compatible HTML within Markdown, with no new image assets or external badge requests.
+
+Validation: inspected local light/dark header previews and a 375-pixel mobile layout (GitHub-style approximation, not a live GitHub render); checked local image/link targets and wrapping. Typecheck, all 182 unit tests and production build pass. Existing generated Wrangler configuration was preserved. Release-gate status is unchanged; next work remains the bounded release acceptance in RELEASE-CHECKS.md.
