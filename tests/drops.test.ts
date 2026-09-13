@@ -46,3 +46,16 @@ test('flying corpses fall; lost souls keep no-gravity; solidity changes at A_Fal
   const skull=spawnMobj(50*F,0,64*F,'MT_SKULL');damageMobj(skull,null,null,10000);
   assert(skull.flags&MF_NOGRAVITY);assert(!(skull.flags&MF_FLOAT));
 });
+
+test('dynamic pickup meshes cannot grant ammo from stale spawn coordinates',async()=>{
+  const {Mesh}=await import('three/webgpu');
+  setup();const world=createWorld(PlayerStatus),state=world.get(PlayerStatus)!;
+  state.ammo.clip=0;const group=new Group(),clip=spawnMobj(100*F,0,0,'MT_CLIP');clip.flags|=MF_DROPPED;
+  const mesh=new Mesh();mesh.userData={mobj:clip,thingType:2007,thingX:0,thingY:0};group.add(mesh);
+  checkPickups(world,group,0,0,0);
+  assert.equal(state.ammo.clip,0);assert.equal(state.bonusCount,0);assert(!clip.removed);
+  checkPickups(world,group,clip.x,clip.y,clip.z);
+  assert.equal(state.ammo.clip,5);assert(clip.removed);
+  checkPickups(world,group,0,0,0);assert.equal(state.ammo.clip,5);
+  world.destroy();resetThinkers();allMobjs.length=0;
+});

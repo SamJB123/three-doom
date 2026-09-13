@@ -39,3 +39,14 @@ test('P_LineAttack creates wall puffs and target blood even with zero damage, bu
   }
   resetThinkers();allMobjs.length=0;
 });
+
+test('P_SpawnMobj assigns effects to the precise subsector beside a low ceiling',async()=>{
+  const {runThinkers}=await import('../src/game/Thinkers');
+  resetThinkers();allMobjs.length=0;
+  const map=dividedMap();map.sectors[1].ceilingHeight=64;
+  initMobjSystem({},new Group(),map);restoreRandom({play:0,misc:0});
+  const puff=spawnHitEffect(1,0,80*F,0,false),start=puff.z;
+  assert.equal(puff.sectorIndex,0);assert.equal(puff.ceilingz,128*F);
+  runThinkers();assert.equal(puff.z,start+F);assert.equal(puff.momz,F);
+  resetThinkers();allMobjs.length=0;
+});

@@ -1,37 +1,63 @@
 # Three Doom
 
-A TypeScript gameplay port using Three.js for rendering and the original Doom WAD assets. All four episodes are selectable, with campaign transitions, menus and saves. **Not yet a complete or demo-compatible Doom port**.
+A playable Ultimate Doom single-player port in TypeScript, with Three.js rendering and the original WAD artwork and music. Play all four episodes on desktop or with touch controls on mobile.
+
+## What's included
+
+- All 36 maps, episode and difficulty selection, normal and secret routes, and boss progression.
+- Doom's weapons, enemies, pickups, keys, doors, lifts, crushers and other level specials.
+- Original-style menus, HUD, pickup messages, automap, palette effects and synthesized music.
+- End-of-level statistics, animated episode maps, finales, melt transitions and the title/demo sequence.
+- Six browser-local save slots that preserve the world, player, weapons and simulation state.
+
+The project is in acceptance testing, with end-to-end playability reported in user playtesting. All four complete IWAD recordings match the supplied Linux Doom C reference for the captured simulation fields—8,738 tics in total. This is a scoped comparison, not a claim of universal DOS demo compatibility. Detailed campaign, physical-device and release evidence is tracked in [Release checks](docs/RELEASE-CHECKS.md).
 
 ## Run locally
 
-Use Node 22.18+ and npm. `package-lock.json` is the canonical lockfile.
+Use Node 22.18+ and npm. Supply your own Ultimate Doom `doomu.wad`.
 
 ```sh
-npm ci --ignore-scripts
+npm ci
 npm run setup:wad -- /absolute/path/to/doomu.wad
 npm run dev
 ```
 
-Open the URL printed by Vite. WAD files are local inputs, ignored by Git. `setup:wad` validates the IWAD header and copies the supplied file to `public/doomu.wad`. Vite includes public assets in builds.
+Open the URL printed by Vite. The setup command validates the IWAD and copies it to `public/doomu.wad`. WADs are ignored by Git; production builds include local public assets.
 
-The title menu offers episode/difficulty selection, Load Game, options and Read This. Escape or the on-screen Menu button opens the menu during play. Menus pause the simulation, audio, and held controls. Arrow keys, Tab, Enter, mouse, and touch navigate menus. Losing focus also pauses. Resume may require clicking the game canvas if a browser declines pointer lock.
+Use npm and the committed `package-lock.json`. If an earlier pnpm install moved dependencies into `.ignored`, `npm ci` restores the supported installation. The old OPL dependency's native/Git dependency chain has been replaced with a browser-only synthesis subset.
 
-New Game during play asks for confirmation. Restart rebuilds the current level in-process. End Game returns to the title. Six browser-local save slots preserve the current world; saves are tied to the IWAD hash.
+## Desktop controls
 
-## If `pnpm dev` / `pnpm install` fails
+| Action | Control |
+|---|---|
+| Move / strafe | W A S D or arrow keys |
+| Look | Mouse |
+| Fire | Left mouse button or Ctrl |
+| Use a door or switch | E or F |
+| Run | Shift |
+| Change weapon | 1–7 |
+| Pause / menu | Escape |
+| Automap | Tab |
 
-The previous `opl3` dependency pulled in Git-based native audio dependencies (including `ogg`) that pnpm 11 rejected. This has been replaced with an attributed browser-only synthesis subset; the Git/native dependency chain is gone. This checkout uses npm; do not mix package managers in the same `node_modules`.
+Click the game view to capture the pointer. Escape releases it and opens the menu. Desktop play uses keyboard shortcuts for the menu and automap; their on-screen buttons are shown on touch layouts.
 
-If pnpm has moved packages into `.ignored`, restore them with:
+On the automap, +/− zoom, F toggles follow, arrow keys pan with follow disabled, M places a mark and C clears marks. Use arrows/Enter or the mouse to navigate menus. Losing focus pauses single-player simulation and audio. Resuming may require another click if the browser declines pointer lock.
 
-```sh
-npm ci --ignore-scripts
-npm run dev
-```
+## Touch controls
 
-The manifest declares npm explicitly. No change to your global pnpm policy is needed. The supported and tested installation path is npm.
+Use the left side to move and the right side to look. Circular **sprint** and **fire** areas are positioned for your thumbs. Tap the play area to use a door or switch. Hold the aiming side to open the weapon wheel, drag to an owned weapon and release to select it.
 
-## Verify
+The **Map** and **Menu** buttons remain available on touch layouts. Opening a menu cancels held actions. Controls adapt to portrait and landscape orientation.
+
+## Menus, saves and campaign flow
+
+New Game selects an episode and difficulty. Options include music/sound volume and HUD messages. Save Game and Load Game use six slots in this browser's local storage, tied to the IWAD hash. Clearing site data removes those saves.
+
+Normal and secret exits carry inventory into the next map through the full intermission sequence. Episode endings show the original text and artwork, including the timed bunny panorama. Watch demos runs the original title/credit/four-demo cycle; a key or tap opens the menu and pauses playback.
+
+Ordinary actor collision follows original Doom, including flying monsters blocking movement underneath them. Multiplayer and original DOS save-file compatibility are separate targets.
+
+## Checks and development
 
 ```sh
 npm run typecheck
@@ -39,29 +65,20 @@ npm test
 npm run verify:wad
 npm run verify:audio
 npm run build
+
+# Browser acceptance with installed Chrome:
+PLAYWRIGHT_CHANNEL=chrome npm run test:e2e
+
+# Complete recorded-input diagnostics:
 npx playwright install chromium
-npm run test:e2e
-# Complete recorded-input diagnostics with bundled Chromium:
 npm run test:replay
+npm run verify:world -- 4000
 ```
 
-GitHub Actions runs the code checks on pushes and pull requests. WAD and browser checks run locally with your supplied assets.
+WAD and browser checks require your local IWAD. `verify:world` also requires a C compiler and the original source; set `DOOM_SOURCE` to its `linuxdoom-1.10` directory when using a different reference location. GitHub Actions runs the code checks. Generated screenshots, traces and reference manifests stay outside Git.
 
-`verify:wad` uses `DOOM_WAD` or `public/doomu.wad`. Browser tests require that local WAD. For an installed browser, set `PLAYWRIGHT_CHANNEL=chrome`. Browser checks use a development-only read-only snapshot enabled by `?inspect`; it is not a gameplay API.
-
-## Work systematically
-
-- [Roadmap and source coverage](docs/ROADMAP.md): milestones, stable work IDs, and acceptance gates.
-- [Fidelity strategy](docs/FIDELITY.md): reference selection, deterministic comparison, and test boundaries.
-- [Special-family coverage](docs/SPECIAL-COVERAGE.md): tested movement cycles and remaining scenario scope.
-- [Release checks](docs/RELEASE-CHECKS.md): campaign, browser, device and performance gates.
-- [Progress log](docs/PROGRESS.md): changes, verification evidence, and next work.
-
-Before starting a slice, choose its work IDs and source functions. Add regression scenarios for behavior being changed. Update coverage and the progress log after validation. A system is not verified merely because an implementation exists.
-
-
-Current campaign controls: New Game selects any of the four episodes and a difficulty. Normal/secret exits load the next map in-process and carry inventory; completion screens animate statistics, episode maps and music before loading the next level. Options controls music and sound volume. Tab (or Map) opens the automap; +/− zoom, F toggles follow, arrows pan with follow off, M marks and C clears marks. Episode endings include original text/art and the timed bunny panorama. Melt wipes accompany level transitions. Watch demos starts the original title/credit/four-demo cycle; any key or tap opens the menu and pauses playback.
-
-On mobile, use the circular sprint/fire areas with your thumbs. A short tap in the play area uses a door or switch. Hold the aiming side to open the owned-weapon wheel, drag to a weapon and release to select it. Opening a menu cancels held controls.
-
-Compatibility note: ordinary actor collision follows original Doom, so a flying monster can block walking underneath it. The port is not yet complete; see [the progress log](docs/PROGRESS.md) for verified behavior and known gaps.
+- [Roadmap](docs/ROADMAP.md): scoped implementation and completion gates.
+- [Fidelity](docs/FIDELITY.md): reference contract and comparison limits.
+- [Special-family coverage](docs/SPECIAL-COVERAGE.md): movement, obstruction and topology scenarios.
+- [Release checks](docs/RELEASE-CHECKS.md): campaign, browser, device and performance evidence.
+- [Progress log](docs/PROGRESS.md): changes and validation results.

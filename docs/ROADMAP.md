@@ -22,7 +22,7 @@ Status vocabulary: **missing**, **partial** (implemented but incomplete or not c
 | MENU-01 | `m_menu.c`: `M_Responder`, `M_Drawer`; `d_main.c` title | verified browser foundation; circular touch actions, tap-use and weapon wheel checked | WAD-backed title; start, pause, resume, help, restart/end confirmations; desktop/touch; no input leakage |
 | MENU-02 | `M_Episode`, `M_ChooseSkill`, options, save/load menus | partial: episode/skill, volume and six save/load slots connected | Real episode/skill selection with gameplay effects; working options and save/load flows |
 | LOOP-01 | `p_tick.c P_Ticker`, `g_game.c G_Ticker` | verified scheduler | One 35 Hz clock; no tics in menus; frame-rate invariant tick count; no pause catch-up |
-| LOOP-02 | `P_RunThinkers`, `P_PlayerThink`, ticcmd ordering | partial: all four demos pass 350-tic C actor/target, inventory and sector comparisons; longer traces expose documented failures | Match C action ordering, RNG consumption, input quantization and deterministic state traces |
+| LOOP-02 | `P_RunThinkers`, `P_PlayerThink`, ticcmd ordering | verified for all four complete IWAD recordings: 8,738 C-compared tics; broader campaign/action coverage remains scoped | Match C action ordering, RNG consumption, input quantization and deterministic state traces |
 | FLOW-02 | `G_InitNew`, `G_DoLoadLevel`, `G_DoCompleted`, `G_WorldDone` | connected; 36-map routing browser check passes | In-process teardown/load; preserve inventory across normal exits; reset state on new game; secret map routing |
 | MAP-01 | `w_wad.c`, `p_setup.c`, `r_data.c` | partial: bounded records/patches, map references/BSP cycles and last-patch overrides checked; all 36 maps pass | All 36 maps parse (smoke exists); validate malformed input, duplicate lumps, patch overrides, spawn counts |
 | PHYS-01 | `p_map.c P_CheckPosition`, `P_TryMove`, `P_SlideMove` | partial: fixed blockmap slide traversal, signed splits, step support and dynamic thing order checked | Solid actors, blocking flags, steps/dropoffs, diagonal sliding; player/monster/projectile consistency |
@@ -37,7 +37,7 @@ Status vocabulary: **missing**, **partial** (implemented but incomplete or not c
 | UI-01 | `st_stuff.c`, `hu_stuff.c`, `am_map.c` | partial: attacker-directed faces/timers checked; PLAYPAL colors checked in Chrome/WebKit; power colormaps, BSP automap discovery and circular marks checked | HUD state/timing and messages; automap; palette/power effects |
 | UI-03 | `hu_stuff.c HU_Ticker/HU_Drawer`, `p_inter.c P_TouchSpecialThing`, `d_englsh.h GOT*` | connected; pickup families and original locked-door key feedback, timing, pause and options checks pass | Original health/armor/ammo/weapon/key/powerup messages, WAD HUD glyphs, timeout in simulation tics, message toggle; only successful pickups notify, including dropped items |
 | UI-02 | `wi_stuff.c`, `f_finale.c`, `d_main.c` demo sequence | connected: stats, animated maps/music and episode finales; melt connected; retail title/credit/four-demo cycle browser-checked | Stats/par/intermission maps, episode finales, title/credit/demo cycle |
-| SAVE-01 | `p_saveg.c`, `G_DoSaveGame`, `G_DoLoadGame` | connected; five active combat/special save scenarios continue for 160 matching tics each; browser persistence verified | Versioned snapshots preserve player, thinkers, world, RNG; round-trip identical continued traces |
+| SAVE-01 | `p_saveg.c`, `G_DoSaveGame`, `G_DoLoadGame` | connected; five active combat/special scenarios and four actual menu saves from recorded encounters continue for 160 matching tics each; browser persistence verified | Versioned snapshots preserve player, thinkers, world, RNG; round-trip identical continued traces |
 | RENDER-01 | `r_*` rendering rules | partial: holes, masked walls, pegging, scrolling and texture animation have scoped checks; continuous scrolling loops are a presentation adjustment; sky coverage/occlusion checked | Holes/disconnected sector geometry, pegging, masked walls, skies, sprite rotation/lighting and palette comparisons |
 | AUDIO-01 | `s_sound.c`, MUS/GENMIDI | partial: attenuation C fixtures, channels, movement effects and teleport regression checked | Correct per-map music, volume controls, attenuation, lifecycle, browser resume, audio smoke |
 | FIXED-01 | `m_fixed.c`, `tables.c`, `m_random.c` | partial: arithmetic/angle C fixtures and source tables checked | Signed arithmetic, overflow/division and angle tables; separate gameplay/cosmetic RNG; C differential vectors |
@@ -47,11 +47,11 @@ Special-family evidence and remaining scope are tracked in [SPECIAL-COVERAGE.md]
 
 Release evidence and the explicit campaign/device matrix are tracked in [RELEASE-CHECKS.md](RELEASE-CHECKS.md).
 
-## Known confirmed baseline defects
+## Historical baseline defects
 
 The initial review reproduced: solid actor overlap; ignored two-sided `ML_BLOCKING`; cross trigger before centre crossing; stationary player left behind by rising floor; ignored multiplayer spawn flag and angle; signed fixed multiply/divide differences. Code inspection also found unlocked keyed doors, long-range melee, missing autoaim/noise integration, missing boss actions, and E1M1-only reload flow.
 
-These remain open unless a progress entry and acceptance test explicitly close them. Tests marked TODO are not passing fidelity evidence.
+This records the starting review, not the current open-bug list. Subsequent fixes and their scoped evidence are in PROGRESS.md and the coverage table above. Tests marked TODO are not passing fidelity evidence.
 
 ## Implementation first, final acceptance afterward
 
@@ -64,9 +64,15 @@ User direction: finish known implementation gaps before broad verification. Each
 | 3 | UI-01 | Automap vertical visibility clipping | Removed as a mistaken requirement: `R_StoreWallRange` sets ML_MAPPED before vertical column clipping |
 | 4 | SAVE-01 | Reject malformed saved state enums/booleans before restoring runtime thinkers and weapons | Implemented; malformed state enums/flags rejected before restoration; focused checks pass |
 | 5 | UI-02 | Title/demo transitions do not yet reproduce the original wipe lifecycle | Implemented; title/demo melt lifecycle connected; focused checks pass |
-| 6 | LOOP-02 | Diagnose and repair the already recorded simulation differences; do not expand trace lengths as an end in itself | Open; historical DEMO1 RNG 463, DEMO2 angle 2271, DEMO4 enemy wake 368. DEMO3 blood-height 2036 is resolved; fixed-point wall contact resolves movement 2785. Next captured difference was pickup shadow flag 3001, now fixed behaviorally; refreshed comparison pending |
+| 6 | LOOP-02 | Diagnose and repair the already recorded simulation differences; do not expand trace lengths as an end in itself | Closed for all four existing full recordings: DEMO1 1710, DEMO2 2347, DEMO3 3863 and DEMO4 818 commands. Paired C traces agree on all captured fields; no recording-length expansion |
 | 7 | BUILD-01 | Resolve long diagnostic worker shutdown stall | Bundled Chromium completes long capture and shutdown; `test:replay` pins that diagnostic path. Installed macOS Chrome retains a documented Crashpad teardown limitation |
 
 Three.js rasterization, free-look sky pole handling, the requested continuous scrolling-loop UV adjustment, original DOS executable/save-format compatibility and multiplayer are explicitly distinct from missing single-player implementation. Preserve those distinctions when auditing gaps.
 
 After the implementation queue: run the finite special-family, campaign-save, audiovisual comparison, 36-map combat and browser/device/performance acceptance gates in SPECIAL-COVERAGE.md and RELEASE-CHECKS.md. A coverage gap alone is not a confirmed implementation defect; failures discovered during acceptance become concrete fixes.
+
+## Current acceptance checkpoint — 2026-09-13
+
+The implementation-first queue above is closed within its stated scope. All four complete recordings match the hosted C after the final UI changes. The finite special obstruction/topology pass, four recorded-encounter menu saves, 32-check installed-Chrome suite, nine scoped WebKit checks and four reference world views are recorded in RELEASE-CHECKS.md. Subsequent desktop/touch action-button checks pass: Escape/Tab remain desktop controls, with on-screen actions reserved for touch layouts.
+
+User playtesting reports start-to-end playability. The native desktop frame/memory/gameplay-backlog measurements pass their preset budgets; full-browser diagnostic teardown still needs the documented environment workaround. Remaining release evidence is specific campaign/secret-route save coverage, broader audiovisual/listening samples, physical iOS/Android checks and supported-device performance scope. These are acceptance gaps, not claims that those maps or features are broken. Preserve the source/Three.js adaptations and separate multiplayer target.

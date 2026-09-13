@@ -59,7 +59,6 @@ async function main(): Promise<void> {
   const palette=parsePalette(wad);
   const assets={palette, colormap:parseColormap(wad), flats:parseFlats(wad,palette),
     textures:parseTextures(wad,palette), sprites:parseSprites(wad,palette)};
-  initDoomLighting(palette,assets.colormap);
   const audio=new AudioContext();
   initSoundManager(audio,await parseSounds(wad,audio));
   const music=new MusicPlayer(audio);
@@ -136,6 +135,9 @@ async function main(): Promise<void> {
     replay=null;controls.setEnabled(false);
     stopAllSounds();
     level?.dispose(); automap.reset(); messages.reset();
+    // The shared sprite lookup belongs to this level. Three retains texture
+    // binding groups until texture disposal, including removed actor graphs.
+    initDoomLighting(palette,assets.colormap);
     level=new Level(wad,assets,episode,number,skill);
     scene.add(level.root);
     music.stop(); musicName='';
@@ -253,7 +255,7 @@ async function main(): Promise<void> {
     volume:(musicVolume,soundVolume)=>{music.setVolume(musicVolume);setSoundVolume(soundVolume);}
   });
   attractView.addEventListener('pointerdown',event=>{event.preventDefault();menu.open();});
-  const gameActions=document.createElement('div');gameActions.id='game-actions';
+  const gameActions=document.createElement('div');gameActions.id='game-actions';gameActions.hidden=!touch;
   gameActions.append(automap.button,document.getElementById('menu-button')!);
   document.body.append(gameActions);
   document.addEventListener('pointerlockchange',()=>{if(!touch && !document.pointerLockElement && session.running) menu.open();});
@@ -306,8 +308,10 @@ async function main(): Promise<void> {
       playerTickSystem(world,()=>weapons.tick(world));
       // A_Punch can turn the player during weapon actions. Preserve that turn
       // in the browser controls as well as the next recorded tic command.
+      // Playback also updates the stored control heading so menu isolation
+      // cannot restore the level-start view when a recording pauses.
       const aimInput=world.get(Input)!;
-      if(level.player.mo.angle!==aimInput.yaw+Math.PI/2){
+      if(replay || level.player.mo.angle!==aimInput.yaw+Math.PI/2){
         const yaw=level.player.mo.angle-Math.PI/2;
         controls.setInitialYaw(yaw,aimInput.pitch);world.set(Input,{yaw});
       }

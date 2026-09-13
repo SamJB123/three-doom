@@ -96,9 +96,9 @@ export function evBuildStairs(
         const nextSector = sectors[ backSectorIdx ];
 
         if ( nextSector.floorTex !== texture ) continue;
-        if ( busySectors.has( backSectorIdx ) ) continue;
-
+        // EV_BuildStairs counts matching neighbors before testing specialdata.
         height += stairSize;
+        if ( busySectors.has( backSectorIdx ) ) continue;
         currentSectorIdx = backSectorIdx;
 
         activeStairSectors.add( currentSectorIdx ); busySectors.add(currentSectorIdx);

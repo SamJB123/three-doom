@@ -25,12 +25,13 @@ writeFileSync(join(work,'r_draw.c'),draw);
 let info=readFileSync(join(work,'info.c'),'utf8').replace('sprnames[NUMSPRITES]','sprnames[NUMSPRITES+1]');
 writeFileSync(join(work,'info.c'),info);
 let infoHeader=readFileSync(join(work,'info.h'),'utf8').replace('sprnames[NUMSPRITES]','sprnames[NUMSPRITES+1]');writeFileSync(join(work,'info.h'),infoHeader);
+const host=resolve(process.env.DOOM_REFERENCE_RENDER?'scripts/reference/render.c':'scripts/reference/world.c');
 const sources=files.filter(name=>name.endsWith('.c')&&!excluded.has(name));
 const flags=['-g','-fsanitize=address','-std=gnu89','-fwrapv','-fcommon','-w','-DNORMALUNIX','-DLINUX'];
-try{execFileSync('cc',[...flags,'-I',work,...sources.map(name=>join(work,name)),resolve('scripts/reference/world.c'),'-o',join(work,'runner')],{stdio:['ignore','pipe','pipe']});}
+try{execFileSync('cc',[...flags,'-I',work,...sources.map(name=>join(work,name)),host,'-o',join(work,'runner')],{stdio:['ignore','pipe','pipe']});}
 catch(error){process.stderr.write(error.stderr);process.exit(1);}
 const output=join(work,'trace.jsonl'),wad=resolve(process.env.DOOM_WAD??'public/doomu.wad');
 const hash=path=>createHash('sha256').update(readFileSync(path)).digest('hex');
 execFileSync(join(work,'runner'),[wad,process.argv[2]??'DEMO1',process.argv[3]??'70',output],{stdio:'inherit'});
-writeFileSync(join(work,'provenance.json'),JSON.stringify({compiler:execFileSync('cc',['--version'],{encoding:'utf8'}).trim(),flags,platform:process.platform,architecture:process.arch,wad:hash(wad),host:hash('scripts/reference/world.c'),generator:hash('scripts/reference-world.mjs'),demo:process.argv[2]??'DEMO1',limit:Number(process.argv[3]??70),abiAdaptations:['pointer-sized default values and pointer arrays','32-bit on-disk texture column directory','uintptr_t alignment','sprite-name NULL sentinel','obsolete header shims'],sources:Object.fromEntries(files.map(name=>[name,hash(join(root,name))])),compiledSources:Object.fromEntries([...sources,'info.h','values.h','malloc.h'].map(name=>[name,hash(join(work,name))])),scope:'Original engine with headless platform I/O. See host source; outputs are local verification artifacts.'},null,2));
+writeFileSync(join(work,'provenance.json'),JSON.stringify({compiler:execFileSync('cc',['--version'],{encoding:'utf8'}).trim(),flags,platform:process.platform,architecture:process.arch,wad:hash(wad),host:hash(host),hostSupport:hash('scripts/reference/world.c'),generator:hash('scripts/reference-world.mjs'),demo:process.argv[2]??'DEMO1',limit:Number(process.argv[3]??70),abiAdaptations:['pointer-sized default values and pointer arrays','32-bit on-disk texture column directory','uintptr_t alignment','sprite-name NULL sentinel','obsolete header shims'],sources:Object.fromEntries(files.map(name=>[name,hash(join(root,name))])),compiledSources:Object.fromEntries([...sources,'info.h','values.h','malloc.h'].map(name=>[name,hash(join(work,name))])),scope:'Original engine with headless platform I/O. See host source; outputs are local verification artifacts.'},null,2));
 console.log(output);

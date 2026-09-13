@@ -216,3 +216,33 @@ test('monster door use rejects secrets and accepts only original manual-door fam
   }
   resetThinkers();resetDoors();allMobjs.length=0;
 });
+
+test('P_DamageMobj consumes a pain roll for barrels and charging Lost Souls',async()=>{
+  const {damageMobj}=await import('../src/game/Attack');
+  const {MF_SKULLFLY}=await import('../src/game/MobjData');
+  const {archiveRandom,restoreRandom}=await import('../src/game/DoomRandom');
+  for(const type of ['MT_BARREL','MT_SKULL']){
+    resetThinkers();allMobjs.length=0;initMobjSystem({},new Group(),dividedMap());
+    const target=spawnMobj(64*F,0,0,type);
+    if(type==='MT_SKULL')target.flags|=MF_SKULLFLY;
+    const state=target.state,health=target.health;
+    restoreRandom({play:0,misc:0});damageMobj(target,null,null,1);
+    assert.equal(target.health,health-1);assert.equal(target.state,state);
+    assert.equal(archiveRandom().play,1,'roll precedes zero chance/skull-flight exclusion');
+  }
+  resetThinkers();allMobjs.length=0;
+});
+
+test('P_DamageMobj can throw a lethally hit elevated actor forward',async()=>{
+  const {damageMobj}=await import('../src/game/Attack');
+  const {archiveRandom,restoreRandom}=await import('../src/game/DoomRandom');
+  for(const [seed,z,damage,reverse] of [[1,65,15,true],[0,65,15,false],[1,64,15,false],[1,65,40,false],[1,65,10,false]] as const){
+    resetThinkers();allMobjs.length=0;initMobjSystem({},new Group(),dividedMap());
+    const target=spawnMobj(64*F,0,z*F,'MT_POSSESSED'),source=spawnMobj(0,0,0,'MT_TROOP');target.health=11;
+    restoreRandom({play:seed,misc:0});damageMobj(target,source,source,damage);
+    const thrust=Math.trunc(damage*(F>>3)*100/target.info.mass);
+    assert.equal(target.momx,fixedMul(thrust*(reverse?4:1),reverse?-65535:65535));
+    if(damage===15)assert.equal(archiveRandom().play,(seed+(z>64?3:2))&255,'optional fall roll, death duration and dropped-item spawn');
+  }
+  resetThinkers();allMobjs.length=0;
+});

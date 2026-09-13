@@ -285,6 +285,9 @@ export function checkPickups(
   for ( const child of spriteGroup.children ) {
 
     const mesh = child as Mesh;
+    // Dynamic actors were handled above using their current position/flags.
+    // Their render metadata describes the spawn point and must not grant items.
+    if(mesh.userData.mobj)continue;
     const thingType = mesh.userData.thingType as number | undefined;
     if ( thingType === undefined ) continue;
 

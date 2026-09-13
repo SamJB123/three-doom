@@ -45,7 +45,7 @@ const NF_SUBSECTOR = 0x8000;
 // The player's mo is a real Mobj so enemies can target it directly.
 export type { Mobj as DoomMobj } from '../game/Mobj';
 import type { Mobj } from '../game/Mobj';
-import { MF_SOLID, MF_NOCLIP, MF_MISSILE, MF_SKULLFLY, MF_FLOAT, MF_DROPOFF, MF_TELEPORT, MOBJ_TYPES } from '../game/MobjData';
+import { MF_CORPSE, MF_SOLID, MF_NOCLIP, MF_MISSILE, MF_SKULLFLY, MF_FLOAT, MF_DROPOFF, MF_TELEPORT, MOBJ_TYPES } from '../game/MobjData';
 
 export interface DoomPlayer {
   mo: Mobj;
@@ -90,32 +90,34 @@ export function setCrossSpecialCallback( cb: ( lineIdx: number, oldSide: number,
 }
 
 // ============================================================
-// R_PointInSubsector — BSP tree traversal (integer coords)
+// R_PointInSubsector — BSP tree traversal
 // ============================================================
 
-export function pointInSubsector(
-  x: number, y: number,
-  nodes: BspNode[],
-  subsectors: Subsector[]
-): number {
+/** R_PointOnSide: node fields use map units, point coordinates are 16.16. */
+export function pointOnBspSide(x: Fixed, y: Fixed, node: BspNode): 0 | 1 {
+  const nx=intToFixed(node.x),ny=intToFixed(node.y);
+  const ndx=intToFixed(node.dx),ndy=intToFixed(node.dy);
+  if(!ndx)return x<=nx ? (ndy>0?1:0) : (ndy<0?1:0);
+  if(!ndy)return y<=ny ? (ndx<0?1:0) : (ndx>0?1:0);
+  const dx=(x-nx)|0,dy=(y-ny)|0;
+  if((ndy^ndx^dx^dy)&0x80000000)return (ndy^dx)&0x80000000?1:0;
+  return fixedMul(dy,ndx>>FRACBITS)<fixedMul(ndy>>FRACBITS,dx)?0:1;
+}
 
-  if ( nodes.length === 0 ) return 0;
-
-  let nodeIdx = nodes.length - 1;
-
-  while ( ! ( nodeIdx & NF_SUBSECTOR ) ) {
-
-    const node = nodes[ nodeIdx ];
-    const dx = x - node.x;
-    const dy = y - node.y;
-    const cross = dx * node.dy - dy * node.dx;
-
-    nodeIdx = cross > 0 ? node.rightChild : node.leftChild;
-
+function pointInSubsectorFixed(x:Fixed,y:Fixed,nodes:BspNode[]):number {
+  if(!nodes.length)return 0;
+  let index=nodes.length-1;
+  while(!(index&NF_SUBSECTOR)){
+    const node=nodes[index];
+    index=pointOnBspSide(x,y,node)===0?node.rightChild:node.leftChild;
   }
+  return index&~NF_SUBSECTOR;
+}
 
-  return nodeIdx & ~NF_SUBSECTOR;
-
+export function pointInSubsector(
+  x:number,y:number,nodes:BspNode[],subsectors:Subsector[]
+):number {
+  return pointInSubsectorFixed((x*FRACUNIT)|0,(y*FRACUNIT)|0,nodes);
 }
 
 /** Find sector at integer map coordinates */
@@ -124,7 +126,13 @@ export function findSectorAt(
   map: DoomMapData
 ): Sector | null {
 
-  const ssIdx = pointInSubsector( x, y, map.nodes, map.subsectors );
+  return findSectorAtFixed((x*FRACUNIT)|0,(y*FRACUNIT)|0,map);
+
+}
+
+/** Keep fractional coordinates through R_PointInSubsector. */
+export function findSectorAtFixed(x:Fixed,y:Fixed,map:DoomMapData):Sector|null {
+  const ssIdx = pointInSubsectorFixed(x,y,map.nodes);
   const ss = map.subsectors[ ssIdx ];
   if ( ! ss ) return null;
 
@@ -136,16 +144,6 @@ export function findSectorAt(
   if ( sideIdx < 0 ) return null;
 
   return map.sectors[ map.sidedefs[ sideIdx ].sector ];
-
-}
-
-/** Find sector at fixed-point coordinates (converts to integer for BSP) */
-export function findSectorAtFixed(
-  x: Fixed, y: Fixed,
-  map: DoomMapData
-): Sector | null {
-
-  return findSectorAt( x >> FRACBITS, y >> FRACBITS, map );
 
 }
 
@@ -348,7 +346,9 @@ export function checkPosition(
 /** P_ThingHeightClip: preserve floor contact when a sector moves. */
 export function clipThingHeight( mo: Mobj, map: DoomMapData ): boolean {
   const onFloor = mo.z === mo.floorz;
-  checkPosition( mo, mo.x, mo.y, map, true );
+  // P_ThingHeightClip retains P_CheckPosition's actor-before-line ordering,
+  // even when that check returns false (it still supplies the opening).
+  checkPosition( mo, mo.x, mo.y, map );
   mo.floorz = tmfloorz;
   mo.ceilingz = tmceilingz;
   if ( onFloor ) mo.z = mo.floorz;
@@ -493,8 +493,13 @@ export function xyMovement(
 
   }
 
-  // Friction (only on ground)
+  // P_XYMovement: dead players, like other corpses, keep sliding while
+  // their collision footprint is supported by a step above their subsector.
   if ( mo.z > mo.floorz ) return false;
+  if((mo.flags&MF_CORPSE)&&(Math.abs(mo.momx)>FRACUNIT/4||Math.abs(mo.momy)>FRACUNIT/4)){
+    const sector=findSectorAtFixed(mo.x,mo.y,map);
+    if(sector&&mo.floorz!==intToFixed(sector.floorHeight))return false;
+  }
 
   if ( !movementCommand && Math.abs( mo.momx ) < STOPSPEED && Math.abs( mo.momy ) < STOPSPEED ) {
 

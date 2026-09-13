@@ -320,8 +320,14 @@ export function damageMobj(
   // Thrust / knockback from damage
   if ( inflictor && damage > 0 ) {
 
-    const angle = pointToRadians(target.x - inflictor.x,target.y - inflictor.y);
+    let angle = pointToRadians(target.x - inflictor.x,target.y - inflictor.y);
     let thrust = Math.trunc( ( damage * ( FRACUNIT >> 3 ) * 100 ) / Math.max( 1, target.info.mass ) );
+
+    // P_DamageMobj: a weak fatal hit from far below may throw the victim
+    // forward. This roll precedes death-state and dropped-item RNG.
+    if(damage<40 && damage>target.health && target.z-inflictor.z>64*FRACUNIT && (P_Random()&1)){
+      angle+=Math.PI;thrust*=4;
+    }
 
     target.momx += fixedMul(thrust,fineCos(angle));
     target.momy += fixedMul(thrust,fineSin(angle));
@@ -347,16 +353,11 @@ export function damageMobj(
 
   }
 
-  // Pain state
-  if ( target.info.painState && target.info.painChance > 0 ) {
-
-    if ( ( target.flags & MF_SKULLFLY ) === 0 && P_Random() < target.info.painChance ) {
-
-      target.flags |= MF_JUSTHIT; // fight back immediately
-      setMobjState( target, target.info.painState );
-
-    }
-
+  // P_DamageMobj consumes the pain roll even for zero pain chance and
+  // charging skulls; the skull flag is checked after the random comparison.
+  if ( P_Random() < target.info.painChance && !( target.flags & MF_SKULLFLY ) ) {
+    target.flags |= MF_JUSTHIT;
+    setMobjState( target, target.info.painState ?? 'S_NULL' );
   }
 
   wakeAfterDamage(target,source);

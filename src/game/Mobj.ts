@@ -14,7 +14,7 @@ import type { SpriteFrame, Thing } from '../wad/types';
 import type { Fixed } from '../math/fixed';
 import { FRACUNIT, FRACBITS, intToFixed, fixedToFloat, fixedMul, fixedDiv } from '../math/fixed';
 import type { DoomMapData, DoomPlayer } from '../physics/DoomMovement';
-import { findSectorAt, tryMove, checkPosition, movementCeilingLine } from '../physics/DoomMovement';
+import { findSectorAtFixed, findSectorAt, tryMove, checkPosition, movementCeilingLine } from '../physics/DoomMovement';
 import { addThinker, archivedThinker } from './Thinkers';
 import type { MobjInfo, MobjState } from './MobjData';
 import { MOBJ_STATES, MOBJ_TYPES, DOOMEDNUM_TO_TYPE, MF_AMBUSH, MF_SPAWNCEILING, MF_SHOOTABLE, MF_SOLID, MF_NOBLOOD, MF_CORPSE, MF_NOGRAVITY, MF_NOBLOCKMAP, MF_MISSILE, MF_NOCLIP, MF_SKULLFLY, MF_COUNTKILL, MF_FLOAT, MF_INFLOAT, MF_SPECIAL, MF_NOSECTOR, MF_SHADOW } from './MobjData';
@@ -201,7 +201,7 @@ export function spawnMobj(
   // Find sector for correct floor/ceiling
   if ( mapData ) {
 
-    const sector = findSectorAt( x >> FRACBITS, y >> FRACBITS, mapData );
+    const sector = findSectorAtFixed( x, y, mapData );
 
     if ( sector ) {
 
@@ -572,7 +572,7 @@ function updateFloorCeiling( mo: Mobj ): void {
 
   if ( ! mapData ) return;
 
-  const sector = findSectorAt( mo.x >> FRACBITS, mo.y >> FRACBITS, mapData );
+  const sector = findSectorAtFixed( mo.x, mo.y, mapData );
 
   if ( sector ) {
 
@@ -844,6 +844,10 @@ export function removeMobj( mo: Mobj ): void {
 
     spriteGroup.remove( mo.mesh );
     mo.mesh.geometry.dispose();
+    // Each actor owns its material; the texture is shared until resetMobjs.
+    // Disposing only geometry leaves renderer material/node caches retained.
+    const materials=Array.isArray(mo.mesh.material)?mo.mesh.material:[mo.mesh.material];
+    for(const material of materials)material.dispose();
     mo.mesh = null;
 
   }

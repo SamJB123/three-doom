@@ -1,5 +1,11 @@
 # Fidelity and verification
 
+## Current comparison status — 2026-09-13
+
+All four complete supplied IWAD recordings pass the hosted-C comparison: DEMO1 1710, DEMO2 2347, DEMO3 3863 and DEMO4 818 tics. This supersedes the historical first-difference reports below. Captured player/actor positions, momentum, angles, health, states/tics, flags, targets, weapon state, RNG, sector/sidedef state and inventory agree. Internal counters not in the trace, unexercised actions, full campaign completion and DOS executable compatibility are not thereby verified.
+
+`npm run test:replay` refreshes bounded complete recordings; `npm run verify:world -- 4000` compares the full field set and preserves paired local traces/provenance. No longer recording is required for this gate.
+
 ## Reference contract
 
 Use the supplied `DOOM/linuxdoom-1.10` source as the initial behavioral specification and the supplied Ultimate Doom IWAD as integration input. Do not assume the Linux source is byte-for-byte equivalent to a particular DOS executable. Its source includes episode four, but rules and demo-version compatibility still need an explicit audit.
@@ -144,3 +150,12 @@ The proposed vertical-visibility discovery requirement was incorrect. In the sup
 The refreshed complete DEMO3 trace confirms the previous bullet-height discrepancy is resolved. Correcting `P_PointOnLineSide`'s FixedMul rounding advances agreement through tic 3000; the next captured difference is MF_SHADOW on the invisibility pickup tic. Immediate pickup flag application is now implemented with a regression, but the post-change C comparison is pending.
 
 Long-worker teardown was traced to the installed branded Chrome's surviving Crashpad stderr pipe. The same complete replay exits cleanly with bundled Chromium. `npm run test:replay` explicitly uses that browser, even if PLAYWRIGHT_CHANNEL is set; it retains ordinary Playwright failure handling and does not kill arbitrary processes or convert forced termination into success. Installed-Chrome long-diagnostic teardown remains an environment limitation.
+
+
+## Original renderer reference frames
+
+`DOOM_REFERENCE_RENDER=artifacts/reference.ppm npm run reference:world -- DEMO1 70` runs the same C recording, then original `R_RenderPlayerView`, `ST_Drawer` and `HU_Drawer` at its final frame. The PPM uses base PLAYPAL and source 320×200, screenblocks 10. The simulation host does not advance ST_Ticker/HU_Ticker, so these frames are **world-render references, not HUD/palette-timing evidence**. The render host and its included world host are hashed in provenance. Keep images local.
+
+Compare matching demo/tic positions while retaining the distinction between the source projection and the port's wider Three.js camera. Paused captures must preserve the recorded heading; the new desktop/touch regression covers that requirement.
+
+The supplied `G_DoLoadLevel` compares `gamemode` with mission constants `pack_tnt`/`pack_plut`. In `doomdef.h`, `retail` and `pack_plut` both have value 3, so retail episode maps below 12 select SKY1, overriding `G_InitNew`'s episode sky. This explains the white sky in the DEMO3/900 reference frame versus the port's episode-three red sky. Keep the intended episode sky in the port; this hosted-source quirk is excluded from sky fidelity evidence.

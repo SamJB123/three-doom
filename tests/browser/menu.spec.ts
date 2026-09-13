@@ -595,6 +595,9 @@ test('developer replay retains its trace at a rebirth boundary and can restart',
 });
 
 for(const demoName of (process.env.DOOM_TRACE_DEMOS??'DEMO1').split(','))test(`original IWAD demo ${demoName} commands produce repeatable gameplay traces and pause with the menu`,async({page})=>{
+  // The bundled headless WebGPU device is unstable on this Mac. Exercise
+  // the app's normal WebGL fallback for simulation-only diagnostics.
+  if(process.env.DOOM_REPLAY_WEBGL==='1')await page.addInitScript(()=>Object.defineProperty(navigator,'gpu',{value:undefined}));
   const limit=Number(process.env.DOOM_TRACE_TICS??70);
   if(!Number.isInteger(limit)||limit<1||limit>4000)throw Error('DOOM_TRACE_TICS must be 1–4000');
   test.setTimeout(Math.max(45000,limit/35*4000+30000));
@@ -865,4 +868,80 @@ test('title-to-demo melt freezes commands and pauses with the menu',async({page}
   await page.getByRole('button',{name:'Watch demos',exact:true}).click();
   await expect(page.locator('#screen-wipe')).toBeHidden({timeout:4000});
   await expect.poll(async()=>(await snapshot(page)).attract.command).toBeGreaterThan(0);
+});
+
+test('pausing recorded playback preserves the displayed heading on desktop and touch',async({browser})=>{
+  for(const hasTouch of [false,true]){
+    const context=await browser.newContext({hasTouch,viewport:{width:960,height:600}}),page=await context.newPage();
+    try{
+      await ready(page);await page.evaluate(()=>(window as any).__doomReplay('DEMO1',70));
+      await expect.poll(async()=>(await snapshot(page)).replay.tic).toBe(70);
+      await expect(page.getByRole('dialog',{name:'Doom menu'})).toBeVisible();
+      const delta=await page.evaluate(async()=>{
+        const {allMobjs}=await import('/src/game/Mobj.ts');
+        const angle=allMobjs.find(m=>m.type==='MT_PLAYER')!.angle;
+        const yaw=(window as any).__doomInspect().input.yaw;
+        return Math.atan2(Math.sin(yaw+Math.PI/2-angle),Math.cos(yaw+Math.PI/2-angle));
+      });
+      expect(Math.abs(delta)).toBeLessThan(1e-9);
+    }finally{await context.close();}
+  }
+});
+
+test('saved encounters from all four IWAD demos continue identically after real menu restoration',async({page})=>{
+  test.setTimeout(90000);await ready(page);
+  await page.evaluate(async()=>{
+    const {WeaponSystem}=await import('/src/game/Weapons.ts');
+    const tick=WeaponSystem.prototype.tick,restore=WeaponSystem.prototype.restore;
+    WeaponSystem.prototype.tick=function(world){(window as any).__saveWorld=world;(window as any).__saveWeapon=this;return tick.call(this,world);};
+    WeaponSystem.prototype.restore=function(state){restore.call(this,state);(window as any).__saveWeapon=this;};
+    const {TicClock}=await import('/src/game/TicClock.ts');const advance=TicClock.prototype.advance;
+    TicClock.prototype.advance=function(d,r,t){return advance.call(this,d*16,r,t);};
+    const w=await import('/src/wad/index.ts'),{readDemo}=await import('/src/game/Demo.ts');
+    const wad=w.parseWAD(await(await fetch('/doomu.wad')).arrayBuffer());
+    (window as any).__saveDemos=Object.fromEntries([1,2,3,4].map(n=>{const l=w.getLump(wad,`DEMO${n}`)!;return [`DEMO${n}`,readDemo(wad.buf.slice(l.offset,l.offset+l.size))];}));
+  });
+  for(const [demo,tic]of [['DEMO1',1000],['DEMO2',1200],['DEMO3',3050],['DEMO4',600]] as const){
+    await page.evaluate(({demo,tic})=>(window as any).__doomReplay(demo,tic),{demo,tic});
+    await expect.poll(()=>page.evaluate(()=>(window as any).__doomInspect().replay.tic),{timeout:30000}).toBe(tic);
+    await expect(page.getByRole('dialog',{name:'Doom menu'})).toBeVisible();
+    await page.getByRole('button',{name:'Save game',exact:true}).click();
+    await page.getByRole('button',{name:/^Save slot 1:/}).click();
+    // Advance explicit test tics through the same simulation systems. The
+    // normal browser clock remains paused; this compares save continuation,
+    // not user input delivery or a completed combat route.
+    const continuation=async(compare:boolean)=>page.evaluate(async({demo,tic,compare})=>{
+      const {PlayerStatus,DoomWorld,Input,Time}=await import('/src/ecs/traits.ts');
+      const {playerTickSystem}=await import('/src/ecs/systems.ts');
+      const {advanceEnemyTic}=await import('/src/game/EnemyAI.ts');
+      const {archiveWorld}=await import('/src/game/WorldArchive.ts');
+      const {demoInput}=await import('/src/game/Demo.ts');
+      const win=window as any,world=win.__saveWorld;
+      if(!compare)win.__saveExpected=[];
+      for(let i=0;i<160;i++){
+        const {map,player}=world.get(DoomWorld);
+        world.set(Input,demoInput(win.__saveDemos[demo].commands[tic+i],player.mo.angle));
+        playerTickSystem(world,()=>win.__saveWeapon.tick(world));advanceEnemyTic();
+        const value=JSON.stringify({world:archiveWorld(map,player),player:world.get(PlayerStatus),weapon:win.__saveWeapon.archive(),tic:world.get(Time).levelTime});
+        if(compare&&value!==win.__saveExpected[i])throw Error(`${demo}: saved continuation differs at resumed tic ${i+1}`);
+        if(!compare)win.__saveExpected.push(value);
+      }
+    },{demo,tic,compare});
+    await continuation(false);
+    await page.getByRole('button',{name:'Load game',exact:true}).click();
+    await page.getByRole('button',{name:/^Load slot 1:/}).click();
+    await continuation(true);
+  }
+});
+
+test('desktop hides touch action buttons while Escape and Tab remain available',async({page})=>{
+  await ready(page);await startGame(page);
+  await expect(page.locator('#game-actions')).toBeHidden();
+  await expect(page.getByRole('button',{name:'Open menu',exact:true})).toBeHidden();
+  await expect(page.locator('#automap-button')).toBeHidden();
+  await page.keyboard.press('Tab');await expect(page.locator('#automap')).toBeVisible();
+  await page.keyboard.press('Escape');await expect(page.getByRole('dialog',{name:'Doom menu'})).toBeVisible();
+  await expect(page.locator('#game-actions')).toBeHidden();
+  await page.keyboard.press('Escape');await expect(page.locator('#automap')).toBeVisible();
+  await page.keyboard.press('Tab');await expect(page.locator('#automap')).toBeHidden();
 });

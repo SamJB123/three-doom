@@ -102,3 +102,42 @@ test('PIT_ChangeSector sprays blood only on crushing tics, gibs corpses and remo
   const dropped=spawnMobj(80*F,0,0,'MT_CLIP');dropped.flags|=MF_DROPPED;map.sectors[0].ceilingHeight=0;
   change(map.sectors[0],true);assert.equal(dropped.removed,true);resetThinkers();resetMobjs();
 });
+
+test('R_PointInSubsector retains fractional positions at BSP boundaries',async()=>{
+  const {findSectorAtFixed,pointOnBspSide}=await import('../src/physics/DoomMovement');
+  const map=dividedMap(),node=map.nodes[0];node.x=64;
+  assert.equal(findSectorAtFixed(4200575,46258764,map),map.sectors[0]);
+  assert.equal(findSectorAtFixed(64*65536,46258764,map),map.sectors[1]);
+  // Reversed axis: equality follows the original <= branch, not cross-product tie handling.
+  node.dy=-256;
+  assert.equal(pointOnBspSide(64*65536,0,node),0);
+  assert.equal(pointOnBspSide(64*65536+1,0,node),1);
+});
+
+test('P_ThingHeightClip retains the opening from an early actor collision',async()=>{
+  const {Group}=await import('three/webgpu');
+  const {initMobjSystem,spawnMobj,allMobjs}=await import('../src/game/Mobj');
+  const {clipThingHeight}=await import('../src/physics/DoomMovement');
+  resetThinkers();allMobjs.length=0;const map=dividedMap();map.sectors[1].ceilingHeight=0;
+  initMobjSystem({},new Group(),map);
+  const corpse=spawnMobj(10*F,0,0,'MT_SHOTGUY');corpse.health=-5;corpse.height=14*F;corpse.flags&=~MF_SOLID;
+  const blocker=spawnMobj(30*F,0,0,'MT_TROOP');
+  assert.equal(clipThingHeight(corpse,map),true);assert.equal(corpse.ceilingz,128*F);
+  blocker.flags&=~MF_SOLID;
+  assert.equal(clipThingHeight(corpse,map),false);assert.equal(corpse.ceilingz,0);
+  resetThinkers();allMobjs.length=0;
+});
+
+test('P_XYMovement lets the dead player slide off a step without ground friction',async()=>{
+  const {xyMovement}=await import('../src/physics/DoomMovement');
+  const {MF_CORPSE}=await import('../src/game/MobjData');
+  for(const corpse of [false,true]){
+    const map=dividedMap();map.sectors[1].floorHeight=16;
+    const player=createPlayer(8,0,16),mo=player.mo;
+    if(corpse)mo.flags|=MF_CORPSE;
+    mo.momx=F;mo.momy=0;
+    xyMovement(mo,map,false);
+    assert.equal(mo.x,9*F);assert.equal(mo.floorz,16*F);
+    assert.equal(mo.momx,corpse?F:0xe800);
+  }
+});
