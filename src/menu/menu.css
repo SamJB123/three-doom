@@ -39,3 +39,4 @@
 #attract-view[hidden] { display:none; }
 #attract-view.demo { background:transparent; }
 #attract-view canvas { width:min(100vw, 133.333vh); height:auto; aspect-ratio:4 / 3; image-rendering:pixelated; }
+#game, #doom-status-bar, #hud-message { filter:var(--doom-palette-filter, none); }

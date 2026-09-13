@@ -1,3 +1,4 @@
+import {PaletteEffects} from './PaletteEffects';
 import {HudFace} from './HudFace';
 // Doom status bar HUD — renders the classic STBAR at the bottom of the screen
 // using a 2D canvas overlay. All graphics come from WAD patch lumps.
@@ -74,7 +75,7 @@ export class StatusBar {
 
   private canvas: HTMLCanvasElement;
   private ctx: CanvasRenderingContext2D;
-  private tintOverlay: HTMLDivElement;
+  private paletteEffects?:PaletteEffects;
 
   // Loaded patches
   private stbar: HudPatch | null = null;
@@ -94,7 +95,7 @@ export class StatusBar {
 
   constructor() {
 
-    this.canvas = document.createElement( 'canvas' );
+    this.canvas = document.createElement( 'canvas' );this.canvas.id='doom-status-bar';
     this.canvas.width = DOOM_W;
     this.canvas.height = ST_HEIGHT;
     this.canvas.style.display = 'block';
@@ -108,18 +109,11 @@ export class StatusBar {
 
     this.ctx = this.canvas.getContext( '2d' )!;
 
-    // Fullscreen tint overlay for palette effects (berserk red, pickup gold, ironfeet green)
-    const gameContainer = document.getElementById( 'game' )!;
-    this.tintOverlay = document.createElement( 'div' );
-    this.tintOverlay.style.position = 'absolute';
-    this.tintOverlay.style.inset = '0';
-    this.tintOverlay.style.pointerEvents = 'none';
-    this.tintOverlay.style.zIndex = '5';
-    gameContainer.appendChild( this.tintOverlay );
 
   }
 
   loadGraphics( wad: WAD, palette: Palette ): void {
+    this.paletteEffects=new PaletteEffects(wad);
 
     // Status bar background
     this.stbar = this.loadPatch( wad, palette, 'STBAR' );
@@ -362,53 +356,11 @@ export class StatusBar {
     }
 
     // Screen tint — ported from ST_doPaletteStuff (st_stuff.c)
-    this.updateScreenTint( state );
+    this.paletteEffects?.update( state );
 
   }
 
   // Ported from ST_updateFaceWidget in st_stuff.c
-  // Ported from ST_doPaletteStuff (st_stuff.c)
-  // Maps game state → fullscreen color tint overlay.
-  private updateScreenTint( state: PlayerStatusState ): void {
-
-    // Damage red (highest priority) + berserk red
-    // From ST_doPaletteStuff: cnt = max(damageCount, berserk fade)
-    let cnt = state.damageCount;
-
-    if ( state.powers.strength ) {
-
-      const bzc = 12 - ( state.powers.strength >> 6 );
-      if ( bzc > cnt ) cnt = bzc;
-
-    }
-
-    if ( cnt > 0 ) {
-
-      // Red tint (damage / berserk)
-      let pal = ( cnt + 7 ) >> 3;
-      if ( pal >= NUMREDPALS ) pal = NUMREDPALS - 1;
-      this.tintOverlay.style.backgroundColor = `rgba(255, 0, 0, ${ pal / 16 })`;
-
-    } else if ( state.bonusCount > 0 ) {
-
-      // Gold tint (item pickup)
-      let pal = ( state.bonusCount + 7 ) >> 3;
-      if ( pal >= NUMBONUSPALS ) pal = NUMBONUSPALS - 1;
-      this.tintOverlay.style.backgroundColor = `rgba(215, 186, 69, ${ pal / 10 })`;
-
-    } else if ( state.powers.ironfeet > 4 * 32 || ( state.powers.ironfeet & 8 ) ) {
-
-      // Green tint (radiation suit) — flickers near expiry
-      this.tintOverlay.style.backgroundColor = 'rgba(0, 215, 0, 0.12)';
-
-    } else {
-
-      this.tintOverlay.style.backgroundColor = 'transparent';
-
-    }
-
-  }
-
   private drawPatch( patch: HudPatch | null, x: number, y: number ): void {
 
     if ( ! patch ) return;
@@ -468,7 +420,7 @@ export class StatusBar {
   dispose(): void {
 
     this.canvas.remove();
-    this.tintOverlay.remove();
+    this.paletteEffects?.dispose();
 
   }
 

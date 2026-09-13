@@ -700,3 +700,37 @@ test('rendered HUD uses god/dead faces and resets after returning to a new game'
   await page.reload();await expect(page.locator('#loading')).toBeHidden();await startGame(page);
   await expect.poll(async()=>(await snapshot(page)).face).toBeLessThan(3);
 });
+
+test('PLAYPAL damage, bonus and suit transforms cover world, weapon and HUD with authored colors',async({page})=>{
+  await ready(page);await startGame(page);
+  await page.evaluate(async()=>{
+    const {WeaponSystem}=await import('/src/game/Weapons.ts');const {PlayerStatus}=await import('/src/ecs/traits.ts');
+    const tick=WeaponSystem.prototype.tick;
+    (window as any).__testPalette=2;
+    WeaponSystem.prototype.tick=function(world){
+      tick.call(this,world);const state=world.get(PlayerStatus),which=(window as any).__testPalette;
+      state.godMode=true;state.damageCount=which===2?2:0;state.bonusCount=which===10?7:0;state.powers.ironfeet=which===13?200:0;
+    };
+    const {parseWAD,getLump}=await import('/src/wad/index.ts');const wad=parseWAD(await(await fetch('/doomu.wad')).arrayBuffer());
+    const lump=getLump(wad,'PLAYPAL')!;(window as any).__testPalettes=Array.from(wad.buf.slice(lump.offset,lump.offset+lump.size));
+    const swatch=document.createElement('canvas');swatch.id='palette-swatch';swatch.width=256;swatch.height=8;
+    swatch.style.cssText='position:fixed;left:0;top:0;z-index:1000;filter:var(--doom-palette-filter);';
+    const ctx=swatch.getContext('2d')!,data=ctx.createImageData(256,8),colors=(window as any).__testPalettes;
+    for(let y=0;y<8;y++)for(let i=0;i<256;i++)data.data.set([colors[i*3],colors[i*3+1],colors[i*3+2],255],(y*256+i)*4);
+    ctx.putImageData(data,0,0);document.body.append(swatch);
+  });
+  for(const palette of [2,10,13]){
+    await page.evaluate(p=>(window as any).__testPalette=p,palette);
+    await expect.poll(()=>page.locator('#game').evaluate(el=>getComputedStyle(el).filter)).toContain(`doom-palette-${palette}`);
+    await expect.poll(()=>page.locator('#doom-status-bar').evaluate(el=>getComputedStyle(el).filter)).toContain(`doom-palette-${palette}`);
+    const screenshot=await page.locator('#palette-swatch').screenshot({scale:'css'});
+    const maxError=await page.evaluate(async({encoded,palette})=>{
+      const image=new Image();image.src='data:image/png;base64,'+encoded;await image.decode();
+      const canvas=document.createElement('canvas');canvas.width=256;canvas.height=8;const ctx=canvas.getContext('2d')!;ctx.drawImage(image,0,0);
+      const actual=ctx.getImageData(0,4,256,1).data,expected=(window as any).__testPalettes;let error=0;
+      for(let i=0;i<256;i++)for(let c=0;c<3;c++)error=Math.max(error,Math.abs(actual[i*4+c]-expected[palette*768+i*3+c]));
+      return error;
+    },{encoded:screenshot.toString('base64'),palette});
+    expect(maxError).toBeLessThanOrEqual(1);
+  }
+});
