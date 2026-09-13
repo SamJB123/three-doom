@@ -182,7 +182,7 @@ export function spawnMobj(
     tracer: null,
     threshold: 0,
     reactionTime: gameRules.skill === 5 ? 0 : 8,
-    moveDir: 8,     // DI_NODIR
+    moveDir: 0,     // P_SpawnMobj zero-initializes movedir (DI_EAST).
     movecount: 0,
     lastLook: P_Random() % 4,
     mesh: null,

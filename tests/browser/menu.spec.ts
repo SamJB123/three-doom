@@ -559,15 +559,16 @@ test('mobile taps use doors and holding the aiming side opens an owned-weapon wh
 
 test('original IWAD demo commands produce repeatable gameplay traces and pause with the menu',async({page})=>{
   await ready(page);
+  const limit=Number(process.env.DOOM_TRACE_TICS??70);
   const run=async(pause:boolean)=>{
-    await page.evaluate(()=>(window as any).__doomReplay('DEMO1',70));
+    await page.evaluate(limit=>(window as any).__doomReplay('DEMO1',limit),limit);
     if(pause){
       await expect.poll(async()=>(await snapshot(page)).replay?.tic??0).toBeGreaterThan(5);
       await page.keyboard.press('Escape');const stopped=await snapshot(page);await page.waitForTimeout(120);
       expect((await snapshot(page)).replay).toEqual(stopped.replay);
       await page.getByRole('button',{name:'Resume game',exact:true}).click();
     }
-    await expect.poll(async()=>(await snapshot(page)).replay?.tic??0).toBe(70);
+    await expect.poll(async()=>(await snapshot(page)).replay?.tic??0,{timeout:20000}).toBe(limit);
     await expect(page.getByRole('dialog',{name:'Doom menu'})).toBeVisible();
     return (await snapshot(page)).replay.trace;
   };
@@ -577,5 +578,6 @@ test('original IWAD demo commands produce repeatable gameplay traces and pause w
     TicClock.prototype.advance=function(delta:number,running:boolean,tick:()=>void){return advance.call(this,running&&delta>0?(frame++%3===0?3/35:1/140):delta,running,tick);};
   });
   const second=await run(true);
-  expect(first).toHaveLength(70);expect(second).toEqual(first);
+  expect(first).toHaveLength(limit);expect(second).toEqual(first);
+  const {writeFileSync,mkdirSync}=await import('node:fs');mkdirSync('artifacts',{recursive:true});writeFileSync('artifacts/port-demo1-trace.json',JSON.stringify(first));
 });

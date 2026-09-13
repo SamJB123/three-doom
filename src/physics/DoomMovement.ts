@@ -442,10 +442,11 @@ export function slideMove(
 
 export function xyMovement(
   mo: Mobj,
-  map: DoomMapData
-): void {
+  map: DoomMapData,
+  movementCommand=false
+): boolean {
 
-  if ( mo.momx === 0 && mo.momy === 0 ) return;
+  if ( mo.momx === 0 && mo.momy === 0 ) return false;
 
   // Clamp momentum
   if ( mo.momx > MAXMOVE ) mo.momx = MAXMOVE;
@@ -488,12 +489,13 @@ export function xyMovement(
   }
 
   // Friction (only on ground)
-  if ( mo.z > mo.floorz ) return;
+  if ( mo.z > mo.floorz ) return false;
 
-  if ( Math.abs( mo.momx ) < STOPSPEED && Math.abs( mo.momy ) < STOPSPEED ) {
+  if ( !movementCommand && Math.abs( mo.momx ) < STOPSPEED && Math.abs( mo.momy ) < STOPSPEED ) {
 
     mo.momx = 0;
     mo.momy = 0;
+    return true;
 
   } else {
 
@@ -501,8 +503,9 @@ export function xyMovement(
     mo.momy = fixedMul( mo.momy, FRICTION );
 
   }
-
+  return false;
 }
+
 
 // ============================================================
 // P_ZMovement

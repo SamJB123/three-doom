@@ -42,3 +42,10 @@ test('monster death voice variants consume the source gameplay random draw even 
   }
   resetThinkers();allMobjs.length=0;
 });
+test('P_SpawnMobj starts with east movedir, so the first chase rotates a south-facing monster southeast',()=>{
+  const {map,actor}=setup('MT_SHADOWS');
+  assert.equal(actor.moveDir,0);actor.angle=3*Math.PI/2;
+  gameRules.skill=5;actor.flags|=MF_JUSTATTACKED;
+  A_Chase(actor,map);assert.equal(actor.angle,7*Math.PI/4);
+  gameRules.skill=3;resetThinkers();allMobjs.length=0;
+});

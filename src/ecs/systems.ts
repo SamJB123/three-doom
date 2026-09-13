@@ -6,7 +6,7 @@ import { runThinkers } from '../game/Thinkers';
 import { handleUseInput, updateButtons } from '../game/UseAction';
 import { playerInSpecialSector } from '../game/PlayerDamage';
 import { MF_NOCLIP, MF_SHADOW } from '../game/MobjData';
-import { tickPlayerMobjState } from '../game/PlayerState';
+import { tickPlayerMobjState, setPlayerMobjState } from '../game/PlayerState';
 
 const SCALE = 1.0 / 32.0;
 
@@ -62,7 +62,10 @@ export function playerTickSystem( world: World, tickWeapons:()=>void=()=>{} ): v
 
   // Apply input thrust
   if (player.mo.reactionTime > 0) player.mo.reactionTime--;
-  else movePlayer( player, input.forward, input.strafe, doomAngle );
+  else {
+    movePlayer( player, input.forward, input.strafe, doomAngle );
+    if(pState&&(input.forward||input.strafe)&&pState.mobjState.name==='S_PLAY')setPlayerMobjState(pState,'S_PLAY_RUN1',player.mo);
+  }
 
   // P_PlayerThink performs view/special/use/weapon work before P_RunThinkers.
   calcHeight(player,time.levelTime);
@@ -101,7 +104,9 @@ export function playerTickSystem( world: World, tickWeapons:()=>void=()=>{} ): v
 export function playerMobjTickSystem(world:World):void {
   const reference=world.get(DoomWorld),state=world.get(PlayerStatus);
   if(!reference?.player || !reference.map)return;
-  xyMovement(reference.player.mo,reference.map);
+  const input=world.get(Input),moving=!!(input?.forward||input?.strafe);
+  const stopped=xyMovement(reference.player.mo,reference.map,moving);
+  if(stopped&&state&&/^S_PLAY_RUN[1-4]$/.test(state.mobjState.name))setPlayerMobjState(state,'S_PLAY',reference.player.mo);
   zMovement(reference.player.mo,reference.player);
   if(state)tickPlayerMobjState(state,reference.player.mo);
 }

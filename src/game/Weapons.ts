@@ -208,8 +208,8 @@ export class WeaponSystem {
   private levelTime=0;
 
   psprites: [ PSpriteDef, PSpriteDef ] = [
-    { state: null, tics: 0, sx: FRACUNIT, sy: WEAPONTOP },   // ps_weapon
-    { state: null, tics: 0, sx: FRACUNIT, sy: WEAPONTOP },   // ps_flash
+    { state: null, tics: 0, sx: 0, sy: WEAPONTOP },   // ps_weapon
+    { state: null, tics: 0, sx: 0, sy: WEAPONTOP },   // ps_flash
   ];
 
   archive() {return structuredClone({psprites:this.psprites,attackDown:this.attackDown,refire:this.refire,lastAngle:this.lastAngle});}

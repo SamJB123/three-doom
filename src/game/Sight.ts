@@ -11,7 +11,7 @@
 
 import type { Mobj } from './Mobj';
 import type { DoomMapData } from '../physics/DoomMovement';
-import { fixedDiv, intToFixed, FRACUNIT, FRACBITS } from '../math/fixed';
+import { fixedDiv, fixedMul, intToFixed, FRACUNIT, FRACBITS } from '../math/fixed';
 
 // ============================================================
 // DivLine — a line defined by origin + delta (fixed-point)
@@ -94,10 +94,10 @@ function divlineSide( x: number, y: number, node: DivLine ): 0 | 1 | 2 {
 
 function interceptVector( v2: DivLine, v1: DivLine ): number {
 
-  const den = ( ( ( v1.dy >> 8 ) * v2.dx - ( v1.dx >> 8 ) * v2.dy ) >> 16 );
+  const den = (fixedMul(v1.dy>>8,v2.dx)-fixedMul(v1.dx>>8,v2.dy))|0;
   if ( den === 0 ) return 0;
 
-  const num = ( ( ( ( v1.x - v2.x ) >> 8 ) * v1.dy ) + ( ( ( v2.y - v1.y ) >> 8 ) * v1.dx ) ) >> 16;
+  const num = (fixedMul((v1.x-v2.x)>>8,v1.dy)+fixedMul((v2.y-v1.y)>>8,v1.dx))|0;
   return fixedDiv( num, den );
 
 }

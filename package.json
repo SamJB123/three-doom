@@ -15,7 +15,9 @@
     "setup:wad": "node scripts/setup-wad.mjs",
     "reference:manifest": "node scripts/reference-manifest.mjs",
     "inventory:specials": "tsx scripts/inventory-specials.ts",
-    "verify:audio": "tsx scripts/verify-audio.ts"
+    "verify:audio": "tsx scripts/verify-audio.ts",
+    "reference:world": "node scripts/reference-world.mjs",
+    "compare:world": "tsx scripts/compare-world.ts --check"
   },
   "dependencies": {
     "crashcat": "^0.0.2",

@@ -1,0 +1,36 @@
+import {readFileSync,writeFileSync,mkdirSync,readdirSync,copyFileSync} from 'node:fs';
+import {resolve,join} from 'node:path';
+import {execFileSync} from 'node:child_process';
+import {createHash} from 'node:crypto';
+const root=process.env.DOOM_SOURCE??'/Users/sambide/GitHub/reference-material/DOOM/linuxdoom-1.10';
+const work=resolve('artifacts/reference-world');mkdirSync(work,{recursive:true});
+const excluded=new Set(['i_main.c','i_video.c','i_sound.c','i_net.c','sndserv.c','soundsrv.c']);
+const files=readdirSync(root).filter(name=>/\.[ch]$/.test(name));
+for(const name of files)copyFileSync(join(root,name),join(work,name));
+writeFileSync(join(work,'values.h'),'#include <limits.h>\n#define MAXINT INT_MAX\n#define MININT INT_MIN\n#define MAXSHORT SHRT_MAX\n#define MINSHORT SHRT_MIN\n');
+writeFileSync(join(work,'malloc.h'),'#include <stdlib.h>\n');
+let misc=readFileSync(join(work,'m_misc.c'),'utf8');
+misc='#include <stdint.h>\n'+misc.replace(/int\s+defaultvalue;/,'intptr_t defaultvalue;').replace(/\(int\)\s*("[^"]*")/g,'(intptr_t)$1');
+misc=misc.replace(/\(int\)(\s*HUSTR_CHATMACRO[0-9])/g,'(intptr_t)$1');
+writeFileSync(join(work,'m_misc.c'),misc);
+let data=readFileSync(join(work,'r_data.c'),'utf8').replace(/void\s+\*\*columndirectory;/,'int columndirectory;');
+for(const name of ['textures','texturecolumnlump','texturecolumnofs','texturecomposite'])data=data.replace(name+' = Z_Malloc (numtextures*4',name+' = Z_Malloc (numtextures*sizeof(*'+name+')');
+data='#include <stdint.h>\n'+data.replace('((int)colormaps + 255)&~0xff','((uintptr_t)colormaps + 255)&~(uintptr_t)0xff');
+writeFileSync(join(work,'r_data.c'),data);
+let setup=readFileSync(join(work,'p_setup.c'),'utf8').replace('Z_Malloc (total*4','Z_Malloc (total*sizeof(*linebuffer)');
+writeFileSync(join(work,'p_setup.c'),setup);
+let draw=readFileSync(join(work,'r_draw.c'),'utf8');
+draw='#include <stdint.h>\n'+draw.replace('(int)translationtables','(uintptr_t)translationtables').replace('& ~255','& ~(uintptr_t)255');
+writeFileSync(join(work,'r_draw.c'),draw);
+let info=readFileSync(join(work,'info.c'),'utf8').replace('sprnames[NUMSPRITES]','sprnames[NUMSPRITES+1]');
+writeFileSync(join(work,'info.c'),info);
+let infoHeader=readFileSync(join(work,'info.h'),'utf8').replace('sprnames[NUMSPRITES]','sprnames[NUMSPRITES+1]');writeFileSync(join(work,'info.h'),infoHeader);
+const sources=files.filter(name=>name.endsWith('.c')&&!excluded.has(name));
+const flags=['-g','-fsanitize=address','-std=gnu89','-fwrapv','-fcommon','-w','-DNORMALUNIX','-DLINUX'];
+try{execFileSync('cc',[...flags,'-I',work,...sources.map(name=>join(work,name)),resolve('scripts/reference/world.c'),'-o',join(work,'runner')],{stdio:['ignore','pipe','pipe']});}
+catch(error){process.stderr.write(error.stderr);process.exit(1);}
+const output=join(work,'trace.jsonl'),wad=resolve(process.env.DOOM_WAD??'public/doomu.wad');
+const hash=path=>createHash('sha256').update(readFileSync(path)).digest('hex');
+execFileSync(join(work,'runner'),[wad,process.argv[2]??'DEMO1',process.argv[3]??'70',output],{stdio:'inherit'});
+writeFileSync(join(work,'provenance.json'),JSON.stringify({compiler:execFileSync('cc',['--version'],{encoding:'utf8'}).trim(),flags,platform:process.platform,architecture:process.arch,wad:hash(wad),host:hash('scripts/reference/world.c'),generator:hash('scripts/reference-world.mjs'),demo:process.argv[2]??'DEMO1',limit:Number(process.argv[3]??70),abiAdaptations:['pointer-sized default values and pointer arrays','32-bit on-disk texture column directory','uintptr_t alignment','sprite-name NULL sentinel','obsolete header shims'],sources:Object.fromEntries(files.map(name=>[name,hash(join(root,name))])),compiledSources:Object.fromEntries([...sources,'info.h','values.h','malloc.h'].map(name=>[name,hash(join(work,name))])),scope:'Original engine with headless platform I/O. See host source; outputs are local verification artifacts.'},null,2));
+console.log(output);
