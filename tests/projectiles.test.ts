@@ -35,3 +35,49 @@ test('charging skull blocked by a wall keeps zero momentum and exits charge next
   runThinkers();assert.equal(skull.momx,0);assert.equal(skull.x,20*F);
   runThinkers();assert(!(skull.flags&MF_SKULLFLY));
 });
+
+test('player missiles autoaim up/down and search side angles before falling back horizontally',async()=>{
+  const {spawnPlayerMissile}=await import('../src/game/Mobj');
+  const {createPlayer}=await import('../src/physics/DoomMovement');
+  for(const y of [0,6,-6])for(const z of [0,48]){
+    setup();const map=dividedMap(),player=createPlayer(50,0,0,map);
+    const target=spawnMobj(110*F,y*F,z*F,'MT_TROOP');target.radius=F;
+    const missile=spawnPlayerMissile(player,0,'MT_ROCKET')!;
+    assert.equal(missile.target,player.mo);assert(z===0?missile.momz<0:missile.momz>0);
+    assert.equal(missile.angle,y===0?0:y>0?Math.PI/32:-Math.PI/32);
+  }
+  setup();const map=dividedMap(),player=createPlayer(50,0,0,map);
+  assert.equal(spawnPlayerMissile(player,.3,'MT_PLASMA')!.momz,0);
+  setup();map.linedefs[0].left=-1;initMobjSystem({},new Group(),map);setAttackMap(map);
+  spawnMobj(-60*F,0,48*F,'MT_TROOP');
+  assert.equal(spawnPlayerMissile(player,Math.PI,'MT_ROCKET')!.momz,0);
+});
+
+test('ceiling-limiting sky wall removes missile while ordinary wall explodes it',()=>{
+  for(const sky of [true,false]){
+    setup();const map=dividedMap();map.sectors[1].ceilingHeight=32;
+    map.sectors[1].ceilingTex=sky?'F_SKY1':'CEIL1_1';
+    initMobjSystem({},new Group(),map);setAttackMap(map);
+    const shot=spawnMobj(10*F,0,64*F,'MT_TROOPSHOT');shot.momx=-8*F;
+    runThinkers();assert.equal(shot.removed,sky);
+    if(!sky)assert(!(shot.flags&MF_MISSILE));
+  }
+});
+
+test('player missile aim probes and vertical launch momentum match executed original C',async()=>{
+  const {readFileSync}=await import('node:fs');
+  const {spawnPlayerMissile,setMissileAimCallback}=await import('../src/game/Mobj');
+  const {createPlayer}=await import('../src/physics/DoomMovement');
+  const fixture=JSON.parse(readFileSync(new URL('./fixtures/missile-reference.json',import.meta.url),'utf8'));
+  for(const expected of fixture.cases){
+    setup();const player=createPlayer(50,0,7),probes:number[]=[];
+    setMissileAimCallback((_source,angle,range)=>{assert.equal(range,1024*F);probes.push(Math.round((angle/(2*Math.PI))*2**32)>>>0);return {slope:probes.length===expected.hit?F/4:0,target:probes.length===expected.hit?player.mo:null};});
+    const missile=spawnPlayerMissile(player,0,'MT_ROCKET')!;
+    assert.deepEqual(probes,expected.probes);
+    assert.equal(Math.round(missile.angle/(2*Math.PI)*2**32)>>>0,expected.angle);
+    assert.equal(missile.momz,expected.momz);
+    // C oracle stubs P_CheckMissileSpawn; undo our initial half-tic Z step.
+    assert.equal(missile.z-(missile.momz>>1),expected.z);
+  }
+  initAttackSystem();
+});

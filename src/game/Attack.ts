@@ -12,7 +12,7 @@ import { FRACUNIT, FRACBITS, intToFixed, fixedToFloat, fixedMul, fixedDiv, float
 import type { DoomMapData, DoomPlayer } from '../physics/DoomMovement';
 import { findSectorAtFixed } from '../physics/DoomMovement';
 import type { Mobj } from './Mobj';
-import { allMobjs, setMobjState, spawnMobj, setExplodeCallback, setBfgSprayCallback, setDamageMobjCallback } from './Mobj';
+import { allMobjs, setMobjState, spawnMobj, setExplodeCallback, setBfgSprayCallback, setDamageMobjCallback, setMissileAimCallback } from './Mobj';
 import { MF_SHOOTABLE, MF_NOBLOOD, MF_SOLID, MF_CORPSE, MF_SKULLFLY, MF_JUSTHIT, MF_FLOAT, MF_NOGRAVITY, MF_DROPOFF, MF_DROPPED } from './MobjData';
 import { P_Random } from './DoomRandom';
 import { playSoundAt } from '../sound';
@@ -40,6 +40,7 @@ export function initAttackSystem(): void {
   setExplodeCallback( A_Explode );
   setBfgSprayCallback(A_BFGSpray);
   setDamageMobjCallback( damageMobj );
+  setMissileAimCallback(aimLineAttack);
 
 }
 

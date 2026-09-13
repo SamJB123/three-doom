@@ -124,3 +124,15 @@ Factored the original `PIT_CheckThing` projectile/skull branches into the moveme
 Four regression scenarios cover same/different species, solid nonshootable objects, vertical separation, initial spawn impact, charging-skull contact and wall stop/reset. Scope remains partial: actor enumeration uses the port's actor list, not original blockmap ordering; substeps remain an approximation. Full missile autoaim, sky-wall impact behavior, collision/simulation ordering and executed C gameplay traces remain open. This does not close COMBAT-01 or the full-port gate.
 
 Final validation for the combined slice: 52 unit tests, typecheck and production build pass; all 12 Chrome browser tests pass (56.6 seconds). Whitespace check passes. The existing bundle-size warning remains. Next priority is projectile aiming/sky behavior, then original tic ordering and reproducible campaign gameplay traces; wipes/title demos and other roadmap gates remain unfinished.
+
+## 2026-09-13 — committed checkpoint and missile aiming/sky behavior
+
+Committed accumulated progress as `35905a9` (`Checkpoint Doom campaign, menus, saves and fidelity corrections`). IWADs and generated artifacts were excluded; the working tree was clean immediately afterward. Staged whitespace checking found trailing spaces in the newly tracked vendor subset; removed those before committing, then rechecked PCM equivalence successfully.
+
+**COMBAT-01.** Connected `P_SpawnPlayerMissile` autoaim: probe center, +5.625 degrees, then -5.625 degrees over 1024 units; select the first target's angle/slope, or retain the original heading with zero slope. Rocket/plasma/BFG vertical launch momentum uses FixedMul(speed,slope). Added `P_XYMovement`'s sky-wall exception by retaining the ceiling-limiting linedef from `PIT_CheckLine`; a blocked missile is removed when that linedef's original back-sector ceiling is sky. Ordinary impacts still explode. This follows the supplied Linux source's sky hack, including its limitations; it is not a generalized sky-plane rewrite.
+
+**REF-01.** Added `scripts/reference-missile.mjs`, which compiles and executes the original `P_SpawnPlayerMissile` body with controlled aim/spawn/trig stubs. Four committed reference cases verify aim-probe order, fallback heading, spawn height and vertical momentum. Function SHA-256 and the stubbed scope are recorded in the fixture. These are executed C comparisons; they do not certify sight tracing, original trig tables, blockmap ordering or whole-engine parity.
+
+Regression tests also exercise real port sight tracing against elevated/lower targets, both side probes, no-target fallback, blocked sightlines, and sky versus ordinary upper walls. Validation results follow.
+
+Validation: 55 unit tests, all 12 Chrome browser tests (57.1 seconds), typecheck, four-track audio reference comparison and production build pass. Whitespace check passes. Follow-on missile changes remain separate from checkpoint `35905a9`. Existing bundle warning and broader completion gates remain open; next work is original tic ordering and deterministic gameplay traces, alongside remaining actor/special/presentation coverage.

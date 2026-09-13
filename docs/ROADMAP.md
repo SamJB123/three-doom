@@ -51,4 +51,4 @@ These remain open unless a progress entry and acceptance test explicitly close t
 
 ## Next slice
 
-Close the remaining E1M1 fidelity/playthrough gate, including missile aiming/sky impacts, remaining actor actions and original tic ordering. Episode routing is connected across all 36 maps, but this does not prove combat playthrough or original simulation parity. Remaining release blockers include save edge cases, complete IWAD-special scenarios, original wipe/title-demo presentation, broader geometry comparisons, and browser/performance validation.
+Close the remaining E1M1 fidelity/playthrough gate, including remaining actor actions, original tic ordering and deterministic gameplay traces. Episode routing is connected across all 36 maps, but this does not prove combat playthrough or original simulation parity. Remaining release blockers include save edge cases, complete IWAD-special scenarios, original wipe/title-demo presentation, broader geometry comparisons, and browser/performance validation.

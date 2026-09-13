@@ -1,0 +1,48 @@
+{
+  "function": "P_SpawnPlayerMissile",
+  "sourceSha256": "eec596ef51a3e2ac20343c01393115fef50d805f35cf39b2254ff58b3d906e95",
+  "scope": "Original C function with scripted aim/spawn and constant trig stubs; probe order, fallback, spawn height and vertical momentum only",
+  "cases": [
+    {
+      "hit": 1,
+      "angle": 0,
+      "z": 2555904,
+      "momz": 327680,
+      "probes": [
+        0
+      ]
+    },
+    {
+      "hit": 2,
+      "angle": 67108864,
+      "z": 2555904,
+      "momz": 327680,
+      "probes": [
+        0,
+        67108864
+      ]
+    },
+    {
+      "hit": 3,
+      "angle": 4227858432,
+      "z": 2555904,
+      "momz": 327680,
+      "probes": [
+        0,
+        67108864,
+        4227858432
+      ]
+    },
+    {
+      "hit": 4,
+      "angle": 0,
+      "z": 2555904,
+      "momz": 0,
+      "probes": [
+        0,
+        67108864,
+        4227858432
+      ]
+    }
+  ]
+}

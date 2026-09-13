@@ -10,7 +10,7 @@ import type { SpriteFrame, Thing } from '../wad/types';
 import type { Fixed } from '../math/fixed';
 import { FRACUNIT, FRACBITS, intToFixed, fixedToFloat, fixedMul, fixedDiv } from '../math/fixed';
 import type { DoomMapData, DoomPlayer } from '../physics/DoomMovement';
-import { findSectorAt, tryMove, checkPosition } from '../physics/DoomMovement';
+import { findSectorAt, tryMove, checkPosition, movementCeilingLine } from '../physics/DoomMovement';
 import { addThinker, archivedThinker } from './Thinkers';
 import type { MobjInfo, MobjState } from './MobjData';
 import { MOBJ_STATES, MOBJ_TYPES, DOOMEDNUM_TO_TYPE, MF_AMBUSH, MF_SPAWNCEILING, MF_SHOOTABLE, MF_SOLID, MF_NOBLOOD, MF_CORPSE, MF_NOGRAVITY, MF_NOBLOCKMAP, MF_MISSILE, MF_NOCLIP, MF_SKULLFLY, MF_COUNTKILL, MF_FLOAT, MF_INFLOAT, MF_SPECIAL } from './MobjData';
@@ -320,6 +320,9 @@ export function setDamageMobjCallback( cb: ( target: Mobj, inflictor: Mobj | nul
 
 }
 
+let missileAim: ((source:Mobj,angle:number,range:Fixed)=>{slope:Fixed;target:Mobj|null})|null=null;
+export function setMissileAimCallback(callback:NonNullable<typeof missileAim>):void {missileAim=callback;}
+
 // ============================================================
 // P_XYMovement — ported from p_mobj.c
 // ============================================================
@@ -396,8 +399,12 @@ function xyMovementStep( mo: Mobj ): void {
 
     if ( ( mo.flags & MF_MISSILE ) !== 0 && ( mo.flags & MF_NOCLIP ) === 0 ) {
 
-      // Missile hit a wall — explode
-      explodeMissile( mo );
+      // P_XYMovement's sky-wall exception is tied to the ceiling-limiting
+      // linedef's original back sector, not just the sector under the missile.
+      const ceilingLine=movementCeilingLine();
+      if(mapData && ceilingLine && ceilingLine.left>=0 &&
+        mapData.sectors[mapData.sidedefs[ceilingLine.left].sector].ceilingTex==='F_SKY1')removeMobj(mo);
+      else explodeMissile( mo );
       return;
 
     }
@@ -680,6 +687,14 @@ export function spawnPlayerMissile(
   const info = MOBJ_TYPES[ typeName ];
   if ( ! info ) return null;
 
+  let slope:Fixed=0;
+  const originalAngle=angle;
+  // P_SpawnPlayerMissile: center, +1<<26, -1<<26 (5.625 degrees).
+  for(const offset of [0,Math.PI/32,-Math.PI/32]){
+    const aimed=missileAim?.(player.mo,originalAngle+offset,1024*FRACUNIT);
+    if(aimed?.target){angle=originalAngle+offset;slope=aimed.slope;break;}
+  }
+
   // Spawn at player position + 32 units above floor
   const spawnZ = player.mo.z + 4 * 8 * FRACUNIT;
   const missile = spawnMobj( player.mo.x, player.mo.y, spawnZ, typeName );
@@ -698,11 +713,11 @@ export function spawnPlayerMissile(
   missile.target = player.mo; // shooter must be excluded from missile impacts
   missile.angle = angle;
 
-  // Set momentum from angle and speed (horizontal only — slope = 0)
+  // Set momentum from the selected aim angle and slope.
   const speed = gameRules.skill===5 && ['MT_TROOPSHOT','MT_HEADSHOT','MT_BRUISERSHOT'].includes(typeName) ? 20*FRACUNIT : missile.info.speed;
   missile.momx = fixedMul( speed, Math.round( Math.cos( angle ) * FRACUNIT ) );
   missile.momy = fixedMul( speed, Math.round( Math.sin( angle ) * FRACUNIT ) );
-  missile.momz = 0; // horizontal fire (no auto-aim slope)
+  missile.momz = fixedMul(speed,slope);
 
   checkMissileSpawn( missile );
   return missile;

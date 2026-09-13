@@ -66,6 +66,8 @@ export interface DoomMapData {
 // Temporary collision state (fixed-point)
 let tmfloorz: Fixed = 0;
 let tmceilingz: Fixed = 0;
+let ceilingLine: Linedef|null=null;
+export function movementCeilingLine():Linedef|null {return ceilingLine;}
 let tmdropoffz: Fixed = 0;
 let floatok = false;
 export function moveOpening(): {floatok: boolean; floor: Fixed} { return {floatok, floor: tmfloorz}; }
@@ -252,7 +254,7 @@ function pitCheckLine(
     if ( mo.type !== 'MT_PLAYER' && (ld.flags & 2) ) return false;
   }
 
-  if ( opening.openTop < tmceilingz ) tmceilingz = opening.openTop;
+  if ( opening.openTop < tmceilingz ) {tmceilingz = opening.openTop;ceilingLine=ld;}
   if ( opening.openBottom > tmfloorz ) tmfloorz = opening.openBottom;
   if ( opening.lowFloor < tmdropoffz ) tmdropoffz = opening.lowFloor;
 
@@ -295,6 +297,7 @@ export function checkPosition(
   }
 
   tmdropoffz = tmfloorz;
+  ceilingLine=null;
   spechit.length = 0;
   if ( mo.flags & MF_NOCLIP ) return true;
   // PIT_CheckThing: ordinary actors are infinitely tall in vanilla Doom.
